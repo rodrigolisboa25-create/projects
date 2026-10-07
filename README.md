@@ -1,10 +1,10 @@
-# Projetos
+# 🗂️ Projetos
 
 Repositório de projetos desenvolvidos para automatizar processos, organizar dados e criar rotinas auditáveis. Cada projeto fica em uma pasta própria, com código, documentação técnica, instruções de instalação e arquivos necessários para adaptação a outros contextos.
 
-## Projetos disponíveis
+## 📚 Projetos disponíveis
 
-### Estoque Contábil
+### 📦 Estoque Contábil
 
 Plataforma local em Python e FastAPI para processar posições contábeis de estoque, automatizar extrações do SAP, consolidar regras de negócio e disponibilizar consultas e análises em uma interface web executada na máquina do usuário. O projeto tem como destaque o agente de IA **Optimus**, integrado ao n8n e ao Google Gemini.
 
@@ -89,7 +89,7 @@ O projeto foi organizado para permitir adaptação a outra operação, área ou 
 
 ---
 
-### Vektor
+### 🧭 Vektor
 
 Ecossistema modular em Google Apps Script que reúne governança financeira, análises, automações, páginas operacionais e assistentes de IA. O portal integra frentes de cartão corporativo, Numerário, Contas a Receber/Prosegur, POS, agentes de IA e painéis de Power BI.
 
@@ -106,7 +106,7 @@ A versão pública contém os 19 arquivos do projeto Apps Script e documenta os 
 
 ---
 
-### Sistema Prosegur
+### 🛡️ Sistema Prosegur
 
 Pipeline em Python e Google Apps Script para capturar documentos, interpretar PDFs de BOL, CTe-OS, DEM e NFSe, consolidar valores e gerar relatórios auditáveis para a operação Prosegur.
 
@@ -123,7 +123,7 @@ O projeto inclui o parser por tipo documental, banco local, enriquecimento por b
 
 ---
 
-### SmartSlip
+### 🧾 SmartSlip
 
 Aplicação web em Google Apps Script para receber comprovantes financeiros, organizar arquivos no Google Drive, extrair informações com Gemini e acompanhar filas, histórico, indicadores, alertas e custos de inteligência artificial.
 

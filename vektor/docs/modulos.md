@@ -1,8 +1,8 @@
-# Módulos e fluxos operacionais
+# 🧩 Módulos e fluxos operacionais
 
 Este documento descreve o papel de cada módulo do Vektor, quais informações consome, como processa os dados e o que entrega ao usuário.
 
-## 1. Portal, autenticação e controle de acesso
+## 🏠 1. Portal, autenticação e controle de acesso
 
 O portal principal é formado por `Code.gs` e `index.html`. Antes de disponibilizar uma função, o Vektor considera quatro dimensões:
 
@@ -30,13 +30,13 @@ sequenceDiagram
     M-->>P: Retorna dados ou resultado
 ```
 
-## 2. Governança do cartão corporativo
+## 💳 2. Governança do cartão corporativo
 
 O núcleo Clara transforma a base transacional em consultas e fluxos operacionais. Ele suporta mais de um contexto de empresa e separa as respectivas fontes e regras.
 
 A fonte operacional desta implantação é a planilha [Capta_Clara](https://docs.google.com/spreadsheets/d/1_XW0IqbYjiCPpqtwdEi1xPxDlIP2MSkMrLGbeinLIeI/edit?gid=1277104230#gid=1277104230). Ela é exclusiva do módulo Clara e concentra as bases transacionais, limites, pendências, contatos, acessos do módulo, logs SAP e históricos de comunicação e política. Métricas e alertas transversais do ecossistema são registrados separadamente em [Vektor_Info_calibrate](https://docs.google.com/spreadsheets/d/18yAuYoAR33JOagqapxgwHh86F1WeD0mZcj9AIJym07k/edit?gid=1670513007#gid=1670513007).
 
-### Consultas e análises
+### 🔎 Consultas e análises
 
 - transações por loja, time, categoria, estabelecimento e etiqueta;
 - maiores transações e detalhamento individual;
@@ -47,7 +47,7 @@ A fonte operacional desta implantação é a planilha [Capta_Clara](https://docs
 - estornos e correspondência com lançamentos anteriores;
 - exportação de visões para Excel ou CSV.
 
-### Pendências e comunicação
+### 📩 Pendências e comunicação
 
 O módulo identifica transações com recibos ou justificativas pendentes, agrupa os casos e permite preparar comunicações direcionadas.
 
@@ -60,13 +60,13 @@ O módulo identifica transações com recibos ou justificativas pendentes, agrup
 7. Cada envio recebe uma chave de controle para evitar repetição.
 8. O histórico fica disponível para consulta.
 
-### Lojas ofensoras e possíveis irregularidades
+### 📈 Lojas ofensoras e possíveis irregularidades
 
 O Vektor consolida recorrência, volume, valor e critérios previamente definidos para priorizar análises humanas. O resultado pode aparecer no chat, no Radar de Irregularidades ou em alertas programados.
 
 Esses indicadores não classificam fraude e não substituem a decisão humana. Servem para direcionar atenção a cenários que atendem regras explícitas.
 
-### Limites e saldos
+### 💳 Limites e saldos
 
 As rotinas de limites podem:
 
@@ -79,11 +79,11 @@ As rotinas de limites podem:
 
 Feriados, dias adicionais sem expediente e regras de data podem ser configurados para impedir execução em dias inadequados.
 
-### Alertas programados
+### ⏱️ Alertas programados
 
 Usuários autorizados podem configurar alertas por tipo, escopo, loja, time, conta ou etiqueta. Um agendador percorre os alertas ativos, executa as consultas, monta anexos quando necessário e registra cada execução.
 
-### Arquivo ZFI e análise contábil
+### 🧾 Arquivo ZFI e análise contábil
 
 O núcleo inclui preparação de arquivo para fluxo contábil ZFI, com:
 
@@ -96,11 +96,11 @@ O núcleo inclui preparação de arquivo para fluxo contábil ZFI, com:
 
 Há também uma análise de itens de gasto baseada em catálogo, normalização textual e regras de correspondência. O resultado pode ser exportado ou enviado por e-mail.
 
-## 3. Assistente de Política
+## 🤖 3. Assistente de Política
 
 O assistente responde perguntas usando somente o documento configurado em `policy_clara_source.html`.
 
-### Fluxo RAG
+### 🧠 Fluxo RAG
 
 1. O frontend envia a pergunta e um histórico curto.
 2. O backend valida a permissão da função.
@@ -122,11 +122,11 @@ flowchart LR
 
 O controle de custos utiliza os metadados de uso retornados pelo modelo, acumula tokens por período e calcula uma estimativa de custo.
 
-## 4. Numerário
+## 💵 4. Numerário
 
 O módulo de Numerário combina interface própria, persistência em Drive, integração SAP, comunicação e relatórios.
 
-### Estrutura funcional
+### 🧩 Estrutura funcional
 
 - cadastro e manutenção de registros operacionais;
 - filtros por empresa, loja, período e status;
@@ -139,7 +139,7 @@ O módulo de Numerário combina interface própria, persistência em Drive, inte
 - relatórios consolidados;
 - cópias de recuperação e restauração.
 
-### Ponte SAP
+### 🔄 Ponte SAP
 
 O Apps Script grava uma solicitação em uma fila e gera um arquivo de intercâmbio. Um agente externo autenticado coleta o próximo job, executa a extração e devolve status e resultado. O Vektor sincroniza o retorno, atualiza a planilha e disponibiliza o resultado na interface.
 
@@ -153,19 +153,19 @@ flowchart LR
     S --> B[(Base do Numerário)]
 ```
 
-### Persistência e recuperação
+### 🗃️ Persistência e recuperação
 
 O Numerário V2 mantém arquivos JSON separados para dados, configurações e disparos. Antes de alterações relevantes, o módulo pode criar snapshots de recuperação, calcular hash SHA-256, reter uma quantidade definida de versões e agendar a próxima cópia.
 
-### Agente Tio Patinhas
+### 🤖 Agente Tio Patinhas
 
 `VektorNumerarioTioPatinhas.gs` implementa a ponte com um worker externo. O Vektor envia a solicitação, recebe um identificador e consulta o resultado posteriormente, evitando manter a tela bloqueada durante o processamento.
 
-## 5. Contas a Receber e Prosegur
+## 📄 5. Contas a Receber e Prosegur
 
 O módulo AR reúne painel, analytics, fila RPA e processamento de documentos da Prosegur.
 
-### Processamento de e-mails
+### 📥 Processamento de e-mails
 
 1. O sistema consulta mensagens que atendem ao marcador e aos critérios definidos.
 2. As mensagens elegíveis entram em um job com estado persistido.
@@ -176,21 +176,21 @@ O módulo AR reúne painel, analytics, fila RPA e processamento de documentos da
 7. Somente depois da persistência o Gmail recebe a alteração de marcadores.
 8. O dashboard atualiza contagens, detalhes e erros por etapa.
 
-### Deduplicação e estado
+### 🛡️ Deduplicação e estado
 
 A prevenção de duplicidade combina hash do conteúdo, nome e tamanho. O job registra total, processados, salvos, duplicados, ignorados, falhas, etapa atual, heartbeat e detalhes. Jobs sem atualização por um período definido podem ser marcados como expirados, permitindo uma retomada segura.
 
-### Duas implementações preservadas
+### 🧱 Duas implementações preservadas
 
 O projeto contém `AR_Prosegur_V2.gs` e `AR_PROSEGUR_GMAIL_API.gs`. Elas representam implementações diferentes do mesmo domínio. A primeira utiliza serviços clássicos do Apps Script; a segunda usa a Gmail API com controle mais detalhado dos anexos e marcadores.
 
 Em uma nova implantação, escolha uma rota como oficial e direcione o frontend apenas para ela. Não execute as duas sobre a mesma fila sem uma estratégia explícita de coordenação.
 
-### Analytics e relatórios
+### 📊 Analytics e relatórios
 
 O módulo produz indicadores a partir dos documentos recebidos e processados, cria gráficos para e-mail e permite instalar ou remover o acionador do relatório mensal.
 
-## 6. POS
+## 📨 6. POS
 
 O módulo POS mantém uma operação separada para lojas e registros financeiros.
 
@@ -207,21 +207,21 @@ Principais capacidades:
 - controlar status para impedir reenvio indevido;
 - produzir relatórios por empresa e período.
 
-### Agente Pedro
+### 🤖 Agente Pedro
 
 O agente Pedro analisa os registros segundo uma política versionada. O módulo aceita configuração de provedor, endpoint, modelo e chave, pode utilizar Gemini ou um endpoint compatível e registra tokens, custo estimado, latência e desempenho.
 
 A análise combina regras locais e IA. As validações determinísticas continuam disponíveis mesmo quando o provedor de IA não está configurado.
 
-## 7. Agentes de IA
+## 🧠 7. Agentes de IA
 
 O módulo apresenta um catálogo de agentes autorizados, com título, descrição, instrução de acesso e link. Ele não incorpora as bases dos agentes no Vektor; funciona como um ponto central de descoberta e abertura.
 
-## 8. Business Intelligence Hub
+## 📊 8. Business Intelligence Hub
 
 O módulo Power BI valida a permissão e devolve os dados necessários para incorporar um relatório configurado. A URL do painel fica fora do código público e deve ser informada pela nova implantação.
 
-## 9. Política de dados e contexto do sistema
+## 🔐 9. Política de dados e contexto do sistema
 
 - `politica_dados.html` explica ao usuário como o portal utiliza os dados.
 - `policy_clara_source.html` contém a fonte autorizada consultada pelo assistente.

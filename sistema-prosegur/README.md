@@ -1,4 +1,4 @@
-# Sistema Prosegur
+# 🛡️ Sistema Prosegur
 
 **Pipeline de recebimento, leitura, conferência, auditoria e consolidação de documentos de transporte e faturamento da Prosegur.**
 
@@ -6,7 +6,7 @@ O Sistema Prosegur combina automação de e-mails, processamento de PDFs, extra�
 
 > Esta é uma cópia pública e sanitizada. Os arquivos de código e configuração foram preservados; banco SQLite, PDFs, planilhas preenchidas, relatórios, métricas, logs, credenciais e dados operacionais foram deixados fora do GitHub.
 
-## O problema que o sistema resolve
+## 📌 O problema que o sistema resolve
 
 Documentos de transporte e serviços chegam em formatos diferentes, por e-mail e em lotes. A conferência manual precisa reconhecer tipos documentais, extrair números e valores, associar fornecedores e lojas, distribuir custos e montar arquivos para as etapas seguintes do processo.
 
@@ -20,7 +20,7 @@ Sem uma camada automatizada, o fluxo fica sujeito a:
 - falta de histórico sobre o que foi recebido, processado ou rejeitado;
 - dificuldade para comparar relatório oficial, master e base de origem.
 
-## O que a solução faz
+## ✅ O que a solução faz
 
 1. Recebe ou encontra documentos PDF na pasta de entrada.
 2. Identifica o tipo do documento: BOL, CTe-OS, DEM ou NFSe.
@@ -69,7 +69,7 @@ flowchart TB
 
 O fluxo foi organizado em três blocos para manter os nomes completos visíveis: captura, processamento local e saídas/controle. A auditoria recebe tanto o master quanto o relatório oficial, enquanto o banco preserva o estado necessário para evitar duplicidade e gerar métricas.
 
-## Componentes
+## 🧩 Componentes
 
 | Componente | Responsabilidade |
 | --- | --- |
@@ -83,7 +83,7 @@ O fluxo foi organizado em três blocos para manter os nomes completos visíveis:
 | **Lançadores `.bat`** | Instala dependências, executa o robô, abre a análise e limpa artefatos locais com confirmação |
 | **Código legado** | Mantém versões anteriores de leitura de e-mail, parsing e pipeline para referência histórica |
 
-## Tipos de documento
+## 📄 Tipos de documento
 
 O parser reconhece os formatos usados no fluxo Prosegur:
 
@@ -95,7 +95,7 @@ O parser reconhece os formatos usados no fluxo Prosegur:
 
 Cada documento recebe um identificador, nome de origem, tipo, quantidade de páginas, número documental, competência, valores, partes envolvidas, impostos e campos específicos do demonstrativo quando disponíveis.
 
-## Saídas produzidas
+## 📤 Saídas produzidas
 
 As saídas reais são geradas na máquina de cada implantação, dentro de pastas por competência. O processo pode produzir:
 
@@ -109,7 +109,7 @@ As saídas reais são geradas na máquina de cada implantação, dentro de pasta
 
 Os nomes e contratos das saídas estão explicados em [Arquitetura e contratos](docs/arquitetura.md).
 
-## Estrutura publicada
+## 📁 Estrutura publicada
 
 ```text
 sistema-prosegur/
@@ -140,7 +140,7 @@ sistema-prosegur/
 └── README.md
 ```
 
-## Como executar em outra máquina
+## 🚀 Como executar em outra máquina
 
 1. Instale Python 3.11 ou superior.
 2. Copie `.env.example` para `.env` e preencha os valores localmente.
@@ -153,7 +153,7 @@ sistema-prosegur/
 
 Para uma implantação que utilize o Apps Script, publique `Apps_Script_Prosegur_Novo.js` como projeto separado, configure os IDs do Drive e os acionadores, e aponte a pasta de entrada para o ambiente correto.
 
-## Documentação
+## 📚 Documentação
 
 - [Arquitetura e contratos de dados](docs/arquitetura.md)
 - [Operação passo a passo](docs/operacao.md)
