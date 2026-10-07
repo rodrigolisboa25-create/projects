@@ -34,20 +34,40 @@ Sem uma camada automatizada, o fluxo fica sujeito a:
 10. Registra métricas para acompanhar volume, valores e qualidade do processamento.
 
 ```mermaid
-flowchart LR
-    E[Gmail / Google Apps Script] --> I[Pasta Idocs_Prosegur]
-    I --> P[Leitura e classificação de PDFs]
-    P --> X[Extração e normalização]
-    X --> R[Enriquecimento com referências]
-    R --> DB[(documentos.db)]
-    R --> M[MASTER_Relatorio_Prosegur.xlsx]
-    R --> O[Relatorio_prosegur_oficial.xlsx]
-    R --> S[Planilhas SAP por empresa]
-    M --> A[Auditoria de lotes e totais]
-    O --> A
-    A --> D[Diagnóstico de divergências]
-    DB --> T[vektor_ar_metricas.json]
+flowchart TB
+    subgraph ENTRADA[1. Captura e entrada]
+        E1[Gmail e Google Apps Script<br/>busca mensagens e salva anexos] --> E2[Pasta Idocs_Prosegur<br/>documentos recebidos]
+    end
+
+    subgraph PROCESSAMENTO[2. Processamento local]
+        P1[Leitura e classificação<br/>BOL, CTe-OS, DEM e NFSe] --> P2[Extração e normalização<br/>campos, datas, valores e chaves]
+        P2 --> P3[Enriquecimento<br/>fornecedores, lojas, centros e regras]
+        P3 --> DB[(SQLite<br/>estado e histórico)]
+    end
+
+    subgraph SAIDAS[3. Saídas e controle]
+        O1[Master e relatório oficial<br/>arquivos Excel por competência]
+        O2[Planilhas SAP<br/>por empresa e competência]
+        O3[Auditoria de lotes<br/>nomes, totais e correspondências]
+        O4[Diagnóstico de divergências<br/>pendências para a operação]
+        O5[Métricas agregadas<br/>vektor_ar_metricas.json]
+    end
+
+    E2 --> P1
+    P3 --> O1
+    P3 --> O2
+    O1 --> O3
+    O2 --> O3
+    O3 --> O4
+    DB --> O5
+
+    classDef stage fill:#f1ebff,stroke:#8e6bd1,color:#172033,stroke-width:1px;
+    classDef store fill:#e8f4ff,stroke:#4a90c2,color:#172033,stroke-width:1px;
+    class E1,E2,P1,P2,P3,O1,O2,O3,O4,O5 stage;
+    class DB store;
 ```
+
+O fluxo foi organizado em três blocos para manter os nomes completos visíveis: captura, processamento local e saídas/controle. A auditoria recebe tanto o master quanto o relatório oficial, enquanto o banco preserva o estado necessário para evitar duplicidade e gerar métricas.
 
 ## Componentes
 
