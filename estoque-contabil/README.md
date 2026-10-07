@@ -1,4 +1,4 @@
-# Ops Contábil
+# Estoque Contábil
 
 Plataforma Python para substituir o processamento de planilhas contábeis pesadas, automatizar extrações SAP e produzir saídas auditáveis. O Excel deixa de ser o motor de regras e passa a ser somente uma entrada legada ou um formato de entrega.
 
