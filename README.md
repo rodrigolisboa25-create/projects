@@ -4,54 +4,6 @@ Repositório de projetos desenvolvidos para automatizar processos, organizar dad
 
 ## Projetos disponíveis
 
-### Vektor
-
-Ecossistema modular em Google Apps Script que reúne governança financeira, análises, automações, páginas operacionais e assistentes de IA. O portal integra frentes de cartão corporativo, Numerário, Contas a Receber/Prosegur, POS, agentes de IA e painéis de Power BI.
-
-A versão pública contém os 19 arquivos do projeto Apps Script e documenta os serviços avançados e bibliotecas associados. IDs, e-mails, URLs internas, política corporativa e dados operacionais foram removidos ou substituídos por configurações de ambiente.
-
-**Tecnologias:** Google Apps Script, JavaScript, HTML/CSS, Google Sheets, Google Drive, Gmail API, BigQuery, Vertex AI e Power BI.
-
-- [Código, módulos e instalação](vektor/README.md)
-- [Arquitetura do ecossistema](vektor/docs/arquitetura.md)
-- [Módulos e fluxos operacionais](vektor/docs/modulos.md)
-- [Dados e integrações](vektor/docs/dados-integracoes.md)
-- [Configuração para uma nova implantação](vektor/docs/configuracao.md)
-- [Segurança da versão pública](vektor/docs/seguranca.md)
-
----
-
-### Sistema Prosegur
-
-Pipeline em Python e Google Apps Script para capturar documentos, interpretar PDFs de BOL, CTe-OS, DEM e NFSe, consolidar valores e gerar relatórios auditáveis para a operação Prosegur.
-
-O projeto inclui o parser por tipo documental, banco local, enriquecimento por bases de referência, geração de relatórios Excel, auditoria de lotes, métricas, integração Gmail/Drive e versões legadas do código. PDFs, planilhas, banco, logs e credenciais ficam fora do repositório.
-
-**Tecnologias:** Python, pdfplumber, pandas, openpyxl, SQLite, Google Apps Script, Gmail API e Google Drive.
-
-- [Código, fluxo e instalação](sistema-prosegur/README.md)
-- [Arquitetura e contratos de dados](sistema-prosegur/docs/arquitetura.md)
-- [Operação passo a passo](sistema-prosegur/docs/operacao.md)
-- [Processo operacional e SAP](sistema-prosegur/docs/processo-sap.md)
-- [Configuração e implantação](sistema-prosegur/docs/configuracao.md)
-- [Segurança e dados excluídos](sistema-prosegur/docs/seguranca.md)
-
----
-
-### SmartSlip
-
-Aplicação web em Google Apps Script para receber comprovantes financeiros, organizar arquivos no Google Drive, extrair informações com Gemini e acompanhar filas, histórico, indicadores, alertas e custos de inteligência artificial.
-
-O projeto oferece uma interface responsiva para computador e celular, controle de acesso por usuário e loja, processamento auditável e persistência em Google Sheets. A versão pública foi sanitizada: não contém a planilha persistente, IDs, e-mails, URLs internas ou dados operacionais.
-
-**Tecnologias:** Google Apps Script, JavaScript, HTML, CSS, Google Sheets, Google Drive, Gemini API e Gmail API.
-
-- [Código, funcionalidades e instalação](smartslip/README.md)
-- [Arquitetura e fluxo](smartslip/docs/arquitetura.md)
-- [Segurança da versão pública](smartslip/docs/seguranca.md)
-
----
-
 ### Estoque Contábil
 
 Plataforma local em Python e FastAPI para processar posições contábeis de estoque, automatizar extrações do SAP, consolidar regras de negócio e disponibilizar consultas e análises em uma interface web executada na máquina do usuário. O projeto tem como destaque o agente de IA **Optimus**, integrado ao n8n e ao Google Gemini.
@@ -134,6 +86,54 @@ estoque-contabil/
 #### Reutilização
 
 O projeto foi organizado para permitir adaptação a outra operação, área ou empresa. Os contratos de entrada, caminhos, parâmetros, regras de mapeamento e integrações ficam separados do núcleo de processamento. Credenciais e dados operacionais devem permanecer fora do repositório e ser configurados no ambiente de cada implantação.
+
+---
+
+### Vektor
+
+Ecossistema modular em Google Apps Script que reúne governança financeira, análises, automações, páginas operacionais e assistentes de IA. O portal integra frentes de cartão corporativo, Numerário, Contas a Receber/Prosegur, POS, agentes de IA e painéis de Power BI.
+
+A versão pública contém os 19 arquivos do projeto Apps Script e documenta os serviços avançados e bibliotecas associados. IDs, e-mails, URLs internas, política corporativa e dados operacionais foram removidos ou substituídos por configurações de ambiente.
+
+**Tecnologias:** Google Apps Script, JavaScript, HTML/CSS, Google Sheets, Google Drive, Gmail API, BigQuery, Vertex AI e Power BI.
+
+- [Código, módulos e instalação](vektor/README.md)
+- [Arquitetura do ecossistema](vektor/docs/arquitetura.md)
+- [Módulos e fluxos operacionais](vektor/docs/modulos.md)
+- [Dados e integrações](vektor/docs/dados-integracoes.md)
+- [Configuração para uma nova implantação](vektor/docs/configuracao.md)
+- [Segurança da versão pública](vektor/docs/seguranca.md)
+
+---
+
+### Sistema Prosegur
+
+Pipeline em Python e Google Apps Script para capturar documentos, interpretar PDFs de BOL, CTe-OS, DEM e NFSe, consolidar valores e gerar relatórios auditáveis para a operação Prosegur.
+
+O projeto inclui o parser por tipo documental, banco local, enriquecimento por bases de referência, geração de relatórios Excel, auditoria de lotes, métricas, integração Gmail/Drive e versões legadas do código. PDFs, planilhas, banco, logs e credenciais ficam fora do repositório.
+
+**Tecnologias:** Python, pdfplumber, pandas, openpyxl, SQLite, Google Apps Script, Gmail API e Google Drive.
+
+- [Código, fluxo e instalação](sistema-prosegur/README.md)
+- [Arquitetura e contratos de dados](sistema-prosegur/docs/arquitetura.md)
+- [Operação passo a passo](sistema-prosegur/docs/operacao.md)
+- [Processo operacional e SAP](sistema-prosegur/docs/processo-sap.md)
+- [Configuração e implantação](sistema-prosegur/docs/configuracao.md)
+- [Segurança e dados excluídos](sistema-prosegur/docs/seguranca.md)
+
+---
+
+### SmartSlip
+
+Aplicação web em Google Apps Script para receber comprovantes financeiros, organizar arquivos no Google Drive, extrair informações com Gemini e acompanhar filas, histórico, indicadores, alertas e custos de inteligência artificial.
+
+O projeto oferece uma interface responsiva para computador e celular, controle de acesso por usuário e loja, processamento auditável e persistência em Google Sheets. A versão pública foi sanitizada: não contém a planilha persistente, IDs, e-mails, URLs internas ou dados operacionais.
+
+**Tecnologias:** Google Apps Script, JavaScript, HTML, CSS, Google Sheets, Google Drive, Gemini API e Gmail API.
+
+- [Código, funcionalidades e instalação](smartslip/README.md)
+- [Arquitetura e fluxo](smartslip/docs/arquitetura.md)
+- [Segurança da versão pública](smartslip/docs/seguranca.md)
 
 ---
 
