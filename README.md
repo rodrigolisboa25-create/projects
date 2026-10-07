@@ -54,7 +54,9 @@ O projeto oferece uma interface responsiva para computador e celular, controle d
 
 ### Estoque Contábil
 
-Plataforma local em Python e FastAPI para processar posições contábeis de estoque, automatizar extrações do SAP, consolidar regras de negócio e disponibilizar consultas e análises em uma interface web executada na máquina do usuário.
+Plataforma local em Python e FastAPI para processar posições contábeis de estoque, automatizar extrações do SAP, consolidar regras de negócio e disponibilizar consultas e análises em uma interface web executada na máquina do usuário. O projeto tem como destaque o agente de IA **Optimus**, integrado ao n8n e ao Google Gemini.
+
+> 🤖 **Optimus em destaque:** o agente responde perguntas sobre competências, valor fiscal, aging, origem, lifecycle, centros, controles e documentação usando contexto validado pela API local. Ele também prepara relatórios, identifica pendências e só executa ações depois de confirmação explícita.
 
 #### O problema
 
@@ -79,7 +81,7 @@ flowchart LR
     F --> G[Interface FastAPI]
     F --> H[Excel e relatórios]
     F --> I[Controles e auditoria]
-    G --> J[Optimus]
+    G --> J[🤖 Optimus via n8n]
 ```
 
 #### Optimus e n8n

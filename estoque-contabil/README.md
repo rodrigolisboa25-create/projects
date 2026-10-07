@@ -1,48 +1,153 @@
-# Estoque Contábil
+# 📦 Estoque Contábil
 
-Plataforma Python para substituir o processamento de planilhas contábeis pesadas, automatizar extrações SAP e produzir saídas auditáveis. O Excel deixa de ser o motor de regras e passa a ser somente uma entrada legada ou um formato de entrega.
+**Python + FastAPI + DuckDB + Parquet + SAP GUI + n8n + Google Gemini**
 
-## Decisões desta fase
+Plataforma local para transformar posições de estoque, movimentos SAP, cadastros e regras contábeis em uma base auditável. O sistema substitui planilhas pesadas como motor de cálculo, mantém o processamento na máquina da operação e oferece análises, relatórios, controles e o agente de IA **Optimus**.
 
-- Sem Streamlit.
-- Sem BigQuery.
-- Processamento local com Python, DuckDB e arquivos Parquet.
-- Interface web local em FastAPI, aberta no navegador do usuário.
-- Extração SAP GUI com sessão já autenticada; nenhuma senha fica no projeto.
-- n8n atua como orquestrador e agente, mas não processa os arquivos pesados.
-- Excel final é gerado a partir de modelo, com rastreabilidade por execução.
+> Projeto organizado para reutilização em outras áreas, escopos ou empresas. Credenciais, bases operacionais e arquivos de produção devem ser configurados em cada implantação.
 
-## Optimus: agente contábil via n8n
+## 📌 O problema
 
-O **Optimus** é a camada de inteligência conversacional do projeto. Ele fica disponível na página própria do sistema e usa um workflow do n8n com Google Gemini para responder perguntas sobre as competências compiladas, sempre com contexto preparado pela API local.
+O processo original dependia de planilhas grandes, fórmulas repetidas, buscas manuais e várias etapas para conciliar a posição de estoque com movimentos, cadastro de materiais e regras contábeis. Esse desenho dificultava:
 
-O desenho separa responsabilidades: Python/FastAPI lê o DuckDB, aplica os contratos e regras de negócio, valida permissões e devolve agregados e evidências; o n8n orquestra a conversa e o modelo; a interface mostra a resposta e os avisos. O agente não recebe a base bruta inteira, não acessa credenciais SAP e não pode inventar números.
+- processar competências de grande volume;
+- saber qual fonte originou cada campo enriquecido;
+- comparar uma competência com a anterior;
+- identificar centros, materiais ou regras sem cobertura;
+- separar falha técnica de divergência de negócio;
+- reproduzir o mesmo resultado em outra máquina;
+- responder perguntas sem abrir várias planilhas.
 
-Além das consultas, o Optimus pesquisa o manual e a documentação do sistema, verifica lacunas e saúde da instalação, prepara PDFs e apresentações executivas e acompanha eventos proativos. Extrações SAP, importações, Mapping, backup, acessos e preferências sempre passam por resumo e confirmação explícita antes de qualquer execução.
+## ✅ A solução
 
-O workflow importável, o contrato de contexto, as ferramentas, os avisos proativos, os limites de segurança e o passo a passo de configuração estão em [docs/optimus.md](docs/optimus.md).
+1. Recebe ou extrai do SAP as bases ZMM119 e MB59 da competência.
+2. Valida o layout, o contrato de colunas, a empresa e a data-base antes de aceitar a carga.
+3. Consolida posição de estoque, movimentos, cadastro All Brazil, Mapping e posição anterior.
+4. Aplica o PASSO A PASSO por campo para recuperar Product Offer End, Season e Year com rastreabilidade da fonte.
+5. Grava a base compilada localmente em DuckDB e Parquet para consultas rápidas e reprocessamento controlado.
+6. Disponibiliza uma interface web FastAPI com visão analítica, base detalhada, extrações, controles e Health Center.
+7. Usa o **Optimus**, agente de IA integrado ao n8n, para responder perguntas com contexto validado e evidências da competência.
+8. Gera Excel, relatórios, HTML compartilhável e PDF com os mesmos gráficos da aplicação.
+9. Registra execuções, auditoria, pendências, backups e sincronização entre instalações.
+10. Distribui uma versão consistente por instalador, preservando os dados locais mais novos em atualizações.
 
-## Início rápido
+```mermaid
+flowchart TB
+    subgraph FONTES[1. Fontes e entradas]
+        Z[ZMM119<br/>posição de estoque]
+        M[MB59<br/>movimentos e Base GR]
+        A[All Brazil<br/>atributos de material]
+        P[Mapping e posição anterior<br/>regras e histórico]
+    end
 
-No primeiro acesso, um administrador baixa `INSTALAR_ESTOQUE_CONTABIL.zip` na página **Configurações** e envia o pacote ao novo usuário por um canal corporativo. O usuário extrai todo o ZIP e executa `INSTALAR_ESTOQUE_CONTABIL.bat`. A página Configurações somente existe depois que o sistema está instalado; portanto, ela é o ponto de distribuição e atualização, não o ponto de entrada de uma máquina vazia.
+    subgraph NUCLEO[2. Núcleo local]
+        V[Contratos e validações<br/>layout, competência e origem]
+        C[Consolidação e enriquecimento<br/>PASSO A PASSO + regras]
+        D[(DuckDB e Parquet<br/>base compilada e histórico)]
+        V --> C --> D
+    end
 
-O pacote de aplicação e dados é versionado. O inicializador `.bat` evita depender de um executável próprio sem assinatura e:
+    subgraph PRODUTOS[3. Produtos da operação]
+        I[Interface FastAPI<br/>visão, base, SAP e controles]
+        R[Excel, HTML e PDF<br/>relatórios rastreáveis]
+        H[Health Center<br/>diagnóstico e evidências]
+        O[Optimus via n8n<br/>perguntas e ações confirmáveis]
+    end
 
-1. localiza o Python 3.12/3.13 ou instala o Python 3.13 pelo `winget`;
-2. cria o ambiente virtual em `%LOCALAPPDATA%\OpsContabil\runtime\.venv`;
-3. instala as dependências e valida as importações essenciais;
-4. publica de forma transacional a mesma versão de código embutida no ZIP;
-5. instala, dentro de `%LOCALAPPDATA%\OpsContabil`, uma fotografia consistente das competências já compiladas, incluindo relatórios, Mapping e permissões, para que o primeiro acesso não dependa das planilhas-fonte nem do Drive;
-6. em atualizações, preserva os vínculos locais de identidade e as preferências da interface, sem substituir dados operacionais que sejam mais novos que a fotografia embarcada;
-7. cria o atalho **Estoque Contábil** na Área de Trabalho.
+    Z --> V
+    M --> V
+    A --> C
+    P --> C
+    D --> I
+    D --> R
+    D --> H
+    I --> O
+    O -->|contexto validado| N8N[n8n + Gemini]
+    N8N --> O
+```
 
-O código operacional fica em `%LOCALAPPDATA%\OpsContabil\runtime\app` e os dados compilados em `%LOCALAPPDATA%\OpsContabil\processed`, ambos dentro da árvore local da instalação e fora do Google Drive. Logs de instalação e inicialização ficam em `%LOCALAPPDATA%\OpsContabil\logs`. Depois da primeira instalação, o usuário abre o sistema pelo atalho da Área de Trabalho. Para atualizar, executa uma versão mais nova do mesmo pacote: o código é substituído, a fotografia mais recente é aplicada e dados operacionais locais mais novos não são apagados.
+## 🤖 Optimus: agente de IA via n8n
 
-Nenhum usuário instalado precisa acessar a pasta deste projeto no Drive. A cópia local inclui código, configuração, cadastro de acessos, Mapping e todas as competências compiladas existentes no momento da publicação. Perfis `user` sempre recebem **Visão e relatórios**; para utilizar o chat ou o diagnóstico, precisam também das páginas **Optimus** e/ou **Health Center**. Perfis `admin` acessam todas as páginas, inclusive SAP, importações, exclusão de competências, HTML autônomo e Configurações. O HTML compartilhável é um arquivo independente: não usa n8n, Drive ou Apps Script. Para compartilhar, envie o próprio `.html`; endereços `file:///C:/...` existem apenas na máquina que abriu o arquivo.
+O **Optimus** é o agente contábil do sistema e um dos principais produtos desta arquitetura. Ele não recebe a base bruta inteira nem acessa credenciais SAP. A API local prepara o contexto e o workflow n8n conduz a conversa com o Google Gemini.
 
-Para uso administrativo diretamente neste projeto, `ABRIR_ESTOQUE_CONTABIL.bat` utiliza o código-fonte publicado em `src/` e apenas reutiliza o Python do runtime. Isso evita divergência entre arquivo-fonte e cópia local durante a manutenção.
+### Como a conversa funciona
 
-Alternativa manual:
+1. O usuário abre a página Optimus e informa a competência, por exemplo `2026-08`.
+2. A API local monta um contexto com KPIs, `run_id`, status, insights, regras, Mapping, All Brazil, competências disponíveis e trechos do manual.
+3. O backend chama o Chat Trigger do n8n com a sessão, a pergunta, o usuário e a competência.
+4. O n8n valida o período, consulta `/api/agent/context` com token e entrega o payload ao agente Gemini.
+5. O agente responde somente com os dados recebidos e pode pedir consultas locais pelo protocolo `[[OPS_ACTION]]`.
+6. O backend executa a consulta autorizada, devolve o resultado ao n8n e apresenta a resposta na interface.
+
+### O que o Optimus consulta
+
+- valor fiscal, quantidade, PMM, aging, lifecycle, origem, divisão, local e centro;
+- comparação entre competências carregadas e variações relevantes;
+- lacunas da Base de Estoque e centros sem regra no Mapping;
+- status de ZMM119, MB59, execuções e enriquecimento All Brazil;
+- documentação técnica, manual operacional e instruções de uso do sistema;
+- Health Center, conectividade VPN/n8n e situação de backup;
+- PDF da Visão e relatórios e payload factual para apresentação executiva.
+
+### Ações protegidas
+
+Extrações SAP, importações, reprocessamento, alterações de Mapping, sincronização, backup, acessos e preferências não são executados diretamente pela pergunta. O Optimus primeiro apresenta um resumo, guarda uma pendência e só executa depois de uma confirmação explícita. Usuários comuns não recebem ações administrativas.
+
+O agente também acompanha eventos proativos: falhas de extração, planilhas disponíveis para importação, lacunas de enriquecimento, centros sem regra, mudanças de qualidade, jobs travados e quedas ou retornos de VPN/n8n. O sistema detecta o fato; o Optimus escreve a orientação para o administrador.
+
+O fluxo completo, o contrato de contexto, as ferramentas, os limites e a configuração do workflow estão em [docs/optimus.md](docs/optimus.md).
+
+## 🧩 Funcionalidades
+
+- Processamento local de grandes bases contábeis sem Streamlit ou BigQuery.
+- Extração assistida de ZMM119 e MB59 com SAP GUI já autenticado.
+- Validação de layout, contratos de coluna, empresa, competência e data-base.
+- Enriquecimento por All Brazil, PASSO A PASSO, Mapping e posição anterior.
+- Reprocessamento dos joins sem reler a ZMM119 quando uma regra é corrigida.
+- Visão analítica com aging, lifecycle, origem, centros, locais, PMM e composição de custos.
+- Base detalhada com filtros, pendências de joins e exportação XLSX.
+- Controles, auditoria, histórico de execuções e Health Center.
+- Optimus com n8n/Gemini, memória curta de conversa e ferramentas locais.
+- Relatórios HTML autônomos, PDF e payload para apresentações executivas.
+- Ponte de dados para sincronizar competências entre instalações autorizadas.
+- Backup programado, restauração controlada e instalador versionado.
+
+## 🛠️ Stack
+
+**Python** · **FastAPI** · **DuckDB** · **Parquet** · **pandas** · **openpyxl** · **SAP GUI Scripting** · **HTML/CSS/JavaScript** · **n8n** · **Google Gemini**
+
+## 📁 Estrutura
+
+```text
+estoque-contabil/
+├── src/                 # API, pipeline, regras, telas e ferramentas locais
+├── config/              # caminhos, contratos, parâmetros SAP e regras
+├── n8n/                 # workflows importáveis e instruções do Optimus
+├── docs/                # documentação complementar, incluindo o Optimus
+├── installer/           # pacote, atualização e distribuição
+├── tests/               # testes automatizados
+├── tools/               # utilitários de documentação, build e validação
+├── sql/                 # consultas e estruturas de apoio
+├── apps_script/         # ponte de dados e integrações Google, quando habilitadas
+├── README.md            # visão geral, instalação e operação
+├── ARQUITETURA_FINAL.md # decisões técnicas e limites de homologação
+└── MAPEAMENTO_DADOS.md  # campos, fórmulas e regras mapeadas
+```
+
+## 🚀 Início rápido
+
+### Instalação distribuída
+
+1. Um administrador gera o pacote `INSTALAR_ESTOQUE_CONTABIL.zip` na página **Configurações**.
+2. O pacote é enviado por canal corporativo e extraído integralmente na máquina de destino.
+3. O usuário executa `INSTALAR_ESTOQUE_CONTABIL.bat`.
+4. O instalador encontra ou instala Python 3.13, cria o ambiente virtual, instala dependências e publica o runtime local.
+5. O sistema cria o atalho **Estoque Contábil** na Área de Trabalho.
+6. O usuário abre a aplicação em `http://127.0.0.1:8765` e valida o Health Center.
+
+O runtime fica em `%LOCALAPPDATA%\OpsContabil\runtime\app`, os dados compilados em `%LOCALAPPDATA%\OpsContabil\processed` e os logs em `%LOCALAPPDATA%\OpsContabil\logs`. Atualizações preservam identidade, preferências e dados operacionais locais mais novos.
+
+### Execução manual para desenvolvimento
 
 ```powershell
 $venv = "$env:LOCALAPPDATA\OpsContabil\runtime\.venv"
@@ -52,22 +157,30 @@ py -3.12 -m venv $venv
 & "$venv\Scripts\python.exe" -m uvicorn ops_contabil.dashboard_runtime:app --host 127.0.0.1 --port 8765
 ```
 
-A interface abre em `http://127.0.0.1:8765`.
+Para habilitar o Optimus, configure `N8N_CHAT_URL` na instalação e os parâmetros `OPS_API_BASE_URL` e `OPS_API_TOKEN` no ambiente do n8n. O procedimento detalhado está em [n8n/PUBLICAR_AGENTE_GEMINI.md](n8n/PUBLICAR_AGENTE_GEMINI.md).
 
-## Estrutura
+## 🗃️ Dados e persistência
 
-- `config/`: fontes, caminhos, parâmetros SAP e regras.
-- `src/ops_contabil/`: aplicação Python, API, pipeline e robôs.
-- `n8n/workflows/`: fluxos importáveis do orquestrador e do agente.
-- `ARQUITETURA_FINAL.md`: arquitetura e limites de homologação.
-- `MAPEAMENTO_DADOS.md`: colunas, fórmulas e regras encontradas.
-- `data/inbox/`: arquivos recebidos, separados por fonte e execução.
-- `data/processed/`: Parquet e banco DuckDB.
-- `data/output/`: Excel e relatórios publicados.
-- `logs/`: logs técnicos e trilha de execução.
+O sistema processa localmente as fontes recebidas, grava a base compilada em DuckDB/Parquet e mantém relatórios e evidências associados à execução. O Excel é uma entrada legada, uma carga de contingência ou um formato de entrega; ele não é o motor das regras.
 
-## Segurança
+As competências, Mapping, permissões e relatórios podem ser distribuídos por uma ponte de dados controlada. O HTML compartilhável é autônomo e não depende do n8n, Google Drive ou Apps Script depois de gerado.
 
-Não coloque credenciais no YAML, no `.env` ou nos VBS. O SAP GUI precisa estar aberto e autenticado. Credenciais do n8n devem ficar no cofre do próprio n8n. O agente recebe, por padrão, somente agregados e evidências limitadas retornadas pela API de leitura.
+## 🔐 Segurança e reutilização
 
-Leia [Arquitetura](ARQUITETURA_FINAL.md), [Mapeamento das bases](MAPEAMENTO_DADOS.md) e a [documentação do Optimus e da integração n8n](docs/optimus.md).
+- Credenciais do SAP permanecem na sessão autenticada do SAP GUI.
+- Tokens e URLs do n8n ficam em variáveis de ambiente ou no cofre da instância n8n.
+- Bases reais, PDFs, planilhas operacionais, logs e backups não devem ser versionados.
+- O agente recebe agregados e evidências limitadas, não a base inteira.
+- Ações que alteram dados ou iniciam processamento exigem confirmação e respeitam o perfil do usuário.
+- Para adaptar o projeto, altere contratos, caminhos, Mapping, regras e integrações na configuração da nova implantação sem reescrever o núcleo de processamento.
+
+## 📚 Documentação
+
+- [Optimus e integração n8n](docs/optimus.md)
+- [Arquitetura final](ARQUITETURA_FINAL.md)
+- [Mapeamento das bases](MAPEAMENTO_DADOS.md)
+- [Manual operacional usado pelo Optimus](src/ops_contabil/knowledge/manual_sistema.md)
+- [Workflow Gemini do n8n](n8n/workflows/ops_contabil_agent_gemini.json)
+- [Publicação do agente Gemini](n8n/PUBLICAR_AGENTE_GEMINI.md)
+
+Desenvolvido por [Rodrigo Lisboa](https://github.com/rodrigolisboa25-create).
