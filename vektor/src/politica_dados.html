@@ -1,0 +1,630 @@
+<script>
+// 🔗 Opcional: link da política em PDF (se quiser referenciar no rodapé)
+const POLITICA_CARTOES_CLARA_LINK =
+  "https://example.com/configure-recurso";
+
+// 1) Tabela única de categorias (macro categorias da política, itens 6 e 9)
+const POLITICA_CATEGORIAS = [
+  {
+    id: "ALIMENTACAO",
+    nomePolitica: "Alimentação",
+    status: "liberada",
+    gatilhos: [
+      "alimentacao", "alimentação",
+      "restaurante", "lanchonete",
+      "refeicao", "refeição",
+      "almoco", "almoço",
+      "jantar", "lanche",
+      "coffee break", "coffee-break"
+    ],
+    referenciaPolitica: "Item 6",
+    observacoes:
+      "Uso para despesas operacionais ligadas à loja (ex.: coffee break autorizado, treinamento etc.), nunca refeição pessoal do colaborador."
+  },
+  {
+    id: "BARES_BEBIDAS_NAO_ALCOOLICAS",
+    nomePolitica: "Bares ou bebidas (não alcoólicas)",
+    status: "liberada",
+    gatilhos: [
+      "bares", "bar",
+      "suco", "refrigerante",
+      "bebida nao alcoolica", "bebida não alcoolica", "bebida não alcoólica",
+      "agua", "água", "agua mineral", "água mineral"
+    ],
+    referenciaPolitica: "Item 6",
+    observacoes:
+      "Permitido para ações oficiais / treinamentos, sempre vinculado à operação. Bebida alcoólica continua proibida."
+  },
+  {
+    id: "COMUNICACAO",
+    nomePolitica: "Comunicação",
+    status: "liberada",
+    gatilhos: [
+      "comunicacao", "comunicação",
+      "telefonia", "telefone",
+      "internet loja", "internet da loja",
+      "plano de dados", "pacote de dados"
+    ],
+    referenciaPolitica: "Item 6",
+    observacoes:
+      "Uso para comunicação vinculada à operação da loja, conforme política."
+  },
+  {
+    id: "COMERCIO_DIGITAL",
+    nomePolitica: "Comércio digital",
+    status: "liberada",
+    gatilhos: [
+      "comercio digital", "comércio digital",
+      "compra online", "site de vendas", "marketplace"
+    ],
+    referenciaPolitica: "Item 6",
+    observacoes:
+      "Compras digitais ligadas à operação, dentro das demais regras de etiqueta e comprovante."
+  },
+  {
+    id: "CONSTRUCAO_SERVICOS",
+    nomePolitica: "Construção e serviços",
+    status: "liberada",
+    gatilhos: [
+      "construcao", "construção",
+      "obra pequena", "pequena obra",
+      "manutencao civil", "manutenção civil",
+      "reparo civil", "pequeno reparo"
+    ],
+    referenciaPolitica: "Item 6",
+    observacoes:
+      "Pequenos reparos e serviços de baixa complexidade para manter a operação da loja."
+  },
+  {
+    id: "LOJAS_VAREJO",
+    nomePolitica: "Lojas de varejo",
+    status: "liberada",
+    gatilhos: [
+      "lojas de varejo", "loja de varejo",
+      "mercado", "supermercado", "atacado", "atacarejo"
+    ],
+    referenciaPolitica: "Item 6",
+    observacoes:
+      "Compras operacionais pontuais em outras lojas, respeitando etiquetas e limites."
+  },
+  {
+    id: "LOJAS_ESPECIALIZADAS",
+    nomePolitica: "Lojas especializadas",
+    status: "liberada",
+    gatilhos: [
+      "lojas especializadas", "loja especializada",
+      "casa de ferragem", "casa de parafusos",
+      "casa de tinta", "lojinha especializada"
+    ],
+    referenciaPolitica: "Item 6",
+    observacoes:
+      "Uso para materiais específicos que não são encontrados em varejo comum, sempre vinculados à operação."
+  },
+  {
+    id: "MATERIAIS_ESCRITORIO",
+    nomePolitica: "Materiais de escritório",
+    status: "liberada",
+    gatilhos: [
+      "material de escritorio", "material de escritório",
+      "papelaria", "caneta", "caderno", "agenda",
+      "grampeador", "clipes", "pasta", "sulfite", "folha a4"
+    ],
+    referenciaPolitica: "Item 6",
+    observacoes:
+      "Material administrativo da loja (papelaria, organização etc.), não itens pessoais."
+  },
+  {
+    id: "PRODUTOS_TEXTEIS",
+    nomePolitica: "Produtos têxteis",
+    status: "liberada",
+    gatilhos: [
+      "produto textil", "produto têxtil",
+      "tecido", "toalha", "panos",
+      "tecidos para loja", "tecidos para vitrine"
+    ],
+    referenciaPolitica: "Item 6",
+    observacoes:
+      "Produtos têxteis ligados à operação ou exposição, não estoque para revenda."
+  },
+  {
+    id: "PUBLICIDADE_DIGITAL",
+    nomePolitica: "Publicidade digital",
+    status: "liberada",
+    gatilhos: [
+      "publicidade digital", "impulsionamento",
+      "anuncio online", "anúncio online",
+      "facebook ads", "instagram ads", "google ads"
+    ],
+    referenciaPolitica: "Item 6",
+    observacoes:
+      "Anúncios / impulsionamento para campanhas oficiais da empresa."
+  },
+  {
+    id: "SERVICOS_ESPECIAIS",
+    nomePolitica: "Serviços especiais",
+    status: "liberada",
+    gatilhos: [
+      "servicos especiais", "serviços especiais",
+      "servico especial", "serviço especial"
+    ],
+    referenciaPolitica: "Item 6",
+    observacoes:
+      "Serviços pontuais que apoiam a operação, desde que alinhados com o financeiro."
+  },
+  {
+    id: "SERVICOS_PROFISSIONAIS",
+    nomePolitica: "Serviços profissionais",
+    status: "liberada",
+    gatilhos: [
+      "servicos profissionais", "serviços profissionais",
+      "consultoria loja", "consultor",
+      "servico tecnico", "serviço técnico"
+    ],
+    referenciaPolitica: "Item 6",
+    observacoes:
+      "Serviços técnicos diretamente ligados à operação da loja, conforme diretrizes internas."
+  },
+  {
+    id: "SOFTWARE_HARDWARE",
+    nomePolitica: "Software e hardware",
+    status: "liberada",
+    gatilhos: [
+      "software", "licenca", "licença",
+      "assinatura de sistema", "sistema online",
+      "hardware", "periferico", "periférico",
+      "mouse", "teclado", "roteador", "switch", "nobreak"
+    ],
+    referenciaPolitica: "Item 6",
+    observacoes:
+      "Softwares e pequenos hardwares / periféricos para apoiar operação (não grandes investimentos de TI)."
+  },
+
+  // ====== BLOCO CONDICIONADO / PROIBIDO (Item 9) ======
+
+  {
+    id: "ALUGUEL_VEICULOS",
+    nomePolitica: "Aluguel de veículos",
+    status: "somente_com_autorizacao",
+    gatilhos: [
+      "aluguel de veiculo", "aluguel de veículo",
+      "locacao de carro", "locação de carro",
+      "locadora de veiculo", "locadora de veículo"
+    ],
+    referenciaPolitica: "Item 9",
+    observacoes:
+      "Categoria exige análise e liberação prévia do financeiro. Não usar direto sem autorização formal."
+  },
+  {
+    id: "ASSINATURAS_DIGITAIS",
+    nomePolitica: "Assinaturas digitais",
+    status: "somente_com_autorizacao",
+    gatilhos: [
+      "assinatura digital", "assinaturas digitais",
+      "plano mensal online", "saas",
+      "assinatura de sistema", "plataforma online"
+    ],
+    referenciaPolitica: "Item 9",
+    observacoes:
+      "Contratos recorrentes precisam de validação do financeiro antes de qualquer uso."
+  },
+  {
+    id: "CAUSAS_SOCIAIS",
+    nomePolitica: "Causas sociais",
+    status: "somente_com_autorizacao",
+    gatilhos: [
+      "causas sociais",
+      "doacao", "doação",
+      "doar", "contribuicao", "contribuição",
+      "campanha social",
+      "instituicao beneficente", "instituição beneficente",
+      "ong"
+    ],
+    referenciaPolitica: "Item 9",
+    observacoes:
+      "Doações, campanhas sociais e contribuições a entidades beneficentes não devem ser feitas diretamente pelo cartão de loja. Quando cabível, seguem fluxo próprio aprovado pelo financeiro."
+  },
+  {
+    id: "COMBUSTIVEIS",
+    nomePolitica: "Combustíveis",
+    status: "proibida",
+    gatilhos: [
+      "combustivel", "combustível",
+      "gasolina", "etanol", "diesel",
+      "posto de gasolina", "posto de combustivel", "posto de combustível",
+      "abastecer", "abastecimento"
+    ],
+    referenciaPolitica: "Item 9",
+    observacoes:
+      "Uso em combustíveis é proibido no cartão Clara. Deslocamento de funcionários segue canal próprio."
+  },
+  {
+    id: "EDUCACAO",
+    nomePolitica: "Educação",
+    status: "somente_com_autorizacao",
+    gatilhos: [
+      "educacao", "educação",
+      "curso", "treinamento externo",
+      "mensalidade", "faculdade", "escola"
+    ],
+    referenciaPolitica: "Item 9",
+    observacoes:
+      "Despesas educacionais exigem autorização prévia e seguem política corporativa própria."
+  },
+  {
+  id: "ELETRONICOS",
+  nomePolitica: "Eletrônicos, eletroeletrônicos e itens patrimoniais",
+  status: "proibida",
+  gatilhos: [
+    "eletronico", "eletrônico", "eletronicos", "eletrônicos",
+    "eletroeletronico", "eletroeletrônico", "eletroeletronicos", "eletroeletrônicos",
+    "tv", "televisao", "televisão", "televisor", "smart tv",
+    "aparelho de tv", "aparelho de televisão",
+    "monitor", "tela", "display",
+    "geladeira", "freezer", "frigobar",
+    "microondas", "micro-ondas",
+    "eletrodomestico", "eletrodoméstico", "eletrodomesticos", "eletrodomésticos",
+    "materiais de copa", "materiais de cozinha",
+    "bebedouro", "cafeteira", "forno", "fogao", "fogão"
+  ],
+  referenciaPolitica: "Item 9",
+  observacoes:
+    "TV, televisão, eletroeletrônicos, eletrodomésticos e itens patrimoniais/de infraestrutura não devem ser comprados diretamente com o cartão Clara da loja. Esse tipo de necessidade deve seguir fluxo formal de compras/financeiro, e não uso direto do cartão."
+},
+  {
+    id: "ENTRETENIMENTO",
+    nomePolitica: "Entretenimento",
+    status: "somente_com_autorizacao",
+    gatilhos: [
+      "entretenimento",
+      "ingresso", "show", "cinema",
+      "evento de lazer"
+    ],
+    referenciaPolitica: "Item 9",
+    observacoes:
+      "Somente se fizer parte de ação oficial aprovada. Caso contrário, não utilizar."
+  },
+  {
+    id: "IMOVEIS",
+    nomePolitica: "Imóveis",
+    status: "proibida",
+    gatilhos: [
+      "imovel", "imóvel", "imoveis", "imóveis",
+      "aluguel de imovel", "aluguel de imóvel"
+    ],
+    referenciaPolitica: "Item 9",
+    observacoes:
+      "Cartão não é meio de pagamento para despesas de imóveis."
+  },
+  {
+    id: "JOIAS",
+    nomePolitica: "Joias",
+    status: "proibida",
+    gatilhos: [
+      "joia", "jóia", "joias", "jóias",
+      "alianca de ouro", "anel de ouro"
+    ],
+    referenciaPolitica: "Item 9",
+    observacoes:
+      "Categoria vedada: não há cenário em que faça sentido operacional de loja."
+  },
+  {
+    id: "CASSINOS",
+    nomePolitica: "Cassinos / apostas",
+    status: "proibida",
+    gatilhos: [
+      "cassino", "aposta", "apostas",
+      "bet", "jogo online", "site de aposta"
+    ],
+    referenciaPolitica: "Item 9",
+    observacoes:
+      "Uso em jogos, apostas ou cassinos é proibido."
+  },
+  {
+    id: "MULTAS",
+    nomePolitica: "Multas",
+    status: "proibida",
+    gatilhos: [
+      "multa", "multas",
+      "multa de transito", "multa de trânsito"
+    ],
+    referenciaPolitica: "Item 9",
+    observacoes:
+      "Multas não são despesas operacionais autorizadas para o cartão."
+  },
+  {
+    id: "PAGAMENTOS_GOVERNO",
+    nomePolitica: "Pagamentos ao governo",
+    status: "somente_com_autorizacao",
+    gatilhos: [
+      "pagamento governo",
+      "taxa", "taxas",
+      "imposto", "impostos",
+      "prefeitura", "boleto prefeitura",
+      "orgao publico", "órgão público"
+    ],
+    referenciaPolitica: "Item 9",
+    observacoes:
+      "Pagamentos a órgãos públicos seguem fluxo próprio. Precisam ser validados previamente."
+  },
+  {
+    id: "SAUDE",
+    nomePolitica: "Saúde",
+    status: "somente_com_autorizacao",
+    gatilhos: [
+      "saude", "saúde",
+      "consulta", "exame",
+      "clinica", "clínica",
+      "hospital", "laboratorio", "laboratório"
+    ],
+    referenciaPolitica: "Item 9",
+    observacoes:
+      "Despesas de saúde normalmente não são operacionais da loja. Só com orientação formal."
+  },
+  {
+    id: "TRANSPORTE_FUNCIONARIO",
+    nomePolitica: "Transporte (deslocamento de funcionários)",
+    status: "proibida",
+    gatilhos: [
+      "uber", "99", "cabify",
+      "transporte funcionario", "transporte funcionário",
+      "aplicativo de transporte", "aplicativo de mobilidade",
+      "taxi", "táxi", "corrida de app"
+    ],
+    referenciaPolitica: "Item 9",
+    observacoes:
+      "Deslocamento de funcionário é tratado em canal próprio. Cartão Clara não deve ser usado para isso."
+  },
+  {
+    id: "VIAGENS_HOSPEDAGENS",
+    nomePolitica: "Viagens e hospedagens",
+    status: "somente_com_autorizacao",
+    gatilhos: [
+      "viagem", "viagens",
+      "hospedagem", "hotel", "pousada",
+      "passagem aerea", "passagem aérea",
+      "passagem de onibus", "passagem de ônibus"
+    ],
+    referenciaPolitica: "Item 9",
+    observacoes:
+      "Viagens/hospedagens seguem política específica de viagens, não uso direto do cartão de loja."
+  }
+];
+
+// Normaliza texto (sem acento, minúsculo)
+function politicaNormalize(str) {
+  if (!str) return "";
+  return str
+    .toString()
+    .trim()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase();
+}
+
+// Encontra categoria com base no texto da pergunta
+function detectarCategoriaPoliticaEmTexto(norm) {
+  if (!norm) return null;
+  const texto = politicaNormalize(norm);
+
+  for (const cat of POLITICA_CATEGORIAS) {
+    if (!cat.gatilhos || !cat.gatilhos.length) continue;
+    for (const gatilho of cat.gatilhos) {
+      if (texto.includes(gatilho)) {
+        return cat;
+      }
+    }
+  }
+  return null;
+}
+
+// Avalia categoria → monta mensagem estruturada
+function avaliarCategoriaPolitica(categoriaId) {
+  const cat = POLITICA_CATEGORIAS.find(c => c.id === categoriaId);
+  if (!cat) {
+    return {
+      status: "desconhecida",
+      mensagemUsuario:
+        `<div class="text-sm text-slate-700">
+           <p>Não encontrei essa categoria na política dos cartões Clara.</p>
+           <p class="mt-2">Se for um caso específico, recomendo falar com o financeiro ou abrir chamado.</p>
+         </div>`
+    };
+  }
+
+  let corpo = "";
+  if (cat.status === "liberada") {
+    corpo =
+      `Essa categoria está ✅ <b>liberada</b> para uso operacional, desde que:
+       <ul class="list-disc ml-4 mt-1">
+         <li>seja despesa necessária à operação da loja;</li>
+         <li>seja lançada com etiqueta correta e comprovante fiscal;</li>
+         <li>respeite limites e demais regras da política.</li>
+       </ul>`;
+  } else if (cat.status === "somente_com_autorizacao") {
+    corpo =
+      `Essa categoria ⚠️ <b>não deve ser usada diretamente</b> no cartão da loja. Em regra, exige <b>análise e autorização prévia</b> do financeiro antes de qualquer uso.`;
+  } else if (cat.status === "proibida") {
+    corpo =
+      `Essa categoria é ❌ <b>proibida</b> para uso no cartão Clara das lojas. Não se enquadra como despesa operacional permitida.`;
+  } else {
+    corpo =
+      `Essa categoria não está claramente classificada na política. Recomendo validar com o financeiro.`;
+  }
+
+  const ref = cat.referenciaPolitica || "itens 6 e 9 da política";
+
+  const mensagemUsuario =
+    `<div class="text-sm text-slate-700">
+       <p><b>Categoria analisada:</b> ${cat.nomePolitica}</p>
+       <p class="mt-2">${corpo}</p>
+       <p class="mt-2">${cat.observacoes || ""}</p>
+       <p class="mt-2 text-xs text-slate-500">
+         Resumo baseado na Política de Uso dos Cartões Clara (${ref}). Em caso de dúvida ou exceção, abra chamado no ServiceNow.
+       </p>
+     </div>`;
+
+  return {
+    status: cat.status,
+    mensagemUsuario
+  };
+}
+
+// ================= RESUMO GERAL DE CATEGORIAS =================
+
+function gerarResumoCategoriasPolitica() {
+  const liberadas = POLITICA_CATEGORIAS
+    .filter(c => c.status === "liberada")
+    .map(c => c.nomePolitica);
+
+  const condicionais = POLITICA_CATEGORIAS
+    .filter(c => c.status === "somente_com_autorizacao")
+    .map(c => c.nomePolitica);
+
+  const proibidas = POLITICA_CATEGORIAS
+    .filter(c => c.status === "proibida")
+    .map(c => c.nomePolitica);
+
+  const lista = arr =>
+    arr.length
+      ? "<ul class='list-disc ml-4 mt-1'>" +
+        arr.map(nome => "<li>" + nome + "</li>").join("") +
+        "</ul>"
+      : "<p class='text-xs text-slate-500'>Nenhuma categoria cadastrada nesse grupo.</p>";
+
+  const mensagemUsuario =
+    `<div class="text-sm text-slate-700">
+       <p>Visão geral das categorias na política dos cartões Clara
+
+       <p class="mt-2"><b>Categorias liberadas para uso operacional (com bom senso e etiqueta correta):</b></p>
+       ${lista(liberadas)}
+
+       <p class="mt-3"><b>Categorias que exigem análise e autorização prévia do financeiro:</b></p>
+       ${lista(condicionais)}
+
+       <p class="mt-3"><b>Categorias proibidas para uso no cartão Clara das lojas:</b></p>
+       ${lista(proibidas)}
+
+       <p class="mt-3 text-xs text-slate-500">
+         Resumo baseado na Política de Uso dos Cartões Clara (itens 6 e 9). Em caso de dúvida ou exceção, abra chamado no ServiceNow ou consulte o financeiro.
+       </p>
+     </div>`;
+
+  return {
+    status: "resumo",
+    mensagemUsuario
+  };
+}
+
+// Detecta se a pergunta é “quais categorias posso usar?” etc.
+function tentarResponderResumoCategoriasPolitica(norm) {
+  const texto = politicaNormalize(norm || "");
+
+  const gatilhosResumo = [
+    "quais categorias",
+    "categorias liberadas",
+    "categorias permitidas",
+    "categorias autorizadas",
+    "categorias bloqueadas",
+    "categorias proibidas",
+    "categorias da politica",
+    "categorias da política",
+    "categorias do cartao",
+    "categorias do cartão"
+  ];
+
+  const bate = gatilhosResumo.some(g => texto.includes(g));
+  if (!bate) return null;
+
+  return gerarResumoCategoriasPolitica();
+}
+
+// Função de alto nível usada pelo gerarRespostaPolitica
+function tentarResponderPorCategoriaPolitica(msgOriginal, norm) {
+  const cat = detectarCategoriaPoliticaEmTexto(norm || msgOriginal || "");
+  if (!cat) return null;
+
+  const resultado = avaliarCategoriaPolitica(cat.id);
+  return resultado;
+}
+
+function vektorPolicyDadosResponderCompraDireta_(msgOriginal) {
+  const texto = politicaNormalize(msgOriginal || "");
+  if (!texto) return null;
+
+  const termosCompra = [
+    "posso comprar",
+    "pode comprar",
+    "consigo comprar",
+    "devo comprar",
+    "comprar com o cartao",
+    "comprar com o cartão",
+    "usar o cartao",
+    "usar o cartão",
+    "passar no cartao",
+    "passar no cartão"
+  ];
+
+  const parecePerguntaCompra = termosCompra.some(function(t) {
+    return texto.includes(t);
+  });
+
+  if (!parecePerguntaCompra) return null;
+
+  const cat = detectarCategoriaPoliticaEmTexto(texto);
+  if (!cat) return null;
+
+  let decisaoHtml = "";
+
+  if (cat.status === "proibida") {
+    decisaoHtml =
+      `<p><b>Não. Não compre esse item com o Cartão Clara da loja.</b></p>
+       <p class="mt-2">
+         O item citado se enquadra na categoria <b>${cat.nomePolitica}</b>, que não deve ser tratada como despesa operacional comum do cartão.
+       </p>
+       <p class="mt-2">
+         Para esse tipo de compra, o fluxo correto é acionar o processo formal de compras/financeiro, e não realizar a transação diretamente no cartão da loja.
+       </p>`;
+  } else if (cat.status === "somente_com_autorizacao") {
+    decisaoHtml =
+      `<p><b>Não realize a compra diretamente no Cartão Clara sem autorização formal prévia.</b></p>
+       <p class="mt-2">
+         O item citado se enquadra na categoria <b>${cat.nomePolitica}</b>, que exige validação do financeiro antes de qualquer uso.
+       </p>
+       <p class="mt-2">
+         Antes de seguir, abra chamado ou valide formalmente com o financeiro.
+       </p>`;
+  } else if (cat.status === "liberada") {
+    decisaoHtml =
+      `<p><b>Em princípio, essa categoria pode ser usada no Cartão Clara, desde que seja uma despesa operacional da loja.</b></p>
+       <p class="mt-2">
+         A categoria identificada foi <b>${cat.nomePolitica}</b>.
+       </p>
+       <ul class="list-disc ml-4 mt-2">
+         <li>Use a etiqueta correta;</li>
+         <li>Anexe comprovante fiscal válido;</li>
+         <li>Respeite limites e regras da política;</li>
+         <li>Não utilize para benefício pessoal.</li>
+       </ul>`;
+  } else {
+    return null;
+  }
+
+  const html =
+    `<div class="text-sm text-slate-700">
+      ${decisaoHtml}
+
+      <p class="mt-3"><b>Base da análise:</b></p>
+      <ul class="list-disc ml-4 mt-1">
+        <li>Categoria identificada: <b>${cat.nomePolitica}</b>;</li>
+        <li>Referência: <b>${cat.referenciaPolitica || "Política de Uso dos Cartões Clara"}</b>;</li>
+        <li>Observação da política: ${cat.observacoes || "Sem observação complementar."}</li>
+      </ul>
+
+      <p class="mt-3 text-xs text-slate-500">
+        AI generated | gemini-2.5-flash
+      </p>
+    </div>`;
+
+  return "HTML:" + html;
+}
+</script>

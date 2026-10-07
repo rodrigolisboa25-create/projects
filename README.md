@@ -4,6 +4,21 @@ Repositório de projetos desenvolvidos para automatizar processos, organizar dad
 
 ## Projetos disponíveis
 
+### Vektor
+
+Ecossistema modular em Google Apps Script que reúne governança financeira, análises, automações, páginas operacionais e assistentes de IA. O portal integra frentes de cartão corporativo, Numerário, Contas a Receber/Prosegur, POS, agentes de IA e painéis de Power BI.
+
+A versão pública contém os 19 arquivos do projeto Apps Script e documenta os serviços avançados e bibliotecas associados. IDs, e-mails, URLs internas, política corporativa e dados operacionais foram removidos ou substituídos por configurações de ambiente.
+
+**Tecnologias:** Google Apps Script, JavaScript, HTML/CSS, Google Sheets, Google Drive, Gmail API, BigQuery, Vertex AI e Power BI.
+
+- [Código, módulos e instalação](vektor/README.md)
+- [Arquitetura do ecossistema](vektor/docs/arquitetura.md)
+- [Configuração para uma nova implantação](vektor/docs/configuracao.md)
+- [Segurança da versão pública](vektor/docs/seguranca.md)
+
+---
+
 ### SmartSlip
 
 Aplicação web em Google Apps Script para receber comprovantes financeiros, organizar arquivos no Google Drive, extrair informações com Gemini e acompanhar filas, histórico, indicadores, alertas e custos de inteligência artificial.

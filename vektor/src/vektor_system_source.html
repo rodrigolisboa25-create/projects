@@ -1,0 +1,298 @@
+<textarea id="vektor-system-text" style="display:none;">
+@PAGE | Analista - Vektor
+Finalidade: assistente conversacional do Vektor para dúvidas sobre a Política Clara e sobre o uso do sistema.
+Como acessar: clique no botão lateral "Analista - Vektor".
+Como usar:
+1. Abra o Analista - Vektor.
+2. Digite a pergunta no campo de texto.
+3. Pergunte sobre páginas, filtros, cards, tabelas, alertas, consultas, custo, fluxo operacional e também sobre política.
+Tipos de pergunta esperados:
+- Onde vejo as pendências das lojas?
+- Como consultar faturas?
+- Onde configuro alertas?
+- Como usar a Análise de Gastos?
+- Como funciona o Fluxo Numerário SAP?
+- O que pode ou não pode comprar com o cartão?
+Observações:
+- Quando a dúvida for sobre uso do sistema, a resposta deve citar a página exata.
+- Quando a dúvida for sobre política, a resposta deve citar a seção da política.
+- Quando a dúvida misturar os dois assuntos, a resposta deve separar regra de política e uso do sistema.
+Funções relacionadas:
+- window.vektorOpenPolicyAssistant
+- window.vektorApplyChatMode_
+- window.vektorSendPolicyQuestion_
+
+@PAGE | Estado Operacional
+Finalidade: exibir a situação operacional do ambiente Vektor.
+Como acessar: clique no botão lateral "Estado Operacional".
+Fluxo operacional:
+1. Abra o botão "Estado Operacional".
+2. Aguarde a abertura do modal.
+3. Consulte os indicadores ou mensagens exibidas no status.
+Observações:
+- É uma visão de acompanhamento do ambiente.
+- Não é a página principal para análise transacional.
+Funções relacionadas:
+- openStatusVektorModal
+
+@PAGE | Pendências do Ciclo
+Finalidade: consolidar pendências de transações do ciclo por loja, time, data, estabelecimento, valor, categoria e motivo pendente.
+Como acessar: clique no botão lateral "Pendências do Ciclo".
+Fluxo operacional detalhado:
+1. Abra a página "Pendências do Ciclo".
+2. Aguarde o carregamento do dataset do ciclo da empresa atual.
+3. Se já existir cache válido da empresa atual, a página reaproveita o conteúdo carregado anteriormente.
+4. Use os filtros de data inicial e data final para recortar o período.
+5. Use os filtros de time e loja para refinar o resultado.
+6. Aguarde a atualização da tabela e dos cards.
+7. Consulte a tabela principal para ver as pendências detalhadas.
+8. Se necessário, exporte o recorte da tela para CSV.
+O que o usuário encontra:
+- Cards-resumo do ciclo.
+- Tabela principal com linhas detalhadas.
+- Filtros de período, time e loja.
+Comportamento importante:
+- A tela filtra as transações de forma mais rígida quando há data preenchida.
+- O filtro de loja depende do filtro de time.
+- A tela é fonte de recorte detalhado do ciclo e serve de base para algumas análises auxiliares.
+Orientação esperada do assistente:
+- Para perguntas como "onde vejo as pendências das lojas?", responder que é na página "Pendências do Ciclo", depois orientar a abrir a página, aguardar carregar, filtrar período/time/loja e consultar tabela e cards.
+Funções relacionadas:
+- window.vektorOpenResumoCiclo
+- window.vektorLoadResumoCiclo
+- vektorResumoCicloApply_
+
+@PAGE | Análise de Gastos
+Finalidade: analisar gastos por período, ano, mês, time, loja, categoria e conta contábil.
+Como acessar: clique no botão lateral "Análise de Gastos".
+Fluxo operacional detalhado:
+1. Abra a página "Análise de Gastos".
+2. Aguarde o carregamento da meta da página e dos filtros principais.
+3. Defina início e fim do período.
+4. Se quiser, use os filtros complementares de ano e mês para sincronizar o período.
+5. Use os filtros de time, loja, categoria e conta contábil para refinar o recorte.
+6. Execute a busca.
+7. Aguarde a atualização dos cards e da tabela principal.
+8. Se precisar de aprofundamento, abra os recursos auxiliares da página, como mediana por categoria, macro visões, detalhe por estabelecimentos e line-item analysis.
+O que o usuário encontra:
+- Cards-resumo.
+- Tabela principal de gastos.
+- Filtros múltiplos.
+- Recursos auxiliares e modais de aprofundamento.
+Comportamento importante:
+- A página não deve buscar dados sem período completo.
+- Se início for maior que fim, a página retorna mensagem de período inválido.
+- A tela garante carga prévia da meta e dos filtros antes de buscar o dataset.
+- A tabela é ampla e pode exigir rolagem horizontal.
+- Há suporte a conta contábil e a filtros encadeados.
+- Existe análise complementar de line-item.
+Fluxos auxiliares da página:
+- Mediana por categoria.
+- Macro visões.
+- Detalhe por estabelecimentos.
+- Line-item analysis.
+Orientação esperada do assistente:
+- Para "como usar a Análise de Gastos?", orientar a abrir a página, preencher período, aplicar filtros e clicar em buscar antes de consultar os cards e a tabela.
+- Para "onde filtrar conta contábil?", orientar para o filtro específico da página "Análise de Gastos".
+Funções relacionadas:
+- window.vektorOpenAnaliseGastos
+- vektorAnaliseGastosEnsureMeta_
+- vektorAnaliseGastosBuscar_
+- vektorAnaliseGastosOpenLineItemModal_
+- vektorAnaliseGastosLoadLineItemAnalysis_
+
+@PAGE | Alertas Programados
+Finalidade: configurar, visualizar e acompanhar alertas automáticos do Vektor.
+Como acessar: clique no botão lateral "Alertas Programados".
+Fluxo operacional detalhado:
+1. Abra a página "Alertas Programados".
+2. Aguarde a carga dos filtros, listas e parâmetros da tela.
+3. Verifique quais tipos de alerta estão disponíveis para o seu perfil.
+4. Escolha o tipo de alerta.
+5. Preencha os filtros e parâmetros exigidos.
+6. Aplique ou salve a configuração.
+7. Aguarde a atualização da visão principal e das áreas auxiliares.
+O que o usuário encontra:
+- Área principal de configuração de alertas.
+- Tipos de alerta disponíveis conforme perfil.
+- Visões auxiliares vinculadas ao tipo selecionado.
+Comportamento importante:
+- Nem todo perfil vê todos os tipos de alerta.
+- A página possui comportamento específico para tema escuro em selects.
+- A visão de "Valores Contabilizados" faz parte desse módulo.
+- A tela participa do preload global do sistema.
+Casos típicos:
+- Configurar alerta de transações.
+- Consultar ou trabalhar com valores contabilizados.
+- Operar alertas conforme regras do perfil.
+Orientação esperada do assistente:
+- Para "onde configuro alertas?" ou "onde vejo valores contabilizados?", responder que isso fica na página "Alertas Programados", observando que a disponibilidade do tipo de alerta pode variar conforme o perfil do usuário.
+Funções relacionadas:
+- window.vektorOpenMyAlerts
+
+@PAGE | Radar de Irregularidade
+Finalidade: monitorar irregularidades e consultar detalhamento de itens irregulares.
+Como acessar: clique no botão lateral "Radar de Irregularidade".
+Fluxo operacional:
+1. Abra a página "Radar de Irregularidade".
+2. Aguarde a carga da visão.
+3. Use os filtros disponíveis para recortar a consulta.
+4. Analise os resultados na tabela principal.
+5. Se necessário, abra o detalhamento do item irregular.
+Comportamento importante:
+- A tela possui tratamento visual e funcional de tooltip.
+- Há suporte a detalhamento em modal.
+- O tema da página tem selects e inputs com comportamento ajustado para o modo escuro.
+Orientação esperada do assistente:
+- Para "onde vejo itens irregulares?", responder que isso fica na página "Radar de Irregularidade".
+Funções relacionadas:
+- radarView
+- radarItensView
+- itensIrregDetalhamentoModal
+
+@PAGE | Envio de Pendências
+Finalidade: analisar, revisar e executar o envio de pendências.
+Como acessar: clique no botão lateral "Envio de Pendências".
+Fluxo operacional detalhado:
+1. Abra a página "Envio de Pendências".
+2. Aguarde o carregamento da tela e de seus componentes.
+3. Defina ou revise filtros de data, quando o fluxo exigir recorte.
+4. Consulte a análise principal da página.
+5. Se necessário, abra o modal "Como funciona a análise" para entender o processo.
+6. Use o histórico de envios quando precisar verificar execuções anteriores.
+7. Quando aplicável, prossiga com o envio operacional das pendências.
+O que o usuário encontra:
+- Área principal do fluxo de envio.
+- Overlay de processamento.
+- Histórico de envios.
+- Popup de gráfico por loja.
+- Modal explicativo sobre a análise.
+Comportamento importante:
+- A página usa overlay com spinner durante processamento.
+- Há lógica detalhada para prévia de pendências recusadas.
+- O backend trabalha com janela de datas válida, consulta pendências recusadas e mistura de status do período.
+- O fluxo é operacional e pode envolver marcação de transações já enviadas.
+Orientação esperada do assistente:
+- Para "como funciona o envio de pendências?", responder que o usuário deve abrir a página "Envio de Pendências", aguardar a carga, revisar a análise, consultar o histórico se necessário e então executar o envio conforme o fluxo da tela.
+Funções relacionadas:
+- window.vektorOpenEnvioPendencias
+- previewEnvioPendenciasClaraRecusadasDetalhado
+
+@PAGE | Consultas Auxiliares
+Finalidade: concentrar consultas complementares do Vektor.
+Como acessar: clique no botão lateral "Consultas Auxiliares".
+Fluxo operacional detalhado:
+1. Abra a página "Consultas Auxiliares".
+2. Aguarde a carga inicial da visão.
+3. Use a subvisão ou consulta que deseja dentro da própria página.
+4. Ajuste os filtros específicos da consulta escolhida.
+5. Aguarde a renderização do conteúdo consultado.
+O que o usuário encontra:
+- Estrutura de consultas complementares.
+- Área específica para consultas como faturas.
+- Botões e filtros próprios da visão auxiliar.
+Comportamento importante:
+- O código mostra estrutura específica para faturas, com cabeçalho dedicado, filtros, cards e modal KPI.
+- A página participa do preload global.
+- O conteúdo pode mudar conforme a subconsulta escolhida.
+Subvisões esperadas:
+- Faturas.
+- Outras consultas auxiliares renderizadas dentro do mesmo módulo.
+Orientação esperada do assistente:
+- Para "onde vejo faturas?" ou "onde consulto informações auxiliares?", responder que isso fica na página "Consultas Auxiliares", orientando a abrir a página e então usar a subvisão correspondente.
+Funções relacionadas:
+- window.vektorOpenConsultasAuxiliares
+- vektorShowConsultasAuxView_
+
+@PAGE | Fluxo Numerário SAP
+Finalidade: acompanhar o fluxo de numerário/sangrias no SAP.
+Como acessar: clique no botão lateral "Fluxo Numerário SAP".
+Fluxo operacional detalhado:
+1. Abra a página "Fluxo Numerário SAP".
+2. Aguarde a carga da visão.
+3. Revise o período padrão carregado ou aplique novo recorte de datas.
+4. Execute a atualização da consulta quando necessário.
+5. Aguarde a atualização da tabela e indicadores.
+6. Consulte os resultados e, quando aplicável, acompanhe monitoramentos ligados a sangrias indevidas.
+O que o usuário encontra:
+- Tabela principal.
+- Indicadores da visão.
+- Fluxo de monitoramento ligado ao SAP.
+Comportamento importante:
+- A página participa do preload global.
+- O backend contém lógica de monitoramento de sangria indevida.
+- O módulo está ligado ao contexto de numerário/SAP, não ao mesmo fluxo de consultas auxiliares.
+Orientação esperada do assistente:
+- Para "onde acompanho sangrias?" ou "onde vejo o fluxo numerário?", responder que isso fica na página "Fluxo Numerário SAP".
+Funções relacionadas:
+- window.vektorOpenFluxoNumerarioSap
+- monitorarFluxoNumerarioSapSangriaIndevida
+
+@PAGE | Custo Vertex
+Finalidade: acompanhar custo e consumo relacionados ao uso do Vertex no Vektor.
+Como acessar: clique no botão lateral "Custo Vertex".
+Fluxo operacional:
+1. Abra a página "Custo Vertex".
+2. Aguarde a carga da visão.
+3. Consulte os indicadores e detalhamentos disponíveis.
+Comportamento importante:
+- O projeto possui rotina de conversão USD->BRL via PTAX com cache diário.
+- A visão está ligada ao acompanhamento do custo do uso de IA no sistema.
+Orientação esperada do assistente:
+- Para "onde vejo custo da IA?" ou "onde vejo custo do Vertex?", responder que isso fica na página "Custo Vertex".
+Funções relacionadas:
+- vektorFxFetchUsdBrlFromBCB_
+- vektorFxGetUsdBrl_
+
+@PAGE | Regras de navegação e resposta do assistente
+Objetivo:
+- O assistente deve orientar o usuário para a página correta quando a dúvida for sobre uso do sistema.
+Regras:
+- Sempre citar o nome exato da página.
+- Sempre explicar o fluxo básico: abrir a página, aguardar carregar, aplicar filtros, consultar cards/tabela/modal.
+- Se houver dependência de perfil, avisar que a disponibilidade pode variar conforme o acesso.
+- Não inventar filtros, botões ou recursos que não estejam sustentados na base do sistema.
+- Quando a pergunta for genérica demais, apontar a página mais provável e explicar o caminho principal.
+
+@PAGE | Exemplos operacionais esperados
+Pergunta: Onde consigo ver as pendências das lojas?
+Resposta esperada:
+- Na página "Pendências do Ciclo".
+- Abra a página pelo menu lateral.
+- Aguarde o carregamento do dataset.
+- Use período, time e loja para filtrar.
+- Consulte os cards e a tabela principal.
+
+Pergunta: Como uso a Análise de Gastos?
+Resposta esperada:
+- Abra a página "Análise de Gastos".
+- Informe início e fim do período.
+- Use filtros de ano, mês, time, loja, categoria e conta contábil se necessário.
+- Execute a busca.
+- Consulte cards e tabela.
+- Se precisar aprofundar, use mediana, macro visões, detalhe por estabelecimentos ou line-item analysis.
+
+Pergunta: Onde vejo faturas?
+Resposta esperada:
+- Na página "Consultas Auxiliares".
+- Abra a página.
+- Use a subvisão de faturas e os filtros próprios da consulta.
+
+Pergunta: Onde configuro alertas?
+Resposta esperada:
+- Na página "Alertas Programados".
+- Verifique quais tipos de alerta o seu perfil pode acessar.
+
+Pergunta: Como funciona o envio de pendências?
+Resposta esperada:
+- Na página "Envio de Pendências".
+- Abra a tela, aguarde carregar, revise a análise e siga o fluxo operacional da página.
+
+Pergunta: Onde acompanho sangrias ou numerário SAP?
+Resposta esperada:
+- Na página "Fluxo Numerário SAP".
+
+Pergunta: Onde vejo custo do Vertex?
+Resposta esperada:
+- Na página "Custo Vertex".
+</textarea>

@@ -1,0 +1,3261 @@
+<!-- AR | Automação Prosegur - frontend corrigido para Gmail API -->
+<style>
+  #vektorArHomeView .vektor-ar-shell,
+  #vektorArExecView .vektor-ar-shell,
+  #vektorArAnalyticsView .vektor-ar-shell{
+    min-height:100vh;
+    background:linear-gradient(180deg,#f8fafc 0%,#eef3f8 100%);
+  }
+
+  #vektorArHomeView .vektor-ar-hero,
+  #vektorArExecView .vektor-ar-hero,
+  #vektorArAnalyticsView .vektor-ar-hero{
+    border-radius:28px;
+    background:linear-gradient(135deg,#061a3a 0%,#0f2d5c 58%,#005E27 100%);
+    color:#fff;
+    box-shadow:0 24px 60px rgba(15,23,42,0.18);
+  }
+
+  #vektorArHomeView .vektor-ar-card,
+  #vektorArExecView .vektor-ar-card,
+  #vektorArAnalyticsView .vektor-ar-card{
+    background:#fff;
+    border:3px double #111827;
+    border-radius:22px;
+    box-shadow:0 18px 45px rgba(15,23,42,0.08);
+  }
+
+  #vektorArHomeView .vektor-ar-kpi,
+  #vektorArExecView .vektor-ar-kpi,
+  #vektorArAnalyticsView .vektor-ar-kpi{
+    background:#fff;
+    border:2px double #0f2d5c;
+    border-radius:18px;
+    padding:18px;
+    min-height:132px;
+    box-shadow:0 12px 28px rgba(15,23,42,0.06);
+  }
+
+  #vektorArHomeView .vektor-ar-kpi-label,
+  #vektorArExecView .vektor-ar-kpi-label,
+  #vektorArAnalyticsView .vektor-ar-kpi-label{
+    font-size:12px;
+    font-weight:1000;
+    text-transform:uppercase;
+    letter-spacing:.14em;
+    color:#64748b;
+  }
+
+  #vektorArHomeView .vektor-ar-kpi-value,
+  #vektorArExecView .vektor-ar-kpi-value,
+  #vektorArAnalyticsView .vektor-ar-kpi-value{
+    margin-top:10px;
+    font-size:30px;
+    font-weight:1000;
+    line-height:1.05;
+    color:#0f172a;
+  }
+
+  #vektorArHomeView .vektor-ar-kpi-sub,
+  #vektorArExecView .vektor-ar-kpi-sub,
+  #vektorArAnalyticsView .vektor-ar-kpi-sub{
+    margin-top:8px;
+    font-size:12px;
+    font-weight:800;
+    color:#475569;
+    line-height:1.35;
+  }
+
+  #vektorArHomeView .vektor-ar-progress-wrap,
+  #vektorArExecView .vektor-ar-progress-wrap,
+  #vektorArAnalyticsView .vektor-ar-progress-wrap{
+    border:1px solid #dbeafe;
+    border-radius:18px;
+    background:linear-gradient(180deg,#ffffff 0%,#f8fafc 100%);
+    padding:16px;
+  }
+
+  #vektorArHomeView .vektor-ar-progress-bar,
+  #vektorArExecView .vektor-ar-progress-bar,
+  #vektorArAnalyticsView .vektor-ar-progress-bar{
+    position:relative;
+    height:18px;
+    width:100%;
+    border-radius:999px;
+    overflow:hidden;
+    background:#e2e8f0;
+    border:1px solid rgba(15,23,42,0.08);
+    box-shadow:inset 0 2px 6px rgba(15,23,42,0.10);
+  }
+
+  #vektorArHomeView .vektor-ar-progress-fill,
+  #vektorArExecView .vektor-ar-progress-fill,
+  #vektorArAnalyticsView .vektor-ar-progress-fill{
+    position:absolute;
+    left:0;
+    top:0;
+    bottom:0;
+    width:0%;
+    border-radius:999px;
+    background:linear-gradient(90deg,#005E27 0%,#60d61a 45%,#B5FF20 100%);
+    box-shadow:0 0 18px rgba(181,255,32,0.25);
+    transition:width .45s cubic-bezier(.22,.61,.36,1);
+  }
+
+  #vektorArHomeView .vektor-ar-progress-meta,
+  #vektorArExecView .vektor-ar-progress-meta,
+  #vektorArAnalyticsView .vektor-ar-progress-meta{
+    display:flex;
+    align-items:center;
+    justify-content:space-between;
+    gap:14px;
+    margin-top:10px;
+    flex-wrap:wrap;
+  }
+
+  #vektorArHomeView .vektor-ar-status,
+  #vektorArExecView .vektor-ar-status,
+  #vektorArAnalyticsView .vektor-ar-status{
+    font-size:13px;
+    font-weight:900;
+    color:#334155;
+  }
+
+  #vektorArHomeView .vektor-ar-pct,
+  #vektorArExecView .vektor-ar-pct,
+  #vektorArAnalyticsView .vektor-ar-pct{
+    font-size:13px;
+    font-weight:1000;
+    color:#005E27;
+  }
+
+  #vektorArHomeView .vektor-ar-timeline,
+  #vektorArExecView .vektor-ar-timeline,
+  #vektorArAnalyticsView .vektor-ar-timeline{
+    background:#0b1220;
+    border-radius:18px;
+    padding:16px;
+    color:#e2e8f0;
+  }
+
+  #vektorArHomeView .vektor-ar-log,
+  #vektorArExecView .vektor-ar-log,
+  #vektorArAnalyticsView .vektor-ar-log{
+    background:#fff;
+    border:1px solid #e2e8f0;
+    border-radius:16px;
+    overflow:auto;
+    max-height:460px;
+  }
+
+  #vektorArHomeView .vektor-ar-table,
+  #vektorArExecView .vektor-ar-table,
+  #vektorArAnalyticsView .vektor-ar-table{
+    width:100%;
+    border-collapse:separate;
+    border-spacing:0;
+    min-width:980px;
+  }
+
+  #vektorArHomeView .vektor-ar-table thead th,
+  #vektorArExecView .vektor-ar-table thead th,
+  #vektorArAnalyticsView .vektor-ar-table thead th{
+    position:sticky;
+    top:0;
+    z-index:2;
+    background:#061a3a;
+    color:#fff;
+    font-size:12px;
+    font-weight:1000;
+    text-align:center;
+    padding:10px 10px;
+    border-right:1px solid rgba(255,255,255,0.08);
+    border-bottom:2px solid rgba(181,255,32,0.45);
+  }
+
+  #vektorArHomeView .vektor-ar-table tbody td,
+  #vektorArExecView .vektor-ar-table tbody td,
+  #vektorArAnalyticsView .vektor-ar-table tbody td{
+    font-size:12px;
+    padding:10px 10px;
+    border-right:1px solid #e2e8f0;
+    border-bottom:1px solid #e2e8f0;
+    vertical-align:top;
+    color:#0f172a;
+  }
+
+  #vektorArHomeView .vektor-ar-table tbody tr:nth-child(even) td,
+  #vektorArExecView .vektor-ar-table tbody tr:nth-child(even) td,
+  #vektorArAnalyticsView .vektor-ar-table tbody tr:nth-child(even) td{
+    background:#f8fafc;
+  }
+
+  #vektorArHomeView .vektor-ar-badge,
+  #vektorArExecView .vektor-ar-badge,
+  #vektorArAnalyticsView .vektor-ar-badge{
+    display:inline-flex;
+    align-items:center;
+    justify-content:center;
+    min-height:24px;
+    padding:0 10px;
+    border-radius:999px;
+    font-size:11px;
+    font-weight:1000;
+    white-space:nowrap;
+  }
+
+  #vektorArHomeView .vektor-ar-badge.ok,
+  #vektorArExecView .vektor-ar-badge.ok,
+  #vektorArAnalyticsView .vektor-ar-badge.ok{
+    background:rgba(34,197,94,0.15);
+    color:#166534;
+    border:1px solid rgba(34,197,94,0.28);
+  }
+
+  #vektorArHomeView .vektor-ar-badge.warn,
+  #vektorArExecView .vektor-ar-badge.warn,
+  #vektorArAnalyticsView .vektor-ar-badge.warn{
+    background:rgba(245,158,11,0.15);
+    color:#92400e;
+    border:1px solid rgba(245,158,11,0.28);
+  }
+
+  #vektorArHomeView .vektor-ar-badge.err,
+  #vektorArExecView .vektor-ar-badge.err,
+  #vektorArAnalyticsView .vektor-ar-badge.err{
+    background:rgba(239,68,68,0.15);
+    color:#991b1b;
+    border:1px solid rgba(239,68,68,0.28);
+  }
+
+  #vektorArHomeView .vektor-ar-loader,
+  #vektorArExecView .vektor-ar-loader,
+  #vektorArAnalyticsView .vektor-ar-loader{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    color:#334155;
+    font-size:13px;
+    font-weight:900;
+  }
+
+  #vektorArHomeView .vektor-ar-spinner,
+  #vektorArExecView .vektor-ar-spinner,
+  #vektorArAnalyticsView .vektor-ar-spinner{
+    width:16px;
+    height:16px;
+    border-radius:999px;
+    border:2px solid #e2e8f0;
+    border-top-color:#0f2d5c;
+    animation:vektorArSpin .7s linear infinite;
+  }
+
+  #vektorArHomeView .vektor-ar-combo-card,
+  #vektorArExecView .vektor-ar-combo-card,
+  #vektorArAnalyticsView .vektor-ar-combo-card{
+    border:1px solid #e2e8f0;
+    border-radius:22px;
+    background:#fff;
+    padding:16px;
+  }
+
+  #vektorArHomeView .vektor-ar-combo-head,
+  #vektorArExecView .vektor-ar-combo-head,
+  #vektorArAnalyticsView .vektor-ar-combo-head{
+    display:flex;
+    align-items:flex-start;
+    justify-content:space-between;
+    gap:16px;
+    flex-wrap:wrap;
+  }
+
+  #vektorArHomeView .vektor-ar-combo-legend,
+  #vektorArExecView .vektor-ar-combo-legend,
+  #vektorArAnalyticsView .vektor-ar-combo-legend{
+    display:flex;
+    align-items:center;
+    gap:14px;
+    flex-wrap:wrap;
+  }
+
+  #vektorArHomeView .vektor-ar-combo-legend-item,
+  #vektorArExecView .vektor-ar-combo-legend-item,
+  #vektorArAnalyticsView .vektor-ar-combo-legend-item{
+    display:inline-flex;
+    align-items:center;
+    gap:8px;
+    font-size:12px;
+    font-weight:900;
+    color:#334155;
+  }
+
+  #vektorArHomeView .vektor-ar-combo-swatch,
+  #vektorArExecView .vektor-ar-combo-swatch,
+  #vektorArAnalyticsView .vektor-ar-combo-swatch{
+    width:12px;
+    height:12px;
+    border-radius:4px;
+    flex:0 0 auto;
+  }
+
+  #vektorArHomeView .vektor-ar-combo-swatch.line,
+  #vektorArExecView .vektor-ar-combo-swatch.line,
+  #vektorArAnalyticsView .vektor-ar-combo-swatch.line{
+    width:18px;
+    height:0;
+    border-radius:999px;
+    border-top:3px solid #16a34a;
+  }
+
+  #vektorArHomeView .vektor-ar-combo-wrap,
+  #vektorArExecView .vektor-ar-combo-wrap,
+  #vektorArAnalyticsView .vektor-ar-combo-wrap{
+    margin-top:16px;
+    overflow-x:auto;
+    overflow-y:hidden;
+    padding-bottom:4px;
+  }
+
+  #vektorArHomeView .vektor-ar-combo-note,
+  #vektorArExecView .vektor-ar-combo-note,
+  #vektorArAnalyticsView .vektor-ar-combo-note{
+    margin-top:10px;
+    font-size:12px;
+    font-weight:800;
+    color:#64748b;
+  }
+
+    @keyframes vektorArSpin{
+    to { transform:rotate(360deg); }
+  }
+
+  .vektor-ar-screen.hidden{
+    display:none !important;
+  }
+
+  .vektor-ar-screen{
+    width:100%;
+  }
+
+  #vektorNumerarioView {
+  width: 100vw !important;
+  min-height: 100vh !important;
+  margin-left: calc(50% - 50vw) !important;
+  margin-right: calc(50% - 50vw) !important;
+  background: #f6f7f9 !important;
+}
+
+#vektorNumerarioFullShell {
+  position: relative;
+  width: 100vw;
+  min-height: 100vh;
+  background: #f6f7f9;
+  overflow: hidden;
+}
+
+#vektorNumerarioFrame {
+  width: 100vw;
+  height: 100vh;
+  min-height: 900px;
+  border: 0;
+  display: block;
+  background: #f6f7f9;
+
+  opacity: 0;
+  visibility: hidden;
+
+  transition:
+    opacity .32s ease;
+}
+
+
+#vektorNumerarioFullShell.is-ready
+#vektorNumerarioFrame {
+  opacity: 1;
+  visibility: visible;
+}
+
+/* =====================================================
+   PRELOAD NUMERÁRIO
+   Visual propositalmente diferente do POS
+   ===================================================== */
+
+#vektorNumerarioLoading {
+  position: absolute;
+  inset: 0;
+
+  z-index: 999998;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  overflow: hidden;
+
+  background:
+    radial-gradient(
+      circle at 18% 18%,
+      rgba(34,211,238,.22),
+      transparent 34%
+    ),
+    radial-gradient(
+      circle at 82% 78%,
+      rgba(139,92,246,.24),
+      transparent 38%
+    ),
+    linear-gradient(
+      145deg,
+      #041827 0%,
+      #0c4a6e 48%,
+      #312e81 100%
+    );
+
+  color: #ffffff;
+
+  transition:
+    opacity .32s ease,
+    visibility .32s ease;
+}
+
+
+#vektorNumerarioLoading::before {
+  content: "";
+
+  position: absolute;
+
+  width: 520px;
+  height: 520px;
+
+  border-radius: 50%;
+
+  background:
+    radial-gradient(
+      circle,
+      rgba(103,232,249,.12),
+      transparent 68%
+    );
+
+  animation:
+    vektorNumerarioGlow
+    2.2s ease-in-out infinite;
+}
+
+
+#vektorNumerarioLoading.is-hidden {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+
+.vektor-numerario-loading-box {
+  position: relative;
+  z-index: 2;
+
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+
+  gap: 18px;
+
+  text-align: center;
+}
+
+
+.vektor-numerario-wave {
+  height: 76px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  gap: 8px;
+}
+
+
+.vektor-numerario-wave span {
+  display: block;
+
+  width: 9px;
+  height: 20px;
+
+  border-radius: 999px;
+
+  background:
+    linear-gradient(
+      180deg,
+      #67e8f9,
+      #a78bfa
+    );
+
+  box-shadow:
+    0 0 18px
+    rgba(34,211,238,.45);
+
+  animation:
+    vektorNumerarioWave
+    1s ease-in-out infinite;
+}
+
+
+.vektor-numerario-wave span:nth-child(2) {
+  animation-delay: .10s;
+}
+
+
+.vektor-numerario-wave span:nth-child(3) {
+  animation-delay: .20s;
+}
+
+
+.vektor-numerario-wave span:nth-child(4) {
+  animation-delay: .30s;
+}
+
+
+.vektor-numerario-wave span:nth-child(5) {
+  animation-delay: .40s;
+}
+
+
+.vektor-numerario-wave span:nth-child(6) {
+  animation-delay: .50s;
+}
+
+
+.vektor-numerario-wave span:nth-child(7) {
+  animation-delay: .60s;
+}
+
+
+.vektor-numerario-loading-text {
+  font-size: 17px;
+  font-weight: 1000;
+
+  letter-spacing: .15em;
+  text-transform: uppercase;
+
+  color: #ffffff;
+}
+
+
+.vektor-numerario-loading-sub {
+  margin-top: -7px;
+
+  font-size: 12px;
+  font-weight: 800;
+
+  color: #bae6fd;
+}
+
+
+.vektor-numerario-loading-line {
+  position: relative;
+
+  width: 260px;
+  height: 4px;
+
+  overflow: hidden;
+
+  border-radius: 999px;
+
+  background:
+    rgba(255,255,255,.14);
+}
+
+
+.vektor-numerario-loading-line::after {
+  content: "";
+
+  position: absolute;
+  inset: 0;
+
+  width: 38%;
+
+  border-radius: inherit;
+
+  background:
+    linear-gradient(
+      90deg,
+      transparent,
+      #67e8f9,
+      #c4b5fd,
+      transparent
+    );
+
+  animation:
+    vektorNumerarioSlide
+    1.25s ease-in-out infinite;
+}
+
+
+@keyframes vektorNumerarioWave {
+  0%,
+  100% {
+    height: 18px;
+    opacity: .45;
+  }
+
+  50% {
+    height: 70px;
+    opacity: 1;
+  }
+}
+
+
+@keyframes vektorNumerarioSlide {
+  from {
+    transform:
+      translateX(-130%);
+  }
+
+  to {
+    transform:
+      translateX(360%);
+  }
+}
+
+
+@keyframes vektorNumerarioGlow {
+  0%,
+  100% {
+    transform:
+      scale(.86);
+
+    opacity: .45;
+  }
+
+  50% {
+    transform:
+      scale(1.08);
+
+    opacity: 1;
+  }
+}
+
+.vektor-numerario-back-btn {
+  position: fixed;
+  top: 22px;
+  right: 34px;
+  z-index: 999999;
+  height: 42px;
+  padding: 0 18px;
+  border-radius: 14px;
+  border: 1px solid rgba(255,255,255,0.18);
+  background: rgba(255,255,255,0.10);
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 1000;
+  cursor: pointer;
+  box-shadow: 0 10px 24px rgba(2,6,23,0.22);
+  backdrop-filter: blur(8px);
+}
+
+#vektorPosView {
+  width: 100vw !important;
+  min-height: 100vh !important;
+  margin-left: calc(50% - 50vw) !important;
+  margin-right: calc(50% - 50vw) !important;
+  background: #f6f7f9 !important;
+}
+#vektorPosFullShell {
+  position: relative;
+  width: 100vw;
+  min-height: 100vh;
+  background: #f6f7f9;
+  overflow: hidden;
+}
+#vektorPosFrame {
+  width: 100vw;
+  height: 100vh;
+  min-height: 900px;
+  border: 0;
+  display: block;
+  background: #f6f7f9;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity .28s ease;
+}
+
+#vektorPosFullShell.is-ready #vektorPosFrame {
+  opacity: 1;
+  visibility: visible;
+}
+.vektor-pos-back-btn {
+  position: fixed;
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  top: 22px;
+  right: 34px;
+  z-index: 999999;
+  height: 42px;
+  padding: 0 18px;
+  border-radius: 14px;
+  border: 1px solid rgba(255,255,255,0.18);
+  background: rgba(255,255,255,0.10);
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 1000;
+  cursor: pointer;
+  box-shadow: 0 10px 24px rgba(2,6,23,0.22);
+  backdrop-filter: blur(8px);
+}
+.vektor-pos-back-btn.is-visible {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+}
+.vektor-pos-back-btn:hover { background: rgba(255,255,255,0.18); }
+
+#vektorPosLoading {
+  position: absolute;
+  inset: 0;
+  z-index: 999998;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background:
+    radial-gradient(circle at 20% 20%, rgba(181,255,32,.12), transparent 30%),
+    linear-gradient(135deg,#061a3a 0%,#0f2d5c 58%,#005E27 100%);
+  color: #fff;
+  transition: opacity .28s ease, visibility .28s ease;
+}
+#vektorPosLoading.is-hidden {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+.vektor-pos-loading-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 18px;
+}
+.vektor-pos-loading-orbit {
+  position: relative;
+  width: 82px;
+  height: 82px;
+  border-radius: 50%;
+  border: 2px solid rgba(255,255,255,.16);
+}
+.vektor-pos-loading-orbit::before,
+.vektor-pos-loading-orbit::after {
+  content: "";
+  position: absolute;
+  inset: 9px;
+  border-radius: 50%;
+  border: 3px solid transparent;
+  border-top-color: #B5FF20;
+  border-right-color: #B5FF20;
+  animation: vektorPosSpin 1s linear infinite;
+}
+.vektor-pos-loading-orbit::after {
+  inset: 22px;
+  border-top-color: #fff;
+  border-right-color: transparent;
+  animation-duration: .74s;
+  animation-direction: reverse;
+}
+.vektor-pos-loading-core {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  left: 50%;
+  top: 50%;
+  margin: -5px 0 0 -5px;
+  border-radius: 50%;
+  background: #B5FF20;
+  box-shadow: 0 0 22px rgba(181,255,32,.95);
+  animation: vektorPosPulse 1.1s ease-in-out infinite;
+}
+.vektor-pos-loading-text {
+  font-size: 14px;
+  font-weight: 900;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+}
+.vektor-pos-loading-bar {
+  width: 235px;
+  height: 4px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(255,255,255,.14);
+}
+.vektor-pos-loading-bar::after {
+  content: "";
+  display: block;
+  width: 42%;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, transparent, #B5FF20, transparent);
+  animation: vektorPosSlide 1.2s ease-in-out infinite;
+}
+@keyframes vektorPosSpin { to { transform: rotate(360deg); } }
+@keyframes vektorPosPulse { 50% { transform: scale(1.55); opacity: .65; } }
+@keyframes vektorPosSlide {
+  from { transform: translateX(-120%); }
+  to { transform: translateX(340%); }
+}
+
+.vektor-numerario-back-btn:hover {
+  background: rgba(255,255,255,0.18);
+}
+</style>
+
+<div id="vektorArHomeView" class="vektor-ar-screen hidden" style="display:none;">
+  <div class="vektor-ar-shell px-8 py-8">
+    <div class="mx-auto max-w-[1680px]">
+
+      <div class="vektor-ar-hero px-8 py-7">
+        <div class="flex items-start justify-between gap-6 flex-wrap">
+          <div class="min-w-0 flex-1">
+            <div class="inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1 text-[11px] font-extrabold tracking-[0.18em] text-white/85 uppercase">
+              RPA / APA
+            </div>
+
+            <h1 class="mt-4 text-4xl font-black tracking-tight">
+              Automação | Central Operacional
+            </h1>
+
+            <p class="mt-3 text-sm font-semibold leading-6 text-slate-200">
+              Selecione a frente operacional desejada para acompanhar automações, visões analíticas e futuras expansões do módulo.
+            </p>
+          </div>
+
+          <div class="flex items-center gap-3">
+            <button
+              id="vektorArHomeBackBtn"
+              type="button"
+              class="inline-flex items-center gap-2 rounded-2xl border border-white/15 bg-white/10 px-5 py-3 text-sm font-black text-white backdrop-blur-md transition hover:bg-white/15">
+              <span>←</span>
+              <span>Voltar ao hub</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div class="mt-8 grid grid-cols-1 md:grid-cols-2 gap-6">
+        <button
+          id="vektorArCardProsegur"
+          type="button"
+          class="group relative overflow-hidden rounded-[28px] border-[3px] border-double border-black bg-white p-8 text-left shadow-[0_20px_45px_rgba(15,23,42,0.08)] transition duration-200 hover:-translate-y-1 hover:shadow-[0_28px_60px_rgba(15,23,42,0.14)]">
+          <div class="absolute inset-0 opacity-0 transition duration-200 group-hover:opacity-100"
+               style="background:linear-gradient(135deg, rgba(16,185,129,0.08), rgba(6,26,58,0.10));"></div>
+          <div class="relative">
+            <div class="w-16 h-16 rounded-full bg-[#005E27] text-white flex items-center justify-center text-2xl shadow-lg">📄</div>
+            <h3 class="mt-6 text-2xl font-black tracking-tight text-slate-900">Automatização Prosegur</h3>
+            <p class="mt-3 text-sm leading-6 font-semibold text-slate-500">
+              Execução da automação Prosegur, acompanhamento da rotina, auditoria e visão analítica por empresa e período.
+            </p>
+          </div>
+        </button>
+
+        <button
+        id="vektorArCardRpaClara"
+        type="button"
+        class="group relative overflow-hidden rounded-[28px] border-[3px] border-double border-black bg-white p-8 text-left shadow-[0_20px_45px_rgba(15,23,42,0.08)] transition duration-200 hover:-translate-y-1 hover:shadow-[0_28px_60px_rgba(15,23,42,0.14)]">
+        <div class="absolute inset-0 opacity-0 transition duration-200 group-hover:opacity-100"
+            style="background:linear-gradient(135deg, rgba(16,185,129,0.08), rgba(6,26,58,0.10));"></div>
+        <div class="relative">
+          <div class="w-16 h-16 rounded-full bg-[#B5FF20] text-[#061a3a] flex items-center justify-center text-2xl shadow-lg">🤖</div>
+          <h3 class="mt-6 text-2xl font-black tracking-tight text-slate-900">Robô Vektor</h3>
+          <p class="mt-3 text-sm leading-6 font-semibold text-slate-500">
+            Acionamento controlado do robô local da Clara, com fila operacional via aba RPA, status de execução e retorno do log processado pelo watcher Python.
+          </p>
+        </div>
+      </button>
+
+        <button
+          id="vektorArCardNumerario"
+          type="button"
+          class="group relative overflow-hidden rounded-[28px] border-[3px] border-double border-black bg-white p-8 text-left shadow-[0_20px_45px_rgba(15,23,42,0.08)] transition duration-200 hover:-translate-y-1 hover:shadow-[0_28px_60px_rgba(15,23,42,0.14)]">
+          <div class="absolute inset-0 opacity-0 transition duration-200 group-hover:opacity-100"
+               style="background:linear-gradient(135deg, rgba(15,45,92,0.08), rgba(0,94,39,0.08));"></div>
+          <div class="relative">
+            <div class="w-16 h-16 rounded-full bg-[#0f2d5c] text-white flex items-center justify-center text-2xl shadow-lg">💵</div>
+            <h3 class="mt-6 text-2xl font-black tracking-tight text-slate-900">Numerário</h3>
+            <p class="mt-3 text-sm leading-6 font-semibold text-slate-500">
+              Análise de pendências por lojas, com auxilio de IA para tratativas.
+            </p>
+          </div>
+        </button>
+
+        <button
+          id="vektorArCardPos"
+          type="button"
+          class="group relative overflow-hidden rounded-[28px] border-[3px] border-double border-black bg-white p-8 text-left shadow-[0_20px_45px_rgba(15,23,42,0.08)] transition duration-200 hover:-translate-y-1 hover:shadow-[0_28px_60px_rgba(15,23,42,0.14)]">
+          <div class="absolute inset-0 opacity-0 transition duration-200 group-hover:opacity-100"
+              style="background:linear-gradient(135deg, rgba(181,255,32,0.12), rgba(6,26,58,0.10));"></div>
+          <div class="relative">
+            <div class="w-16 h-16 rounded-full bg-[#005E27] text-[#B5FF20] flex items-center justify-center text-2xl shadow-lg">📨</div>
+            <h3 class="mt-6 text-2xl font-black tracking-tight text-slate-900">Envio POS</h3>
+            <p class="mt-3 text-sm leading-6 font-semibold text-slate-500">
+              Gestão de pendências POS, parametrização de e-mails por loja, disparos controlados e relatórios de acompanhamento.
+            </p>
+          </div>
+        </button>
+
+      </div>
+    </div>
+  </div>
+</div>
+
+<div
+  id="vektorNumerarioView"
+  class="vektor-ar-screen hidden"
+  style="display:none;">
+
+  <div id="vektorNumerarioFullShell">
+
+
+    <div
+      id="vektorNumerarioLoading"
+      aria-live="polite">
+
+      <div class="vektor-numerario-loading-box">
+
+        <div class="vektor-numerario-wave">
+          <span></span>
+          <span></span>
+          <span></span>
+          <span></span>
+          <span></span>
+          <span></span>
+          <span></span>
+        </div>
+
+
+        <div class="vektor-numerario-loading-text">
+          Preparando Ambiente
+        </div>
+
+
+        <div class="vektor-numerario-loading-sub">
+          Sincronizando operação financeira...
+        </div>
+
+
+        <div class="vektor-numerario-loading-line">
+        </div>
+
+      </div>
+
+    </div>
+
+
+    <button
+      id="vektorNumerarioBackBtn"
+      type="button"
+      class="vektor-numerario-back-btn">
+      ← Voltar
+    </button>
+
+
+    <iframe
+      id="vektorNumerarioFrame"
+      title="Vektor Numerário"
+      loading="eager">
+    </iframe>
+
+  </div>
+
+</div>
+
+<div id="vektorPosView" class="vektor-ar-screen hidden" style="display:none;">
+  <div id="vektorPosFullShell">
+    <div id="vektorPosLoading" aria-live="polite">
+      <div class="vektor-pos-loading-box">
+        <div class="vektor-pos-loading-orbit">
+          <span class="vektor-pos-loading-core"></span>
+        </div>
+        <div class="vektor-pos-loading-text">Loading system....wait</div>
+        <div class="vektor-pos-loading-bar"></div>
+      </div>
+    </div>
+
+    <button id="vektorPosBackBtn" type="button" class="vektor-pos-back-btn">← Voltar</button>
+    <iframe id="vektorPosFrame" title="Vektor Envio POS" loading="eager"></iframe>
+  </div>
+</div>
+
+<div id="vektorArRpaView" class="vektor-ar-screen hidden" style="display:none;">
+  <div class="vektor-ar-shell px-8 py-8" style="background:linear-gradient(180deg,#07111f 0%,#0b1220 100%);">
+    <div class="mx-auto max-w-[1680px]">
+
+      <div class="vektor-ar-hero px-8 py-7">
+        <div class="flex items-start justify-between gap-6 flex-wrap">
+          <div class="min-w-0 flex-1">
+            <div class="inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1 text-[11px] font-extrabold tracking-[0.18em] text-white/85 uppercase">
+              Robô Vektor
+            </div>
+
+            <h1 class="mt-4 text-4xl font-black tracking-tight text-white">
+              RPA | Clara Transações
+            </h1>
+
+            <p class="mt-3 text-sm font-semibold leading-6 text-slate-200">
+              Solicite a execução local do robô Python da Clara. O Vektor grava a fila na aba RPA e o watcher local executa o run_daily.bat.
+            </p>
+          </div>
+
+          <div class="flex items-center gap-3 flex-wrap">
+            <button
+              id="vektorRpaRefreshBtn"
+              type="button"
+              class="inline-flex items-center gap-2 rounded-2xl border border-white/15 bg-white/10 px-5 py-3 text-sm font-black text-white backdrop-blur-md transition hover:bg-white/15">
+              <span>↻</span>
+              <span>Atualizar status</span>
+            </button>
+
+            <button
+              id="vektorRpaBackBtn"
+              type="button"
+              class="inline-flex items-center gap-2 rounded-2xl border border-white/15 bg-white/10 px-5 py-3 text-sm font-black text-white backdrop-blur-md transition hover:bg-white/15">
+              <span>←</span>
+              <span>Voltar</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div class="mt-6 grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_420px] gap-6">
+
+        <div class="vektor-ar-card p-6" style="background:#101a2b; border-color:#B5FF20;">
+          <div class="flex items-start justify-between gap-4 flex-wrap">
+            <div>
+              <div class="text-xl font-black text-white">Acionamento do robô</div>
+              <div class="mt-2 text-sm font-semibold text-slate-300">
+                Ao clicar, será criada uma linha na aba RPA com TIPO_ROBO = CLARA e STATUS = PENDENTE.
+              </div>
+            </div>
+
+            <button
+              id="vektorRpaRunBtn"
+              type="button"
+              class="inline-flex items-center gap-2 rounded-xl bg-[#B5FF20] px-6 py-3 text-sm font-extrabold text-[#061a3a] shadow-lg hover:opacity-95">
+              <span>▶</span>
+              <span>Acionar Robô Clara</span>
+            </button>
+          </div>
+
+          <div class="mt-6 vektor-ar-progress-wrap" style="background:#0b1220; border-color:rgba(181,255,32,0.35);">
+            <div class="text-sm font-black text-white">Status da execução local</div>
+
+            <div class="mt-3 vektor-ar-progress-bar">
+              <div id="vektorRpaProgressFill" class="vektor-ar-progress-fill"></div>
+            </div>
+
+            <div class="vektor-ar-progress-meta">
+              <div id="vektorRpaStatusTxt" class="vektor-ar-status" style="color:#e2e8f0;">Aguardando solicitação.</div>
+              <div id="vektorRpaPctTxt" class="vektor-ar-pct">0%</div>
+            </div>
+          </div>
+
+          <div class="mt-5 grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div class="rounded-2xl border border-slate-700 bg-[#0b1220] p-4">
+              <div class="text-[11px] font-black uppercase tracking-[0.16em] text-slate-400">ID</div>
+              <div id="vektorRpaId" class="mt-2 text-sm font-bold text-white">—</div>
+            </div>
+
+            <div class="rounded-2xl border border-slate-700 bg-[#0b1220] p-4">
+              <div class="text-[11px] font-black uppercase tracking-[0.16em] text-slate-400">Solicitação</div>
+              <div id="vektorRpaSolicitacao" class="mt-2 text-sm font-bold text-white">—</div>
+            </div>
+
+            <div class="rounded-2xl border border-slate-700 bg-[#0b1220] p-4">
+              <div class="text-[11px] font-black uppercase tracking-[0.16em] text-slate-400">Início / Fim</div>
+              <div id="vektorRpaInicioFim" class="mt-2 text-sm font-bold text-white">—</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="vektor-ar-card p-6" style="background:#101a2b; border-color:#111827;">
+          <div class="text-lg font-black text-white">Mensagem do watcher</div>
+          <div id="vektorRpaMensagem" class="mt-3 rounded-2xl border border-slate-700 bg-[#0b1220] p-4 text-sm font-semibold text-slate-200 min-h-[120px]">
+            —
+          </div>
+
+          <div class="mt-5 text-lg font-black text-white">Log</div>
+          <div id="vektorRpaLogPath" class="mt-3 rounded-2xl border border-slate-700 bg-[#0b1220] p-4 text-xs font-semibold text-slate-300 break-all">
+            —
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="vektorArExecView" class="vektor-ar-screen hidden" style="display:none;">
+  <div class="vektor-ar-shell px-8 py-8">
+    <div class="mx-auto max-w-[1680px]">
+
+      <div class="vektor-ar-hero px-8 py-7">
+        <div class="flex items-start justify-between gap-6 flex-wrap">
+          <div class="min-w-0 flex-1">
+            <div class="inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1 text-[11px] font-extrabold tracking-[0.18em] text-white/85 uppercase">
+              Contas a Receber
+            </div>
+
+            <h1 class="mt-4 text-4xl font-black tracking-tight">
+              AR | Automação Prosegur
+            </h1>
+
+            <p class="mt-3 text-sm font-semibold leading-6 text-slate-200">
+              Módulo dedicado à operação de Contas a Receber, com execução controlada da automação Prosegur, acompanhamento visual da rotina e visão consolidada do processamento.
+            </p>
+          </div>
+
+          <div class="flex items-center gap-3 flex-wrap">
+            <button
+              id="vektorArRefreshBtn"
+              type="button"
+              class="inline-flex items-center gap-2 rounded-2xl border border-white/15 bg-white/10 px-5 py-3 text-sm font-black text-white backdrop-blur-md transition hover:bg-white/15">
+              <span>↻</span>
+              <span>Atualizar painel</span>
+            </button>
+
+            <button
+              id="vektorArBackBtn"
+              type="button"
+              class="inline-flex items-center gap-2 rounded-2xl border border-white/15 bg-white/10 px-5 py-3 text-sm font-black text-white backdrop-blur-md transition hover:bg-white/15">
+              <span>←</span>
+              <span>Voltar ao hub</span>
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <div class="mt-6 grid grid-cols-1 xl:grid-cols-[minmax(0,1.25fr)_420px] gap-6">
+
+        <div class="space-y-6">
+
+          <div class="vektor-ar-card p-5">
+            <div class="flex items-start justify-between gap-4 flex-wrap">
+              <div>
+                <div class="text-lg font-black text-slate-900">Centro operacional</div>
+                <div class="mt-1 text-sm font-semibold text-slate-500">
+                  Acione a rotina da Prosegur e acompanhe o avanço por macroetapas.
+                </div>
+              </div>
+
+              <div class="flex items-center gap-3 flex-wrap">
+                <button
+                  id="vektorArOpenAnalyticsBtn"
+                  type="button"
+                  class="inline-flex items-center gap-2 rounded-xl bg-[#0f2d5c] px-5 py-3 text-sm font-extrabold text-white shadow-lg hover:opacity-95">
+                  <span>📊</span>
+                  <span>Indicadores</span>
+                </button>
+
+                <button
+                  id="vektorArRunBtn"
+                  type="button"
+                  class="inline-flex items-center gap-2 rounded-xl bg-[#005E27] px-5 py-3 text-sm font-extrabold text-white shadow-lg hover:opacity-95">
+                  <span>▶</span>
+                  <span>Executar Prosegur</span>
+                </button>
+              </div>
+            </div>
+
+            <div class="mt-5 vektor-ar-progress-wrap">
+              <div class="text-sm font-black text-slate-900">Progresso da execução</div>
+
+              <div class="mt-3 vektor-ar-progress-bar">
+                <div id="vektorArProgressFill" class="vektor-ar-progress-fill"></div>
+              </div>
+
+              <div class="vektor-ar-progress-meta">
+                <div id="vektorArStatusTxt" class="vektor-ar-status">Aguardando execução.</div>
+                <div id="vektorArPctTxt" class="vektor-ar-pct">0%</div>
+              </div>
+
+              <div class="mt-3 grid grid-cols-1 md:grid-cols-3 gap-3">
+                <div class="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                  <div class="text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Início</div>
+                  <div id="vektorArStartedAt" class="mt-2 text-sm font-bold text-slate-900">—</div>
+                </div>
+
+                <div class="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                  <div class="text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Duração</div>
+                  <div id="vektorArElapsed" class="mt-2 text-sm font-bold text-slate-900">—</div>
+                </div>
+
+                <div class="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                  <div class="text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Estimativa de fim</div>
+                  <div id="vektorArEta" class="mt-2 text-sm font-bold text-slate-900">—</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
+            <div class="vektor-ar-kpi">
+              <div class="vektor-ar-kpi-label">E-mails elegíveis</div>
+              <div id="vektorArKpiElegiveis" class="vektor-ar-kpi-value">—</div>
+              <div class="vektor-ar-kpi-sub">Mensagens elegíveis ainda localizadas na inbox.</div>
+            </div>
+
+            <div class="vektor-ar-kpi">
+              <div class="vektor-ar-kpi-label">Pendentes no marcador</div>
+              <div id="vektorArKpiPendentes" class="vektor-ar-kpi-value">—</div>
+              <div class="vektor-ar-kpi-sub">Mensagens não lidas já posicionadas no marcador Prosegur.</div>
+            </div>
+
+            <div class="vektor-ar-kpi">
+              <div class="vektor-ar-kpi-label">Arquivos na pasta destino</div>
+              <div id="vektorArKpiDestino" class="vektor-ar-kpi-value">—</div>
+              <div class="vektor-ar-kpi-sub">Volume atual consolidado na pasta principal do Drive.</div>
+            </div>
+
+            <div class="vektor-ar-kpi">
+              <div class="vektor-ar-kpi-label">Processados no mês</div>
+              <div id="vektorArKpiMes" class="vektor-ar-kpi-value">—</div>
+              <div class="vektor-ar-kpi-sub">Arquivos na pasta mensal de processados.</div>
+            </div>
+          </div>
+
+          <div class="vektor-ar-card p-5">
+            <div class="flex items-center justify-between gap-4 flex-wrap">
+              <div>
+                <div class="text-lg font-black text-slate-900">Manifesto de auditoria recente</div>
+                <div class="mt-1 text-sm font-semibold text-slate-500">
+                  Últimos registros consolidados do JSON de auditoria gerado pela rotina.
+                </div>
+              </div>
+            </div>
+
+            <div id="vektorArAuditStatus" class="mt-4">
+              <div class="vektor-ar-loader">
+                <div class="vektor-ar-spinner"></div>
+                <span>Carregando manifesto...</span>
+              </div>
+            </div>
+
+            <div id="vektorArAuditWrap" class="mt-4 vektor-ar-log hidden" style="display:none;">
+              <table class="vektor-ar-table">
+                <thead>
+                  <tr>
+                    <th>Data</th>
+                    <th>Assunto</th>
+                    <th>Status</th>
+                    <th>Anexos</th>
+                  </tr>
+                </thead>
+                <tbody id="vektorArAuditTbody"></tbody>
+              </table>
+            </div>
+          </div>
+
+        </div>
+
+        <div class="space-y-6">
+
+          <div class="vektor-ar-timeline">
+            <div class="text-base font-black">Linha do tempo da execução</div>
+            <div class="mt-1 text-xs font-semibold text-slate-400">
+              Eventos mais recentes da rotina atual.
+            </div>
+
+            <div id="vektorArTimeline" class="mt-4 space-y-3">
+              <div class="text-sm font-semibold text-slate-300">Nenhuma execução iniciada.</div>
+            </div>
+          </div>
+
+          <div class="vektor-ar-card p-5">
+            <div class="text-lg font-black text-slate-900">Indicadores da execução atual</div>
+            <div class="mt-1 text-sm font-semibold text-slate-500">
+              Métricas retornadas ao final do processamento.
+            </div>
+
+            <div class="mt-4 space-y-3">
+              <div class="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <div class="text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">E-mails vistos</div>
+                <div id="vektorArMetricEmails" class="mt-2 text-lg font-black text-slate-900">—</div>
+              </div>
+
+              <div class="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <div class="text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Arquivos salvos</div>
+                <div id="vektorArMetricSaved" class="mt-2 text-lg font-black text-slate-900">—</div>
+              </div>
+
+              <div class="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <div class="text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Ignorados por duplicidade</div>
+                <div id="vektorArMetricIgnored" class="mt-2 text-lg font-black text-slate-900">—</div>
+              </div>
+
+              <div class="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <div class="text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Threads do lote</div>
+                <div id="vektorArMetricThreads" class="mt-2 text-lg font-black text-slate-900">—</div>
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="vektorArAnalyticsView" class="vektor-ar-screen hidden" style="display:none;">
+  <div class="vektor-ar-shell px-8 py-8">
+    <div class="mx-auto max-w-[1680px]">
+      <div class="vektor-ar-card p-5">
+        <div class="flex items-center justify-between gap-4 flex-wrap">
+          <div>
+            <div class="text-lg font-black text-slate-900">Indicadores Prosegur</div>
+            <div class="mt-1 text-sm font-semibold text-slate-500">
+              Visão analítica por empresa, período e tipo documental com base no JSON gerado pelo pipeline Python.
+            </div>
+          </div>
+
+          <div class="flex items-center gap-3 flex-wrap">
+            <select id="vektorArAnalyticsMode" class="rounded-xl border border-slate-300 px-3 py-2 text-sm font-semibold">
+              <option value="latest">Última execução</option>
+              <option value="full">Base completa</option>
+            </select>
+
+            <select id="vektorArAnalyticsEmpresa" class="rounded-xl border border-slate-300 px-3 py-2 text-sm font-semibold">
+              <option value="">Todas as empresas</option>
+            </select>
+
+            <select id="vektorArAnalyticsPeriodo" class="rounded-xl border border-slate-300 px-3 py-2 text-sm font-semibold">
+              <option value="">Todos os períodos</option>
+            </select>
+
+            <button id="vektorArAnalyticsRefreshBtn" type="button"
+              class="inline-flex items-center gap-2 rounded-xl bg-[#0f2d5c] px-4 py-2 text-sm font-extrabold text-white">
+              Atualizar
+            </button>
+
+            <button id="vektorArAnalyticsBackBtn" type="button"
+              class="inline-flex items-center gap-2 rounded-xl bg-slate-700 px-4 py-2 text-sm font-extrabold text-white">
+              Voltar
+            </button>
+          </div>
+        </div>
+
+        <div class="mt-6 grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div class="vektor-ar-kpi">
+            <div class="vektor-ar-kpi-label">Docs</div>
+            <div id="vektorArAnKpiDocs" class="vektor-ar-kpi-value">—</div>
+          </div>
+          <div class="vektor-ar-kpi">
+            <div class="vektor-ar-kpi-label">Valor total</div>
+            <div id="vektorArAnKpiValor" class="vektor-ar-kpi-value">—</div>
+          </div>
+          <div class="vektor-ar-kpi">
+            <div class="vektor-ar-kpi-label">Gerado em</div>
+            <div id="vektorArAnKpiGerado" class="vektor-ar-kpi-value" style="font-size:18px;">—</div>
+          </div>
+        </div>
+
+        <div class="mt-6 grid grid-cols-1 xl:grid-cols-2 gap-6">
+          <div class="rounded-2xl border border-slate-200 bg-white p-4">
+            <div class="text-base font-black text-slate-900">Valor por empresa</div>
+            <div id="vektorArChartEmpresa" class="mt-4 space-y-3"></div>
+          </div>
+
+          <div class="rounded-2xl border border-slate-200 bg-white p-4">
+            <div class="text-base font-black text-slate-900">Valor por período</div>
+            <div id="vektorArChartPeriodo" class="mt-4 space-y-3"></div>
+          </div>
+        </div>
+
+        <div class="mt-6 rounded-2xl border border-slate-200 bg-white p-4">
+          <div class="text-base font-black text-slate-900">Detalhe por período / empresa</div>
+          <div class="mt-4 overflow-auto">
+            <table class="vektor-ar-table">
+              <thead>
+                <tr>
+                  <th>Período</th>
+                  <th>Empresa</th>
+                  <th>Docs</th>
+                  <th>Valor</th>
+                </tr>
+              </thead>
+              <tbody id="vektorArAnalyticsTbody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="mt-6 vektor-ar-combo-card">
+          <div class="vektor-ar-combo-head">
+            <div>
+              <div class="text-base font-black text-slate-900">Valor por período / empresa + variação mensal (%)</div>
+              <div class="mt-1 text-sm font-semibold text-slate-500">
+                Barras verticais por empresa no eixo X por período, com linha de variação mensal do valor consolidado.
+              </div>
+            </div>
+            <div id="vektorArComboLegend" class="vektor-ar-combo-legend"></div>
+          </div>
+          <div id="vektorArComboChartWrap" class="vektor-ar-combo-wrap"></div>
+          <div id="vektorArComboChartNote" class="vektor-ar-combo-note"></div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  window.__vektorArPollTimer = null;
+  window.__vektorArJobId = "";
+  window.__vektorArJobSnapshot = null;
+
+  window.vektorArInnerViewIds_ = [
+  "vektorArHomeView",
+  "vektorArRpaView",
+  "vektorArExecView",
+  "vektorArAnalyticsView",
+  "vektorNumerarioView",
+  "vektorPosView"
+];
+
+window.vektorArHideInnerViews_ = function(){
+  window.vektorArInnerViewIds_.forEach(function(id){
+    var el = document.getElementById(id);
+    if (!el) return;
+
+    el.classList.add("hidden");
+    el.style.display = "none";
+  });
+};
+
+window.vektorArShowInnerView_ = function(viewId){
+  window.vektorArHideInnerViews_();
+
+  var el = document.getElementById(viewId);
+  if (!el) {
+    console.error("View interna AR não encontrada:", viewId);
+    return;
+  }
+
+  el.classList.remove("hidden");
+  el.style.display = "block";
+
+  try {
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  } catch (_) {
+    window.scrollTo(0, 0);
+  }
+};
+
+window.vektorHideArModule_ = function () {
+  window.vektorArHideInnerViews_();
+
+  try {
+    window.vektorArStopPolling_();
+  } catch (_) {}
+};
+
+window.vektorShowArModule_ = function () {
+  var hub = document.getElementById("vektorHubView");
+  var shell = document.getElementById("vektorShell");
+  var topbar = document.getElementById("vektor-topbar");
+  var powerBi = document.getElementById("vektorPowerBiView");
+  var aiView = document.getElementById("vektorAgentesIaView");
+
+  if (hub) { hub.classList.add("hidden"); hub.style.display = "none"; }
+  if (shell) { shell.classList.add("hidden"); shell.style.display = "none"; }
+  if (powerBi) { powerBi.classList.add("hidden"); powerBi.style.display = "none"; }
+  if (aiView) { aiView.classList.add("hidden"); aiView.style.display = "none"; }
+  if (topbar) { topbar.style.display = "none"; }
+
+  window.vektorArShowInnerView_("vektorArHomeView");
+};
+
+window.vektorShowArHome_ = function () {
+  window.vektorArShowInnerView_("vektorArHomeView");
+
+  try {
+    window.vektorArStopPolling_();
+  } catch (_) {}
+};
+
+window.vektorOpenArExec_ = function () {
+  window.vektorArShowInnerView_("vektorArExecView");
+
+  window.vektorLoadArModule_();
+};
+
+window.vektorOpenArAnalytics_ = function () {
+  window.vektorArShowInnerView_("vektorArAnalyticsView");
+
+  window.vektorArLoadAnalytics_();
+};
+
+  window.vektorArStopPolling_ = function () {
+    if (window.__vektorArPollTimer) {
+      clearTimeout(window.__vektorArPollTimer);
+      window.__vektorArPollTimer = null;
+    }
+  };
+
+  window.vektorArFmtInt_ = function (v) {
+    var n = Number(v || 0);
+    if (!isFinite(n)) n = 0;
+    return n.toLocaleString("pt-BR");
+  };
+
+ window.vektorArFmtDateTime_ = function (txt) {
+  if (!txt) return "—";
+
+  var d = new Date(txt);
+  if (!(d instanceof Date) || isNaN(d.getTime())) {
+    return String(txt || "—");
+  }
+
+  var dd = String(d.getDate()).padStart(2, "0");
+  var mm = String(d.getMonth() + 1).padStart(2, "0");
+  var yyyy = d.getFullYear();
+
+  var hh = String(d.getHours()).padStart(2, "0");
+  var mi = String(d.getMinutes()).padStart(2, "0");
+  var ss = String(d.getSeconds()).padStart(2, "0");
+
+  return dd + "/" + mm + "/" + yyyy + " " + hh + ":" + mi + ":" + ss;
+};
+
+  window.vektorArFmtElapsed_ = function (startIso, endIso) {
+    if (!startIso) return "—";
+    var ini = new Date(startIso);
+    if (!(ini instanceof Date) || isNaN(ini.getTime())) return "—";
+
+    var fim = endIso ? new Date(endIso) : new Date();
+    if (!(fim instanceof Date) || isNaN(fim.getTime())) return "—";
+
+    var sec = Math.max(0, Math.floor((fim.getTime() - ini.getTime()) / 1000));
+    var h = Math.floor(sec / 3600);
+    var m = Math.floor((sec % 3600) / 60);
+    var s = sec % 60;
+
+    if (h > 0) return h + "h " + String(m).padStart(2, "0") + "m " + String(s).padStart(2, "0") + "s";
+    return m + "m " + String(s).padStart(2, "0") + "s";
+  };
+
+  window.vektorArEstimateEta_ = function (startIso, pct, endIso) {
+  if (endIso) return window.vektorArFmtDateTime_(endIso);
+  if (!startIso) return "—";
+
+  var ini = new Date(startIso);
+  if (!(ini instanceof Date) || isNaN(ini.getTime())) return "—";
+
+  var p = Number(pct || 0);
+  if (!isFinite(p) || p <= 0) return "—";
+  if (p >= 100) return "Concluído";
+
+  var elapsedMs = Date.now() - ini.getTime();
+  if (elapsedMs <= 0) return "—";
+
+  var totalMs = elapsedMs / (p / 100);
+  var eta = new Date(ini.getTime() + totalMs);
+
+  if (!(eta instanceof Date) || isNaN(eta.getTime())) return "—";
+
+  return window.vektorArFmtDateTime_(eta.toISOString());
+};
+
+  window.vektorArSetRunBtnState_ = function (busy) {
+    var btn = document.getElementById("vektorArRunBtn");
+    if (!btn) return;
+    btn.disabled = !!busy;
+    btn.style.opacity = busy ? "0.75" : "1";
+    btn.style.cursor = busy ? "not-allowed" : "pointer";
+  };
+
+  window.vektorArRenderDashboard_ = function (res) {
+    var resumo = (res && res.resumo) ? res.resumo : {};
+
+    var k1 = document.getElementById("vektorArKpiElegiveis");
+    var k2 = document.getElementById("vektorArKpiPendentes");
+    var k3 = document.getElementById("vektorArKpiDestino");
+    var k4 = document.getElementById("vektorArKpiMes");
+
+    if (k1) k1.textContent = window.vektorArFmtInt_(resumo.emailsElegiveisInbox);
+    if (k2) k2.textContent = window.vektorArFmtInt_(resumo.emailsPendentesMarcador);
+    if (k3) k3.textContent = window.vektorArFmtInt_(resumo.arquivosNaPastaDestino);
+    if (k4) k4.textContent = window.vektorArFmtInt_(resumo.arquivosNaPastaProcessadosMes);
+  };
+
+  window.vektorArRenderMetricsFromJob_ = function (job) {
+    var m = (job && job.metrics) ? job.metrics : {};
+
+    var a = document.getElementById("vektorArMetricEmails");
+    var b = document.getElementById("vektorArMetricSaved");
+    var c = document.getElementById("vektorArMetricIgnored");
+    var d = document.getElementById("vektorArMetricThreads");
+
+    if (a) a.textContent = window.vektorArFmtInt_(m.totalEmailsVistos);
+    if (b) b.textContent = window.vektorArFmtInt_(m.totalArquivosSalvos);
+    if (c) c.textContent = window.vektorArFmtInt_(m.totalArquivosIgnorados);
+    if (d) d.textContent = window.vektorArFmtInt_(m.totalThreadsLote);
+  };
+
+  window.vektorArRenderJob_ = function (job) {
+    if (!job) return;
+
+    window.__vektorArJobSnapshot = job || null;
+
+    var pct = Number(job.progressPct || 0);
+    if (!isFinite(pct)) pct = 0;
+    if (pct < 0) pct = 0;
+    if (pct > 100) pct = 100;
+
+    var fill = document.getElementById("vektorArProgressFill");
+    var status = document.getElementById("vektorArStatusTxt");
+    var pctTxt = document.getElementById("vektorArPctTxt");
+    var started = document.getElementById("vektorArStartedAt");
+    var elapsed = document.getElementById("vektorArElapsed");
+    var eta = document.getElementById("vektorArEta");
+    var timeline = document.getElementById("vektorArTimeline");
+
+    if (fill) fill.style.width = pct + "%";
+    if (status) status.textContent = String(job.stageLabel || "Processando...");
+    if (pctTxt) pctTxt.textContent = pct + "%";
+    if (started) started.textContent = window.vektorArFmtDateTime_(job.startedAt || "");
+    if (elapsed) elapsed.textContent = window.vektorArFmtElapsed_(job.startedAtIso || "", job.finishedAtIso || "");
+    if (eta) eta.textContent = window.vektorArEstimateEta_(job.startedAtIso || "", pct, job.finishedAt || "");
+
+    if (timeline) {
+      var details = Array.isArray(job.details) ? job.details.slice() : [];
+      if (!details.length) {
+        timeline.innerHTML = "<div class='text-sm font-semibold text-slate-300'>Nenhum evento registrado.</div>";
+      } else {
+        timeline.innerHTML = details.map(function (d) {
+          var label = String((d && d.label) || "");
+          var at = window.vektorArFmtDateTime_((d && d.at) || "");
+          return `
+            <div class="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+              <div class="text-[11px] font-black uppercase tracking-[0.16em] text-slate-400">${at}</div>
+              <div class="mt-1 text-sm font-semibold text-slate-100">${label}</div>
+            </div>
+          `;
+        }).join("");
+      }
+    }
+
+    window.vektorArRenderMetricsFromJob_(job);
+
+    var isBusy = String(job.status || "") === "RUNNING" || String(job.status || "") === "QUEUED";
+    window.vektorArSetRunBtnState_(isBusy);
+  };
+
+  window.vektorArRenderAuditRows_ = function (res) {
+    var status = document.getElementById("vektorArAuditStatus");
+    var wrap = document.getElementById("vektorArAuditWrap");
+    var tbody = document.getElementById("vektorArAuditTbody");
+
+    if (!tbody || !wrap || !status) return;
+
+    if (!res || !res.ok || !Array.isArray(res.rows) || !res.rows.length) {
+      status.innerHTML = "<div class='text-sm font-bold text-slate-500'>Nenhum manifesto disponível no momento.</div>";
+      wrap.classList.add("hidden");
+      wrap.style.display = "none";
+      tbody.innerHTML = "";
+      return;
+    }
+
+    status.innerHTML = "<div class='text-sm font-bold text-slate-500'>Manifesto carregado.</div>";
+    wrap.classList.remove("hidden");
+    wrap.style.display = "block";
+
+    tbody.innerHTML = res.rows.map(function (r) {
+      var arquivos = Array.isArray(r.arquivos) ? r.arquivos : [];
+      var arqHtml = arquivos.length
+        ? arquivos.map(function (a) {
+            var st = String(a.status || "").toUpperCase();
+            var cls = (st === "DOWNLOADED") ? "ok" : (st === "DUPLICITY" ? "warn" : "err");
+            return `<div style="margin-bottom:6px;"><span class="vektor-ar-badge ${cls}">${st || "—"}</span> <span style="margin-left:6px;">${String(a.nome || "")}</span></div>`;
+          }).join("")
+        : "—";
+
+      var stMsg = String(r.status || "").toUpperCase();
+      var stCls = (stMsg === "OK") ? "ok" : (stMsg.indexOf("SKIPPED") >= 0 ? "warn" : "err");
+
+      return `
+        <tr>
+          <td>${String(r.data || "")}</td>
+          <td>${String(r.assunto || "")}</td>
+          <td><span class="vektor-ar-badge ${stCls}">${stMsg || "—"}</span></td>
+          <td>${arqHtml}</td>
+        </tr>
+      `;
+    }).join("");
+  };
+
+  window.vektorArLoadDashboard_ = function () {
+    google.script.run
+      .withSuccessHandler(function (res) {
+        if (res && res.ok) {
+          window.vektorArRenderDashboard_(res);
+        }
+      })
+      .withFailureHandler(function (err) {
+        console.error("Erro ao carregar dashboard AR:", err);
+      })
+      .vektorArGetProsegurDashboard();
+  };
+
+  window.vektorArLoadAudit_ = function () {
+    var status = document.getElementById("vektorArAuditStatus");
+    if (status) {
+      status.innerHTML = "<div class='vektor-ar-loader'><div class='vektor-ar-spinner'></div><span>Carregando manifesto...</span></div>";
+    }
+
+    google.script.run
+      .withSuccessHandler(function (res) {
+        window.vektorArRenderAuditRows_(res);
+      })
+      .withFailureHandler(function (err) {
+        if (status) {
+          status.innerHTML = "<div class='text-sm font-bold text-red-600'>Falha ao carregar manifesto de auditoria.</div>";
+        }
+        console.error("Erro manifesto AR:", err);
+      })
+      .vektorArGetProsegurManifestPreview(20);
+  };
+
+  window.vektorArPollStatus_ = function () {
+    if (!window.__vektorArJobId) return;
+
+    google.script.run
+      .withSuccessHandler(function (res) {
+        if (!res || !res.ok || !res.job) {
+          window.vektorArStopPolling_();
+          return;
+        }
+
+        var job = res.job;
+        window.vektorArRenderJob_(job);
+
+        var st = String(job.status || "");
+        if (st === "RUNNING" || st === "QUEUED") {
+          window.__vektorArPollTimer = setTimeout(window.vektorArPollStatus_, 1500);
+        } else {
+          window.vektorArStopPolling_();
+          window.vektorArLoadAudit_();
+        }
+      })
+      .withFailureHandler(function (err) {
+        console.error("Erro polling AR:", err);
+        window.__vektorArPollTimer = setTimeout(window.vektorArPollStatus_, 2000);
+      })
+      .vektorArGetProsegurJobStatus(window.__vektorArJobId);
+  };
+
+  window.vektorArStartRun_ = function () {
+  window.vektorArSetRunBtnState_(true);
+
+  google.script.run
+    .withSuccessHandler(function (res) {
+      if (!res || !res.ok) {
+        window.vektorArSetRunBtnState_(false);
+        return;
+      }
+
+      window.__vektorArJobId = String(res.jobId || "");
+      if (!window.__vektorArJobId) {
+        window.vektorArSetRunBtnState_(false);
+        return;
+      }
+
+      // se já houver execução em andamento, só começa a acompanhar
+      if (res.alreadyRunning) {
+        window.vektorArStopPolling_();
+        window.vektorArPollStatus_();
+        return;
+      }
+
+      // render inicial do job na tela
+      window.vektorArRenderJob_({
+        jobId: window.__vektorArJobId,
+        status: res.status || "QUEUED",
+        stageLabel: "Execução preparada.",
+        progressPct: 4,
+        startedAt: res.startedAt || "",
+        startedAtIso: new Date().toISOString(),
+        finishedAt: "",
+        finishedAtIso: "",
+        details: [
+          {
+            at: new Date().toISOString(),
+            label: "Execução preparada."
+          }
+        ],
+        metrics: {
+          totalEmailsVistos: 0,
+          totalArquivosSalvos: 0,
+          totalArquivosIgnorados: 0,
+          totalThreadsLote: 0
+        }
+      });
+
+      // começa a consultar status IMEDIATAMENTE
+      window.vektorArStopPolling_();
+      window.vektorArPollStatus_();
+
+      // dispara a execução em paralelo, sem esperar para iniciar o polling
+      google.script.run
+        .withSuccessHandler(function (job) {
+          if (job && job.jobId) {
+            window.vektorArRenderJob_(job);
+            window.vektorArLoadDashboard_();
+          }
+        })
+        .withFailureHandler(function (err) {
+          console.error("Erro ao executar job AR:", err);
+          window.vektorArSetRunBtnState_(false);
+        })
+        .vektorArRunProsegurJob(window.__vektorArJobId);
+    })
+    .withFailureHandler(function (err) {
+      console.error("Erro start AR:", err);
+      window.vektorArSetRunBtnState_(false);
+    })
+    .vektorArStartProsegurJob();
+};
+
+  window.vektorLoadArModule_ = function () {
+    window.vektorArLoadDashboard_();
+    window.vektorArLoadAudit_();
+  };
+
+  window.vektorArFmtBrl_ = function (v) {
+  var n = Number(v || 0);
+  if (!isFinite(n)) n = 0;
+  return n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+};
+
+window.vektorArFmtCompactK_ = function (v) {
+  var n = Number(v || 0);
+  if (!isFinite(n)) n = 0;
+
+  var abs = Math.abs(n);
+  if (abs >= 1000) {
+    var k = n / 1000;
+    var txt = k.toLocaleString("pt-BR", {
+      minimumFractionDigits: 1,
+      maximumFractionDigits: 1
+    });
+    return "R$ " + txt + "k";
+  }
+
+  return window.vektorArFmtBrl_(n).replace(",00", "");
+};
+
+window.vektorArParsePeriodoKey_ = function (periodo) {
+  var txt = String(periodo || '').trim();
+  var m = txt.match(/^(\d{2})[-\/](\d{4})$/);
+  if (!m) return txt;
+  return m[2] + '-' + m[1];
+};
+
+window.vektorArSortPeriodos_ = function (a, b) {
+  var ka = window.vektorArParsePeriodoKey_(a);
+  var kb = window.vektorArParsePeriodoKey_(b);
+  if (ka < kb) return -1;
+  if (ka > kb) return 1;
+  return String(a || '').localeCompare(String(b || ''));
+};
+
+window.vektorArFmtPct_ = function (v) {
+  var n = Number(v || 0);
+  if (!isFinite(n)) n = 0;
+  return n.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + '%';
+};
+
+window.vektorArGetEmpresaColor_ = function (empresa, idx) {
+  var nome = String(empresa || '').toUpperCase();
+  if (nome === 'SBF') return '#0f2d5c';
+  if (nome === 'FISIA') return '#84cc16';
+  var palette = ['#2563eb', '#9333ea', '#f59e0b', '#ef4444', '#14b8a6', '#8b5cf6'];
+  return palette[idx % palette.length];
+};
+
+window.vektorArRenderPeriodoEmpresaCombo_ = function (rows) {
+  var wrap = document.getElementById('vektorArComboChartWrap');
+  var legend = document.getElementById('vektorArComboLegend');
+  var note = document.getElementById('vektorArComboChartNote');
+  if (!wrap || !legend || !note) return;
+
+  if (!Array.isArray(rows) || !rows.length) {
+    legend.innerHTML = '';
+    wrap.innerHTML = "<div class='text-sm font-semibold text-slate-500'>Sem dados para montar o gráfico.</div>";
+    note.textContent = '';
+    return;
+  }
+
+  var empresaMap = {};
+  var periodoMap = {};
+  rows.forEach(function (r) {
+    var empresa = String(r.empresa || '—').trim() || '—';
+    var periodo = String(r.periodo || '—').trim() || '—';
+    var valor = Number(r.valor || 0);
+    if (!isFinite(valor)) valor = 0;
+
+    if (!empresaMap[empresa]) empresaMap[empresa] = { empresa: empresa, total: 0 };
+    empresaMap[empresa].total += valor;
+
+    if (!periodoMap[periodo]) periodoMap[periodo] = { periodo: periodo, total: 0, empresas: {} };
+    periodoMap[periodo].total += valor;
+    periodoMap[periodo].empresas[empresa] = (periodoMap[periodo].empresas[empresa] || 0) + valor;
+  });
+
+  var empresas = Object.keys(empresaMap).sort(function (a, b) {
+    return String(a).localeCompare(String(b));
+  });
+
+  var periodos = Object.keys(periodoMap).sort(window.vektorArSortPeriodos_);
+  var cores = {};
+  empresas.forEach(function (empresa, idx) {
+    cores[empresa] = window.vektorArGetEmpresaColor_(empresa, idx);
+  });
+
+  legend.innerHTML = empresas.map(function (empresa) {
+    return '<span class="vektor-ar-combo-legend-item"><span class="vektor-ar-combo-swatch" style="background:' + cores[empresa] + ';"></span><span>' + empresa + '</span></span>';
+  }).join('') + '<span class="vektor-ar-combo-legend-item"><span class="vektor-ar-combo-swatch line"></span><span>Variação mensal</span></span>';
+
+  var maxValor = 0;
+  periodos.forEach(function (periodo) {
+    empresas.forEach(function (empresa) {
+      var valor = Number((periodoMap[periodo].empresas || {})[empresa] || 0);
+      if (valor > maxValor) maxValor = valor;
+    });
+  });
+  if (maxValor <= 0) maxValor = 1;
+
+  var variacoes = [];
+  for (var i = 1; i < periodos.length; i++) {
+    var atual = Number(periodoMap[periodos[i]].total || 0);
+    var anterior = Number(periodoMap[periodos[i - 1]].total || 0);
+    if (anterior > 0) {
+      variacoes.push({ periodo: periodos[i], pct: ((atual - anterior) / anterior) * 100 });
+    }
+  }
+
+  var maxAbsPct = 0;
+  variacoes.forEach(function (item) {
+    var abs = Math.abs(Number(item.pct || 0));
+    if (abs > maxAbsPct) maxAbsPct = abs;
+  });
+  if (maxAbsPct <= 0) maxAbsPct = 1;
+
+  var periodWidth = Math.max(150, empresas.length * 56 + 52);
+  var chartWidth = Math.max(920, periodos.length * periodWidth + 120);
+  var svgHeight = 420;
+  var left = 78;
+  var right = 88;
+  var top = 30;
+  var bottom = 74;
+  var chartHeight = svgHeight - top - bottom;
+  var innerWidth = chartWidth - left - right;
+  var groupWidth = innerWidth / Math.max(periodos.length, 1);
+  var barWidth = Math.min(34, Math.max(18, (groupWidth - 26) / Math.max(empresas.length, 1)));
+  var barsArea = barWidth * empresas.length;
+  var groupStartOffset = (groupWidth - barsArea) / 2;
+
+  var valueTicks = 5;
+  var pctTicks = 4;
+  var svg = [];
+  svg.push('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' + chartWidth + ' ' + svgHeight + '" style="width:' + chartWidth + 'px; max-width:none; height:auto; display:block;">');
+  svg.push('<rect x="0" y="0" width="' + chartWidth + '" height="' + svgHeight + '" fill="#ffffff" rx="20" ry="20"></rect>');
+
+  var maxValorEixo = Math.ceil(maxValor / 10000) * 10000;
+  if (maxValorEixo <= 0) maxValorEixo = 10000;
+
+  for (var t = 0; t <= valueTicks; t++) {
+    var value = maxValorEixo * (t / valueTicks);
+    var y = top + chartHeight - (chartHeight * (t / valueTicks));
+    svg.push('<line x1="' + left + '" y1="' + y.toFixed(2) + '" x2="' + (chartWidth - right) + '" y2="' + y.toFixed(2) + '" stroke="#e2e8f0" stroke-width="1"></line>');
+    svg.push('<text x="' + (left - 10) + '" y="' + (y + 4).toFixed(2) + '" text-anchor="end" font-size="11" font-weight="800" fill="#475569">' + window.vektorArFmtCompactK_(value) + '</text>');
+  }
+
+  for (var p = 0; p <= pctTicks; p++) {
+    var pctValue = maxAbsPct - ((maxAbsPct * 2) * (p / pctTicks));
+    var pctY = top + ((maxAbsPct - pctValue) / (maxAbsPct * 2)) * chartHeight;
+    svg.push('<text x="' + (chartWidth - right + 10) + '" y="' + (pctY + 4).toFixed(2) + '" text-anchor="start" font-size="11" font-weight="800" fill="#166534">' + window.vektorArFmtPct_(pctValue) + '</text>');
+  }
+
+  svg.push('<line x1="' + left + '" y1="' + (top + chartHeight) + '" x2="' + (chartWidth - right) + '" y2="' + (top + chartHeight) + '" stroke="#94a3b8" stroke-width="1.5"></line>');
+  svg.push('<line x1="' + left + '" y1="' + top + '" x2="' + left + '" y2="' + (top + chartHeight) + '" stroke="#94a3b8" stroke-width="1.5"></line>');
+  svg.push('<line x1="' + (chartWidth - right) + '" y1="' + top + '" x2="' + (chartWidth - right) + '" y2="' + (top + chartHeight) + '" stroke="#bbf7d0" stroke-width="1.5"></line>');
+
+  var linePoints = [];
+  periodos.forEach(function (periodo, index) {
+    var groupX = left + (index * groupWidth);
+    var centerX = groupX + (groupWidth / 2);
+
+    svg.push('<line x1="' + centerX.toFixed(2) + '" y1="' + top + '" x2="' + centerX.toFixed(2) + '" y2="' + (top + chartHeight) + '" stroke="#f8fafc" stroke-width="1"></line>');
+
+    empresas.forEach(function (empresa, empIdx) {
+      var valor = Number((periodoMap[periodo].empresas || {})[empresa] || 0);
+      var height = (valor / maxValorEixo) * chartHeight;
+      var x = groupX + groupStartOffset + (empIdx * barWidth);
+      var y = top + chartHeight - height;
+      var fill = cores[empresa];
+      var labelY = Math.max(16, y - 10);
+      if (valor > 0) {
+        svg.push('<rect x="' + x.toFixed(2) + '" y="' + y.toFixed(2) + '" width="' + (barWidth - 6).toFixed(2) + '" height="' + height.toFixed(2) + '" rx="8" ry="8" fill="' + fill + '" opacity="0.96"></rect>');
+        svg.push('<text x="' + (x + (barWidth - 6) / 2).toFixed(2) + '" y="' + labelY.toFixed(2) + '" text-anchor="middle" font-size="10" font-weight="900" fill="#0f172a">' + window.vektorArFmtCompactK_(valor) + '</text>');
+      }
+    });
+
+    svg.push('<text x="' + centerX.toFixed(2) + '" y="' + (top + chartHeight + 24) + '" text-anchor="middle" font-size="12" font-weight="900" fill="#0f172a">' + periodo + '</text>');
+
+    if (index > 0) {
+      var totalAtual = Number(periodoMap[periodo].total || 0);
+      var totalAnterior = Number(periodoMap[periodos[index - 1]].total || 0);
+      if (totalAnterior > 0) {
+        var pct = ((totalAtual - totalAnterior) / totalAnterior) * 100;
+        var yPct = top + ((maxAbsPct - pct) / (maxAbsPct * 2)) * chartHeight;
+        linePoints.push({ x: centerX, y: yPct, pct: pct, periodo: periodo });
+      }
+    }
+  });
+
+  if (linePoints.length) {
+
+  // =====================================================
+  // LINHA DE VARIAÇÃO
+  // =====================================================
+
+  svg.push(
+    '<polyline ' +
+      'fill="none" ' +
+      'stroke="#16a34a" ' +
+      'stroke-width="3" ' +
+      'stroke-linecap="round" ' +
+      'stroke-linejoin="round" ' +
+      'points="' +
+
+        linePoints.map(function (pt) {
+          return (
+            pt.x.toFixed(2) +
+            ',' +
+            pt.y.toFixed(2)
+          );
+        }).join(' ') +
+
+      '">' +
+    '</polyline>'
+  );
+
+
+  // =====================================================
+  // PONTOS + RÓTULOS
+  // =====================================================
+
+  linePoints.forEach(function (pt) {
+
+    var pctTxt =
+      window.vektorArFmtPct_(
+        pt.pct
+      );
+
+
+    // Largura automática conforme
+    // o tamanho do percentual.
+    var boxWidth =
+      Math.max(
+        58,
+        pctTxt.length * 7 + 18
+      );
+
+
+    var boxHeight = 24;
+
+
+    // Centraliza o box no ponto.
+    var boxX =
+      pt.x -
+      (boxWidth / 2);
+
+
+    // Mantém dentro da área horizontal.
+    var minBoxX =
+      left + 3;
+
+    var maxBoxX =
+      chartWidth -
+      right -
+      boxWidth -
+      3;
+
+
+    boxX =
+      Math.max(
+        minBoxX,
+        Math.min(
+          boxX,
+          maxBoxX
+        )
+      );
+
+
+    // Posiciona acima do ponto.
+    var boxY =
+      pt.y - 38;
+
+
+    // Não deixa invadir o topo.
+    boxY =
+      Math.max(
+        top + 4,
+        boxY
+      );
+
+
+    // ===================================================
+    // PONTO DA LINHA
+    // ===================================================
+
+    svg.push(
+      '<circle ' +
+        'cx="' + pt.x.toFixed(2) + '" ' +
+        'cy="' + pt.y.toFixed(2) + '" ' +
+        'r="6" ' +
+        'fill="#16a34a" ' +
+        'stroke="#ffffff" ' +
+        'stroke-width="2.5">' +
+      '</circle>'
+    );
+
+
+    // ===================================================
+    // SOMBRA DO RÓTULO
+    // ===================================================
+
+    svg.push(
+      '<rect ' +
+        'x="' + (boxX + 1.5).toFixed(2) + '" ' +
+        'y="' + (boxY + 2).toFixed(2) + '" ' +
+        'width="' + boxWidth.toFixed(2) + '" ' +
+        'height="' + boxHeight + '" ' +
+        'rx="7" ' +
+        'ry="7" ' +
+        'fill="rgba(15,23,42,0.18)">' +
+      '</rect>'
+    );
+
+
+    // ===================================================
+    // FUNDO DO RÓTULO
+    // ===================================================
+
+    svg.push(
+      '<rect ' +
+        'x="' + boxX.toFixed(2) + '" ' +
+        'y="' + boxY.toFixed(2) + '" ' +
+        'width="' + boxWidth.toFixed(2) + '" ' +
+        'height="' + boxHeight + '" ' +
+        'rx="7" ' +
+        'ry="7" ' +
+        'fill="#ecfdf5" ' +
+        'stroke="#16a34a" ' +
+        'stroke-width="1.4">' +
+      '</rect>'
+    );
+
+
+    // ===================================================
+    // TEXTO %
+    // ===================================================
+
+    svg.push(
+      '<text ' +
+        'x="' +
+          (
+            boxX +
+            boxWidth / 2
+          ).toFixed(2) +
+        '" ' +
+
+        'y="' +
+          (
+            boxY +
+            16
+          ).toFixed(2) +
+        '" ' +
+
+        'text-anchor="middle" ' +
+        'font-size="11" ' +
+        'font-weight="900" ' +
+        'fill="#14532d">' +
+
+          pctTxt +
+
+      '</text>'
+    );
+
+  });
+
+
+  note.textContent =
+    'A linha considera a variação mensal do valor consolidado entre períodos consecutivos.';
+
+} else {
+
+  note.textContent =
+    'Sem base suficiente para traçar a linha de variação mensal. As barras continuam sendo exibidas normalmente.';
+
+}
+
+  svg.push('</svg>');
+  wrap.innerHTML = svg.join('');
+};
+
+window.vektorArRenderSimpleBars_ = function (elId, rows, keyLabel, keyValue) {
+  var el = document.getElementById(elId);
+  if (!el) return;
+
+  if (!Array.isArray(rows) || !rows.length) {
+    el.innerHTML = "<div class='text-sm font-semibold text-slate-500'>Sem dados.</div>";
+    return;
+  }
+
+  var max = 0;
+  rows.forEach(function (r) {
+    var v = Number(r[keyValue] || 0);
+    if (v > max) max = v;
+  });
+  if (max <= 0) max = 1;
+
+  el.innerHTML = rows.map(function (r) {
+    var label = String(r[keyLabel] || "—");
+    var valor = Number(r[keyValue] || 0);
+    var pct = Math.max(2, Math.round((valor / max) * 100));
+
+    return `
+      <div style="margin-bottom:14px;">
+        <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:6px;">
+          <div style="font-size:14px; font-weight:900; color:#0f172a;">${label}</div>
+          <div style="font-size:14px; font-weight:1000; color:#0f2d5c;">${window.vektorArFmtBrl_(valor)}</div>
+        </div>
+        <div style="height:14px; border-radius:999px; overflow:hidden; background:#e2e8f0;">
+          <div style="width:${pct}%; height:100%; border-radius:999px; background:linear-gradient(90deg,#0f2d5c 0%, #005E27 55%, #B5FF20 100%);"></div>
+        </div>
+      </div>
+    `;
+  }).join("");
+};
+
+window.vektorArRenderAnalytics_ = function (res) {
+  if (!res || !res.ok) return;
+
+  var rows = Array.isArray(res.rows) ? res.rows : [];
+  var cards = res.cards || {};
+
+  var kDocs = document.getElementById("vektorArAnKpiDocs");
+  var kValor = document.getElementById("vektorArAnKpiValor");
+  var kGerado = document.getElementById("vektorArAnKpiGerado");
+  var tb = document.getElementById("vektorArAnalyticsTbody");
+  var selEmp = document.getElementById("vektorArAnalyticsEmpresa");
+  var selPer = document.getElementById("vektorArAnalyticsPeriodo");
+
+  if (kDocs) kDocs.textContent = window.vektorArFmtInt_(cards.total_docs || rows.length || 0);
+  if (kValor) kValor.textContent = window.vektorArFmtBrl_(cards.total_valor || 0);
+  if (kGerado) kGerado.textContent = window.vektorArFmtDateTime_(res.generatedAt || "");
+
+  if (selEmp) {
+    var curEmp = String(selEmp.value || "");
+    selEmp.innerHTML = "<option value=''>Todas as empresas</option>" +
+      (res.empresas || []).map(function (e) {
+        return "<option value='" + e + "'" + (curEmp === e ? " selected" : "") + ">" + e + "</option>";
+      }).join("");
+  }
+
+  if (selPer) {
+    var curPer = String(selPer.value || "");
+    selPer.innerHTML = "<option value=''>Todos os períodos</option>" +
+      (res.periodos || []).map(function (p) {
+        return "<option value='" + p + "'" + (curPer === p ? " selected" : "") + ">" + p + "</option>";
+      }).join("");
+  }
+
+  if (tb) {
+    tb.innerHTML = rows.map(function (r) {
+      return `
+        <tr>
+          <td>${String(r.periodo || "")}</td>
+          <td>${String(r.empresa || "")}</td>
+          <td>${window.vektorArFmtInt_(r.docs || 0)}</td>
+          <td>${window.vektorArFmtBrl_(r.valor || 0)}</td>
+        </tr>
+      `;
+    }).join("");
+  }
+
+  var byEmpresa = {};
+  var byPeriodo = {};
+  rows.forEach(function (r) {
+    var e = String(r.empresa || "—");
+    var p = String(r.periodo || "—");
+    byEmpresa[e] = (byEmpresa[e] || 0) + Number(r.valor || 0);
+    byPeriodo[p] = (byPeriodo[p] || 0) + Number(r.valor || 0);
+  });
+
+  var rowsEmpresa = Object.keys(byEmpresa).map(function (k) {
+    return { empresa: k, valor: byEmpresa[k] };
+  }).sort(function (a, b) { return b.valor - a.valor; });
+
+  var rowsPeriodo = Object.keys(byPeriodo).map(function (k) {
+    return { periodo: k, valor: byPeriodo[k] };
+  }).sort(function (a, b) { return window.vektorArSortPeriodos_(a.periodo, b.periodo); });
+
+    window.vektorArRenderSimpleBars_("vektorArChartEmpresa", rowsEmpresa, "empresa", "valor");
+  window.vektorArRenderSimpleBars_("vektorArChartPeriodo", rowsPeriodo, "periodo", "valor");
+
+  window.vektorArRenderPeriodoEmpresaCombo_(rows);
+};
+
+window.vektorArLoadAnalytics_ = function () {
+  var mode = document.getElementById("vektorArAnalyticsMode");
+  var emp = document.getElementById("vektorArAnalyticsEmpresa");
+  var per = document.getElementById("vektorArAnalyticsPeriodo");
+
+  google.script.run
+    .withSuccessHandler(function (res) {
+      window.vektorArRenderAnalytics_(res);
+    })
+    .withFailureHandler(function (err) {
+      console.error("Erro analytics AR:", err);
+    })
+    .vektorArGetProsegurAnalytics({
+      mode: mode ? mode.value : "latest",
+      empresa: emp ? emp.value : "",
+      periodo: per ? per.value : ""
+    });
+};
+
+window.vektorOpenRpaClara_ = function () {
+  window.vektorArShowInnerView_("vektorArRpaView");
+
+  try {
+    window.vektorArStopPolling_();
+  } catch (_) {}
+
+  window.vektorRpaLoadStatus_();
+};
+
+/* =====================================================
+   NUMERÁRIO
+   PRELOAD REAL DOS DADOS
+   ===================================================== */
+
+window.vektorNumerarioReadyTimer_ =
+  null;
+
+
+window.vektorNumerarioSetLoading_ =
+function(isLoading) {
+
+  var shell =
+    document.getElementById(
+      "vektorNumerarioFullShell"
+    );
+
+
+  var loader =
+    document.getElementById(
+      "vektorNumerarioLoading"
+    );
+
+
+  var backBtn =
+    document.getElementById(
+      "vektorNumerarioBackBtn"
+    );
+
+
+  if (shell) {
+
+    shell.classList.toggle(
+      "is-ready",
+      !isLoading
+    );
+  }
+
+
+  if (loader) {
+
+    loader.classList.toggle(
+      "is-hidden",
+      !isLoading
+    );
+  }
+
+
+  if (backBtn) {
+
+    backBtn.style.opacity =
+      isLoading
+        ? "0"
+        : "1";
+
+    backBtn.style.visibility =
+      isLoading
+        ? "hidden"
+        : "visible";
+  }
+};
+
+
+window.vektorNumerarioShowError_ =
+function(message) {
+
+  var frame =
+    document.getElementById(
+      "vektorNumerarioFrame"
+    );
+
+
+  if (!frame) {
+    return;
+  }
+
+
+  function esc_(value) {
+
+    return String(
+      value == null
+        ? ""
+        : value
+    )
+      .replace(/&/g,"&amp;")
+      .replace(/</g,"&lt;")
+      .replace(/>/g,"&gt;")
+      .replace(/"/g,"&quot;")
+      .replace(/'/g,"&#039;");
+  }
+
+
+  frame.removeAttribute(
+    "src"
+  );
+
+
+  frame.srcdoc =
+    "<!doctype html>" +
+    "<html lang='pt-BR'>" +
+    "<head>" +
+      "<meta charset='UTF-8'>" +
+    "</head>" +
+    "<body style='" +
+      "margin:0;" +
+      "background:#f6f7f9;" +
+      "font-family:Arial,sans-serif;" +
+      "color:#0f172a;" +
+    "'>" +
+
+      "<div style='" +
+        "margin:24px;" +
+        "padding:22px;" +
+        "border:1px solid #fecaca;" +
+        "border-radius:14px;" +
+        "background:#fff;" +
+        "color:#991b1b;" +
+        "font-weight:800;" +
+      "'>" +
+
+        esc_(
+          message
+        ) +
+
+      "</div>" +
+
+    "</body>" +
+    "</html>";
+
+
+  window.vektorNumerarioSetLoading_(
+    false
+  );
+};
+
+
+/*
+ * Listener criado apenas uma vez.
+ *
+ * O loader externo só desaparece quando o
+ * iframe informar que terminou o bootstrap.
+ */
+if (
+  !window.__vektorNumerarioMessageBound
+) {
+
+  window.__vektorNumerarioMessageBound =
+    true;
+
+
+  window.addEventListener(
+    "message",
+    function(event) {
+
+      var frame =
+        document.getElementById(
+          "vektorNumerarioFrame"
+        );
+
+
+      if (
+        !frame ||
+        event.source !==
+        frame.contentWindow
+      ) {
+
+        return;
+      }
+
+
+      var data =
+        event.data || {};
+
+
+      if (
+        data.type ===
+        "VEKTOR_NUMERARIO_READY"
+      ) {
+
+        if (
+          window.vektorNumerarioReadyTimer_
+        ) {
+
+          clearTimeout(
+            window.vektorNumerarioReadyTimer_
+          );
+
+          window.vektorNumerarioReadyTimer_ =
+            null;
+        }
+
+
+        window.vektorNumerarioSetLoading_(
+          false
+        );
+
+        return;
+      }
+
+
+      if (
+        data.type ===
+        "VEKTOR_NUMERARIO_ERROR"
+      ) {
+
+        if (
+          window.vektorNumerarioReadyTimer_
+        ) {
+
+          clearTimeout(
+            window.vektorNumerarioReadyTimer_
+          );
+
+          window.vektorNumerarioReadyTimer_ =
+            null;
+        }
+
+
+        /*
+         * O iframe permanece visível para
+         * mostrar o erro interno.
+         */
+        window.vektorNumerarioSetLoading_(
+          false
+        );
+      }
+    }
+  );
+}
+
+
+window.vektorOpenNumerario_ =
+function() {
+
+  window.vektorArShowInnerView_(
+    "vektorNumerarioView"
+  );
+
+
+  try {
+
+    window.vektorArStopPolling_();
+
+  } catch (_) {}
+
+
+  var frame =
+    document.getElementById(
+      "vektorNumerarioFrame"
+    );
+
+
+  if (!frame) {
+    return;
+  }
+
+
+  /*
+   * Loader imediatamente.
+   */
+  window.vektorNumerarioSetLoading_(
+    true
+  );
+
+
+/*
+ * Assim que o HTML interno do Numerário
+ * carregar, liberamos o iframe.
+ *
+ * A partir daqui quem controla o carregamento
+ * é o próprio loader interno do Numerário,
+ * incluindo percentual e mensagens.
+ */
+frame.onload =
+  function() {
+
+    console.log(
+      "Numerário HTML carregado. Exibindo bootstrap interno..."
+    );
+
+
+    window.vektorNumerarioSetLoading_(
+      false
+    );
+
+  };
+
+
+  /*
+   * Segurança:
+   * se o backend ficar preso por mais
+   * de 60 segundos, não deixa a tela
+   * infinitamente bloqueada.
+   */
+  if (
+    window.vektorNumerarioReadyTimer_
+  ) {
+
+    clearTimeout(
+      window.vektorNumerarioReadyTimer_
+    );
+  }
+
+
+  window.vektorNumerarioReadyTimer_ =
+    setTimeout(
+      function() {
+
+        console.warn(
+          "Timeout do preload do Numerário."
+        );
+
+
+        window.vektorNumerarioSetLoading_(
+          false
+        );
+
+      },
+      60000
+    );
+
+
+  google.script.run
+
+    .withSuccessHandler(
+      function(res) {
+
+        if (
+          !res ||
+          !res.ok ||
+          !res.url
+        ) {
+
+          window.vektorNumerarioShowError_(
+            "Falha ao abrir Numerário: " +
+            (
+              res &&
+              res.error
+                ? String(
+                    res.error
+                  )
+                : "retorno inválido"
+            )
+          );
+
+          return;
+        }
+
+
+        var sep =
+          res.url.indexOf("?") >= 0
+            ? "&"
+            : "?";
+
+
+        frame.src =
+          res.url +
+          sep +
+          "_ts=" +
+          Date.now();
+
+
+        frame.dataset.loaded =
+          "1";
+      }
+    )
+
+    .withFailureHandler(
+      function(err) {
+
+        console.error(
+          "Erro ao abrir Numerário:",
+          err
+        );
+
+
+        window.vektorNumerarioShowError_(
+          "Erro ao abrir Numerário: " +
+          String(
+            err &&
+            err.message
+              ? err.message
+              : err
+          )
+        );
+      }
+    )
+
+    .vektorNumerarioGetWebAppUrl();
+};
+
+window.vektorPosEscapeHtml_ = function (value) {
+  return String(value === null || value === undefined ? "" : value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+};
+
+window.vektorPosSetLoading_ = function (isLoading) {
+  var shell = document.getElementById("vektorPosFullShell");
+  var loader = document.getElementById("vektorPosLoading");
+  var backBtn = document.getElementById("vektorPosBackBtn");
+
+  if (shell) shell.classList.toggle("is-ready", !isLoading);
+  if (loader) loader.classList.toggle("is-hidden", !isLoading);
+  if (backBtn) backBtn.classList.toggle("is-visible", !isLoading);
+};
+
+window.vektorPosShowFrameError_ = function (message) {
+  var frame = document.getElementById("vektorPosFrame");
+  if (!frame) return;
+
+  frame.removeAttribute("src");
+  frame.srcdoc =
+    "<!DOCTYPE html><html lang='pt-BR'><head><meta charset='UTF-8'>" +
+    "<meta name='viewport' content='width=device-width,initial-scale=1.0'></head>" +
+    "<body style='margin:0;background:#f6f7f9;font-family:Arial,sans-serif;color:#0f172a;'>" +
+    "<div style='margin:24px;padding:22px;border:1px solid #fecaca;border-radius:14px;" +
+    "background:#fff;color:#991b1b;font-weight:800;box-shadow:0 12px 28px rgba(15,23,42,.08);'>" +
+    window.vektorPosEscapeHtml_(message) +
+    "</div></body></html>";
+
+  window.vektorPosSetLoading_(false);
+};
+
+window.vektorOpenPos_ = function () {
+  window.vektorArShowInnerView_("vektorPosView");
+  try { window.vektorArStopPolling_(); } catch (_) {}
+
+  var frame = document.getElementById("vektorPosFrame");
+  if (!frame) {
+    console.error("Iframe do Envio POS não encontrado.");
+    return;
+  }
+
+  window.vektorPosSetLoading_(true);
+
+  if (window.__vektorPosReadyFallback) {
+    clearTimeout(window.__vektorPosReadyFallback);
+    window.__vektorPosReadyFallback = null;
+  }
+
+  frame.removeAttribute("srcdoc");
+  frame.removeAttribute("src");
+
+  google.script.run
+    .withSuccessHandler(function (res) {
+      if (!res || !res.ok || !res.url) {
+        window.vektorPosShowFrameError_(
+          "Falha ao abrir Envio POS: " +
+          ((res && res.error) ? String(res.error) : "retorno inválido")
+        );
+        return;
+      }
+
+      var sep = res.url.indexOf("?") >= 0 ? "&" : "?";
+      frame.removeAttribute("srcdoc");
+      frame.src = res.url + sep + "_ts=" + Date.now();
+      frame.dataset.loaded = "1";
+
+      // Segurança: caso a mensagem READY não chegue, libera após 15 s.
+      window.__vektorPosReadyFallback = setTimeout(function () {
+        window.vektorPosSetLoading_(false);
+      }, 15000);
+    })
+    .withFailureHandler(function (err) {
+      console.error("Erro ao abrir Envio POS:", err);
+      window.vektorPosShowFrameError_(
+        "Erro ao abrir Envio POS: " +
+        String(err && err.message ? err.message : err)
+      );
+    })
+    .vektorPosGetWebAppUrl();
+};
+
+if (!window.__vektorPosReadyListenerBound) {
+  window.__vektorPosReadyListenerBound = true;
+
+  window.addEventListener("message", function (event) {
+    var data = event && event.data ? event.data : null;
+    if (!data || data.type !== "VEKTOR_POS_READY") return;
+
+    var frame = document.getElementById("vektorPosFrame");
+    if (frame && event.source && event.source !== frame.contentWindow) return;
+
+    if (window.__vektorPosReadyFallback) {
+      clearTimeout(window.__vektorPosReadyFallback);
+      window.__vektorPosReadyFallback = null;
+    }
+
+    window.vektorPosSetLoading_(false);
+  });
+}
+
+
+
+window.vektorRpaPctByStatus_ = function (status) {
+  status = String(status || "").toUpperCase();
+
+  if (status === "PENDENTE") return 18;
+  if (status === "EM_EXECUCAO") return 55;
+  if (status === "CONCLUIDO") return 100;
+  if (status === "ERRO") return 96;
+
+  return 0;
+};
+
+window.vektorRpaRenderStatus_ = function (row) {
+  row = row || {};
+
+  var status = row.found ? String(row.status || "—") : "SEM SOLICITAÇÃO";
+  var pct = window.vektorRpaPctByStatus_(status);
+
+  var fill = document.getElementById("vektorRpaProgressFill");
+  var pctTxt = document.getElementById("vektorRpaPctTxt");
+  var statusTxt = document.getElementById("vektorRpaStatusTxt");
+
+  if (fill) fill.style.width = pct + "%";
+  if (pctTxt) pctTxt.textContent = pct + "%";
+  if (statusTxt) statusTxt.textContent = status;
+
+  var id = document.getElementById("vektorRpaId");
+  var sol = document.getElementById("vektorRpaSolicitacao");
+  var iniFim = document.getElementById("vektorRpaInicioFim");
+  var msg = document.getElementById("vektorRpaMensagem");
+  var log = document.getElementById("vektorRpaLogPath");
+
+  if (id) id.textContent = row.found ? String(row.id || "—") : "—";
+  if (sol) sol.textContent = row.found ? String(row.dataSolicitacao || "—") : "—";
+  if (iniFim) {
+    iniFim.textContent = row.found
+      ? ((row.dataInicio || "—") + " / " + (row.dataFim || "—"))
+      : "—";
+  }
+  if (msg) msg.textContent = row.found ? String(row.mensagem || "—") : "Nenhuma solicitação encontrada.";
+  if (log) log.textContent = row.found ? String(row.logPath || "—") : "—";
+};
+
+window.vektorRpaLoadStatus_ = function () {
+  google.script.run
+    .withSuccessHandler(function (res) {
+      if (!res || !res.ok) {
+        window.vektorRpaRenderStatus_({
+          found: true,
+          status: "ERRO",
+          mensagem: res && res.error ? res.error : "Falha ao consultar status."
+        });
+        return;
+      }
+
+      window.vektorRpaRenderStatus_(res);
+    })
+    .withFailureHandler(function (err) {
+      window.vektorRpaRenderStatus_({
+        found: true,
+        status: "ERRO",
+        mensagem: err && err.message ? err.message : String(err || "Erro desconhecido.")
+      });
+    })
+    .vektorRpaGetUltimoClara();
+};
+
+window.vektorRpaSolicitarClara_ = function () {
+  var btn = document.getElementById("vektorRpaRunBtn");
+  if (btn) {
+    btn.disabled = true;
+    btn.style.opacity = "0.65";
+  }
+
+  google.script.run
+    .withSuccessHandler(function (res) {
+      if (btn) {
+        btn.disabled = false;
+        btn.style.opacity = "1";
+      }
+
+      if (!res || !res.ok) {
+        window.vektorRpaRenderStatus_({
+          found: true,
+          status: "ERRO",
+          mensagem: res && res.error ? res.error : "Falha ao solicitar execução."
+        });
+        return;
+      }
+
+      window.vektorRpaRenderStatus_({
+        found: true,
+        id: res.id,
+        dataSolicitacao: res.dataSolicitacao,
+        status: res.status,
+        mensagem: res.mensagem,
+        logPath: ""
+      });
+
+      window.clearInterval(window.__vektorRpaPollTmr);
+      window.__vektorRpaPollTmr = window.setInterval(function () {
+        window.vektorRpaLoadStatus_();
+      }, 8000);
+    })
+    .withFailureHandler(function (err) {
+      if (btn) {
+        btn.disabled = false;
+        btn.style.opacity = "1";
+      }
+
+      window.vektorRpaRenderStatus_({
+        found: true,
+        status: "ERRO",
+        mensagem: err && err.message ? err.message : String(err || "Erro desconhecido.")
+      });
+    })
+    .vektorRpaSolicitarClara();
+};
+
+  (function () {
+  var backBtn = document.getElementById("vektorArBackBtn");
+  var refreshBtn = document.getElementById("vektorArRefreshBtn");
+  var runBtn = document.getElementById("vektorArRunBtn");
+
+  var homeBackBtn = document.getElementById("vektorArHomeBackBtn");
+  var cardProsegur = document.getElementById("vektorArCardProsegur");
+  var cardRpaClara = document.getElementById("vektorArCardRpaClara");
+  var cardNumerario = document.getElementById("vektorArCardNumerario");
+
+  var rpaBackBtn = document.getElementById("vektorRpaBackBtn");
+  var rpaRefreshBtn = document.getElementById("vektorRpaRefreshBtn");
+  var rpaRunBtn = document.getElementById("vektorRpaRunBtn");
+  var numerarioBackBtn = document.getElementById("vektorNumerarioBackBtn");
+  var cardPos = document.getElementById("vektorArCardPos");
+  var posBackBtn = document.getElementById("vektorPosBackBtn");
+
+  var openAnalyticsBtn = document.getElementById("vektorArOpenAnalyticsBtn");
+  var analyticsBackBtn = document.getElementById("vektorArAnalyticsBackBtn");
+  var analyticsRefreshBtn = document.getElementById("vektorArAnalyticsRefreshBtn");
+
+  if (backBtn && !backBtn.__bindArBack) {
+    backBtn.__bindArBack = true;
+    backBtn.addEventListener("click", function () {
+      try {
+        window.vektorShowArHome_();
+      } catch (e) {
+        console.error(e);
+      }
+    });
+  }
+
+  if (refreshBtn && !refreshBtn.__bindArRefresh) {
+    refreshBtn.__bindArRefresh = true;
+    refreshBtn.addEventListener("click", function () {
+      try {
+        window.vektorLoadArModule_();
+        if (window.__vektorArJobId) {
+          window.vektorArPollStatus_();
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    });
+  }
+
+  if (runBtn && !runBtn.__bindArRun) {
+    runBtn.__bindArRun = true;
+    runBtn.addEventListener("click", function () {
+      try {
+        window.vektorArStartRun_();
+      } catch (e) {
+        console.error(e);
+      }
+    });
+  }
+
+  if (homeBackBtn && !homeBackBtn.__bindArHomeBack) {
+    homeBackBtn.__bindArHomeBack = true;
+    homeBackBtn.addEventListener("click", function () {
+      try {
+        window.vektorHideArModule_();
+        if (window.vektorShowHubView_) {
+          window.vektorShowHubView_();
+        } else {
+          var hub = document.getElementById("vektorHubView");
+          if (hub) {
+            hub.classList.remove("hidden");
+            hub.style.display = "block";
+          }
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    });
+  }
+
+  if (cardProsegur && !cardProsegur.__bindArCardProsegur) {
+    cardProsegur.__bindArCardProsegur = true;
+    cardProsegur.addEventListener("click", function () {
+      try {
+        window.vektorOpenArExec_();
+      } catch (e) {
+        console.error(e);
+      }
+    });
+  }
+
+  if (cardRpaClara && !cardRpaClara.__bindArCardRpaClara) {
+  cardRpaClara.__bindArCardRpaClara = true;
+  cardRpaClara.addEventListener("click", function () {
+    try {
+      window.vektorOpenRpaClara_();
+    } catch (e) {
+      console.error(e);
+    }
+  });
+}
+
+if (rpaBackBtn && !rpaBackBtn.__bindRpaBack) {
+  rpaBackBtn.__bindRpaBack = true;
+  rpaBackBtn.addEventListener("click", function () {
+    try {
+      window.vektorShowArHome_();
+    } catch (e) {
+      console.error(e);
+    }
+  });
+}
+
+if (numerarioBackBtn && !numerarioBackBtn.__bindNumerarioBack) {
+  numerarioBackBtn.__bindNumerarioBack = true;
+  numerarioBackBtn.addEventListener("click", function () {
+    try {
+      window.vektorShowArHome_();
+    } catch (e) {
+      console.error(e);
+    }
+  });
+}
+
+if (rpaRefreshBtn && !rpaRefreshBtn.__bindRpaRefresh) {
+  rpaRefreshBtn.__bindRpaRefresh = true;
+  rpaRefreshBtn.addEventListener("click", function () {
+    try {
+      window.vektorRpaLoadStatus_();
+    } catch (e) {
+      console.error(e);
+    }
+  });
+}
+
+if (rpaRunBtn && !rpaRunBtn.__bindRpaRun) {
+  rpaRunBtn.__bindRpaRun = true;
+  rpaRunBtn.addEventListener("click", function () {
+    try {
+      window.vektorRpaSolicitarClara_();
+    } catch (e) {
+      console.error(e);
+    }
+  });
+}
+
+  if (cardNumerario && !cardNumerario.__bindArCardNumerario) {
+  cardNumerario.__bindArCardNumerario = true;
+  cardNumerario.addEventListener("click", function () {
+    try {
+      window.vektorOpenNumerario_();
+    } catch (e) {
+      console.error(e);
+    }
+  });
+}
+
+if (cardPos && !cardPos.__bindArCardPos) {
+  cardPos.__bindArCardPos = true;
+  cardPos.addEventListener("click", function () {
+    try { window.vektorOpenPos_(); } catch (e) { console.error(e); }
+  });
+}
+
+if (posBackBtn && !posBackBtn.__bindPosBack) {
+  posBackBtn.__bindPosBack = true;
+  posBackBtn.addEventListener("click", function () {
+    try { window.vektorShowArHome_(); } catch (e) { console.error(e); }
+  });
+}
+
+
+  if (openAnalyticsBtn && !openAnalyticsBtn.__bindOpenAnalytics) {
+    openAnalyticsBtn.__bindOpenAnalytics = true;
+    openAnalyticsBtn.addEventListener("click", function () {
+      try {
+        window.vektorOpenArAnalytics_();
+      } catch (e) {
+        console.error(e);
+      }
+    });
+  }
+
+  if (analyticsBackBtn && !analyticsBackBtn.__bindBackAnalytics) {
+    analyticsBackBtn.__bindBackAnalytics = true;
+    analyticsBackBtn.addEventListener("click", function () {
+      try {
+        window.vektorShowArHome_();
+      } catch (e) {
+        console.error(e);
+      }
+    });
+  }
+
+  if (analyticsRefreshBtn && !analyticsRefreshBtn.__bindRefreshAnalytics) {
+    analyticsRefreshBtn.__bindRefreshAnalytics = true;
+    analyticsRefreshBtn.addEventListener("click", function () {
+      try {
+        window.vektorArLoadAnalytics_();
+      } catch (e) {
+        console.error(e);
+      }
+    });
+  }
+})();
+</script>
+
+<script>
+  window.__vektorArApiDriverActive = false;
+
+  window.vektorArApiShowError_ = function (message) {
+    var text = String(message || "Erro desconhecido.");
+    var status = document.getElementById("vektorArStatusTxt");
+    if (status) status.textContent = "Erro: " + text;
+    window.vektorArSetRunBtnState_(false);
+    console.error("Vektor AR Gmail API:", text);
+  };
+
+  window.vektorArLoadDashboard_ = function () {
+    google.script.run
+      .withSuccessHandler(function (res) {
+        if (!res || !res.ok) {
+          window.vektorArApiShowError_((res && res.error) || "Falha ao carregar indicadores.");
+          return;
+        }
+
+        window.vektorArRenderDashboard_(res);
+        var errorText = Array.isArray(res.errors) ? res.errors.join(" | ") : "";
+        ["vektorArKpiElegiveis", "vektorArKpiPendentes", "vektorArKpiDestino", "vektorArKpiMes"]
+          .forEach(function (id) {
+            var el = document.getElementById(id);
+            if (el) el.title = errorText;
+          });
+
+        var job = res.ultimoJob || null;
+        if (job && job.jobId) {
+          window.__vektorArJobId = String(job.jobId);
+          window.vektorArRenderJob_(job);
+          var busy = job.status === "RUNNING" || job.status === "QUEUED";
+          if (busy && !window.__vektorArApiDriverActive) {
+            window.vektorArApiRunNextBatch_();
+          }
+        }
+      })
+      .withFailureHandler(function (err) {
+        window.vektorArApiShowError_(err && err.message ? err.message : err);
+      })
+      .vektorArApiGetProsegurDashboard();
+  };
+
+  window.vektorArApiRunNextBatch_ = function () {
+    if (!window.__vektorArJobId) return;
+    window.__vektorArApiDriverActive = true;
+    window.vektorArSetRunBtnState_(true);
+
+    google.script.run
+      .withSuccessHandler(function (job) {
+        if (!job || job.ok === false) {
+          window.__vektorArApiDriverActive = false;
+          window.vektorArApiShowError_((job && job.error) || "Lote sem resposta válida.");
+          return;
+        }
+
+        window.vektorArRenderJob_(job);
+        var busy = job.status === "RUNNING" || job.status === "QUEUED";
+        if (busy) {
+          window.setTimeout(window.vektorArApiRunNextBatch_, 500);
+        } else {
+          window.__vektorArApiDriverActive = false;
+          window.vektorArSetRunBtnState_(false);
+          window.vektorArLoadDashboard_();
+          window.vektorArLoadAudit_();
+        }
+      })
+      .withFailureHandler(function (err) {
+        window.__vektorArApiDriverActive = false;
+        window.vektorArApiShowError_(err && err.message ? err.message : err);
+      })
+      .vektorArApiRunProsegurBatch(window.__vektorArJobId);
+  };
+
+  window.vektorArPollStatus_ = function () {
+    if (window.__vektorArJobId && !window.__vektorArApiDriverActive) {
+      window.vektorArApiRunNextBatch_();
+    }
+  };
+
+  window.vektorArStartRun_ = function () {
+    window.vektorArSetRunBtnState_(true);
+    google.script.run
+      .withSuccessHandler(function (res) {
+        if (!res || !res.ok || !res.jobId) {
+          window.vektorArApiShowError_((res && res.error) || "Não foi possível iniciar o processamento pela Gmail API.");
+          return;
+        }
+
+        window.__vektorArJobId = String(res.jobId);
+        window.__vektorArApiDriverActive = false;
+        window.vektorArApiRunNextBatch_();
+      })
+      .withFailureHandler(function (err) {
+        window.vektorArApiShowError_(err && err.message ? err.message : err);
+      })
+      .vektorArApiStartProsegurJob();
+  };
+</script>
