@@ -192,6 +192,8 @@ O Optimus usa Gemini por meio do workflow n8n para consultas e apresentações. 
 
 O backend distingue timeout, falha de conexão, HTTP do n8n, sessão, permissão e indisponibilidade do servidor local. A interface não afirma mais que toda falha é VPN. O diagnóstico de rede e VPN fica no Health Center.
 
+O fluxo completo do agente, o contrato de contexto, os nós do workflow, as ferramentas locais, as confirmações, os avisos proativos e a configuração reutilizável do n8n estão descritos em [docs/optimus.md](docs/optimus.md).
+
 ## Health Center
 
 Página de Inteligência com semáforos independentes e verificáveis para:

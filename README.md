@@ -82,6 +82,12 @@ flowchart LR
     G --> J[Optimus]
 ```
 
+#### Optimus e n8n
+
+O Optimus é o agente contábil do sistema. A API local monta um contexto validado com KPIs, `run_id`, insights, regras de negócio, Mapping, All Brazil, manual e saúde da instalação; o workflow n8n entrega esse contexto ao Gemini e devolve a resposta para a página do chat. Quando a pergunta exige uma consulta adicional, o agente solicita uma ferramenta local pelo protocolo `[[OPS_ACTION]]`; quando exige alteração ou execução, o sistema apresenta o resumo e aguarda confirmação explícita.
+
+O agente também cria o payload factual para PDF e apresentações, detecta lacunas e indisponibilidades e escreve avisos proativos para administradores. A documentação completa está em [estoque-contabil/docs/optimus.md](estoque-contabil/docs/optimus.md).
+
 #### Principais recursos
 
 - Processamento local de bases contábeis de grande volume.
@@ -121,6 +127,7 @@ estoque-contabil/
 - [Arquitetura final](estoque-contabil/ARQUITETURA_FINAL.md)
 - [Mapeamento de dados](estoque-contabil/MAPEAMENTO_DADOS.md)
 - [Manual operacional usado pelo sistema](estoque-contabil/src/ops_contabil/knowledge/manual_sistema.md)
+- [Optimus e integração com n8n](estoque-contabil/docs/optimus.md)
 
 #### Reutilização
 

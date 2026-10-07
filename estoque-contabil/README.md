@@ -12,6 +12,16 @@ Plataforma Python para substituir o processamento de planilhas contábeis pesada
 - n8n atua como orquestrador e agente, mas não processa os arquivos pesados.
 - Excel final é gerado a partir de modelo, com rastreabilidade por execução.
 
+## Optimus: agente contábil via n8n
+
+O **Optimus** é a camada de inteligência conversacional do projeto. Ele fica disponível na página própria do sistema e usa um workflow do n8n com Google Gemini para responder perguntas sobre as competências compiladas, sempre com contexto preparado pela API local.
+
+O desenho separa responsabilidades: Python/FastAPI lê o DuckDB, aplica os contratos e regras de negócio, valida permissões e devolve agregados e evidências; o n8n orquestra a conversa e o modelo; a interface mostra a resposta e os avisos. O agente não recebe a base bruta inteira, não acessa credenciais SAP e não pode inventar números.
+
+Além das consultas, o Optimus pesquisa o manual e a documentação do sistema, verifica lacunas e saúde da instalação, prepara PDFs e apresentações executivas e acompanha eventos proativos. Extrações SAP, importações, Mapping, backup, acessos e preferências sempre passam por resumo e confirmação explícita antes de qualquer execução.
+
+O workflow importável, o contrato de contexto, as ferramentas, os avisos proativos, os limites de segurança e o passo a passo de configuração estão em [docs/optimus.md](docs/optimus.md).
+
 ## Início rápido
 
 No primeiro acesso, um administrador baixa `INSTALAR_ESTOQUE_CONTABIL.zip` na página **Configurações** e envia o pacote ao novo usuário por um canal corporativo. O usuário extrai todo o ZIP e executa `INSTALAR_ESTOQUE_CONTABIL.bat`. A página Configurações somente existe depois que o sistema está instalado; portanto, ela é o ponto de distribuição e atualização, não o ponto de entrada de uma máquina vazia.
@@ -60,4 +70,4 @@ A interface abre em `http://127.0.0.1:8765`.
 
 Não coloque credenciais no YAML, no `.env` ou nos VBS. O SAP GUI precisa estar aberto e autenticado. Credenciais do n8n devem ficar no cofre do próprio n8n. O agente recebe, por padrão, somente agregados e evidências limitadas retornadas pela API de leitura.
 
-Leia [Arquitetura](ARQUITETURA_FINAL.md) e [Mapeamento das bases](MAPEAMENTO_DADOS.md).
+Leia [Arquitetura](ARQUITETURA_FINAL.md), [Mapeamento das bases](MAPEAMENTO_DADOS.md) e a [documentação do Optimus e da integração n8n](docs/optimus.md).
