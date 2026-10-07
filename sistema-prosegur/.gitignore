@@ -1,0 +1,16 @@
+.env
+__pycache__/
+*.py[cod]
+*.db
+*.sqlite
+*.log
+*.PDF
+*.pdf
+Idocs_Prosegur/
+PROSEGUR_PROCESS/
+Processados/
+dist/
+build/
+*.xlsx
+*.xls
+vektor_ar_metricas.json

@@ -21,6 +21,23 @@ A versão pública contém os 19 arquivos do projeto Apps Script e documenta os 
 
 ---
 
+### Sistema Prosegur
+
+Pipeline em Python e Google Apps Script para capturar documentos, interpretar PDFs de BOL, CTe-OS, DEM e NFSe, consolidar valores e gerar relatórios auditáveis para a operação Prosegur.
+
+O projeto inclui o parser por tipo documental, banco local, enriquecimento por bases de referência, geração de relatórios Excel, auditoria de lotes, métricas, integração Gmail/Drive e versões legadas do código. PDFs, planilhas, banco, logs e credenciais ficam fora do repositório.
+
+**Tecnologias:** Python, pdfplumber, pandas, openpyxl, SQLite, Google Apps Script, Gmail API e Google Drive.
+
+- [Código, fluxo e instalação](sistema-prosegur/README.md)
+- [Arquitetura e contratos de dados](sistema-prosegur/docs/arquitetura.md)
+- [Operação passo a passo](sistema-prosegur/docs/operacao.md)
+- [Processo operacional e SAP](sistema-prosegur/docs/processo-sap.md)
+- [Configuração e implantação](sistema-prosegur/docs/configuracao.md)
+- [Segurança e dados excluídos](sistema-prosegur/docs/seguranca.md)
+
+---
+
 ### SmartSlip
 
 Aplicação web em Google Apps Script para receber comprovantes financeiros, organizar arquivos no Google Drive, extrair informações com Gemini e acompanhar filas, histórico, indicadores, alertas e custos de inteligência artificial.
