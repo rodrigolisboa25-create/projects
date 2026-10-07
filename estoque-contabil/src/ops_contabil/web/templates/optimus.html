@@ -1,0 +1,1218 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Optimus | Estoque Contábil</title>
+
+  <style>
+    :root{
+      --nav:#0b2538;
+      --nav-deep:#071d28;
+      --green:#087f72;
+      --green-light:#b5ff20;
+      --bg:#eef4f3;
+      --card:#ffffff;
+      --text:#172a3a;
+      --muted:#667789;
+      --line:#dce5eb;
+      --user:#e7ecef;
+      --assistant:#ffffff;
+      --danger:#b33b3b;
+    }
+
+    *{box-sizing:border-box}
+
+    html,body{
+      margin:0;
+      width:100%;
+      height:100%;
+      font-family:"Segoe UI",Arial,sans-serif;
+      background:var(--bg);
+      color:var(--text);
+    }
+
+    body{
+      display:flex;
+      flex-direction:column;
+      overflow:hidden;
+    }
+
+    .optimus-header{
+      min-height:58px;
+      padding:10px 18px;
+      background:linear-gradient(135deg,var(--nav-deep),#0b2f39);
+      color:#fff;
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:16px;
+      border-bottom:1px solid #24505b;
+      flex:0 0 auto;
+    }
+
+    .optimus-title{
+      display:flex;
+      align-items:center;
+      gap:0;
+      min-width:0;
+    }
+
+    .optimus-title h1{
+      margin:0;
+      font-size:18px;
+    }
+
+    .optimus-title p{
+      margin:2px 0 0;
+      color:#a8c6c5;
+      font-size:12px;
+      white-space:nowrap;
+      overflow:hidden;
+      text-overflow:ellipsis;
+    }
+
+    .optimus-status{
+      display:flex;
+      align-items:center;
+      gap:7px;
+      font-size:12px;
+      color:#cce7df;
+      white-space:nowrap;
+    }
+
+    .status-dot{
+      width:8px;
+      height:8px;
+      border-radius:50%;
+      background:#d4a72c;
+      box-shadow:0 0 10px #d4a72c;
+      flex:0 0 auto;
+    }
+
+    .status-dot.online{
+      background:var(--green-light);
+      box-shadow:0 0 10px var(--green-light);
+    }
+
+    .status-dot.error{
+      background:#ff7d7d;
+      box-shadow:0 0 10px #ff7d7d;
+    }
+
+    .chat-shell{
+      flex:1;
+      min-height:0;
+      display:flex;
+      flex-direction:column;
+      background:
+        radial-gradient(circle at 82% 8%,#0d836310,transparent 28%),
+        linear-gradient(180deg,#eef4f3,#f6f8f8);
+    }
+
+    .messages{
+      flex:1;
+      min-height:0;
+      overflow:auto;
+      padding:18px;
+      display:flex;
+      flex-direction:column;
+      gap:12px;
+      scroll-behavior:smooth;
+    }
+
+    .message{
+      display:flex;
+      width:100%;
+    }
+
+    .message.user{justify-content:flex-end}
+    .message.assistant{justify-content:flex-start}
+
+    .bubble{
+      max-width:min(760px,85%);
+      border-radius:14px;
+      padding:11px 13px;
+      line-height:1.45;
+      white-space:pre-wrap;
+      word-break:break-word;
+      box-shadow:0 3px 12px #102d3a0d;
+    }
+
+    .message.user .bubble{
+      background:var(--user);
+      color:#172a3a;
+      border:1px solid #d5dee4;
+      border-bottom-right-radius:5px;
+    }
+
+    .message.assistant .bubble{
+      background:var(--assistant);
+      color:var(--text);
+      border:1px solid var(--line);
+      border-bottom-left-radius:5px;
+      white-space:normal;
+    }
+
+    .message.assistant .bubble h1,
+    .message.assistant .bubble h2,
+    .message.assistant .bubble h3,
+    .message.assistant .bubble h4{
+      margin:14px 0 7px;
+      color:var(--nav);
+      line-height:1.25;
+    }
+
+    .message.assistant .bubble h1:first-child,
+    .message.assistant .bubble h2:first-child,
+    .message.assistant .bubble h3:first-child,
+    .message.assistant .bubble h4:first-child{margin-top:0}
+
+    .message.assistant .bubble h1{font-size:20px}
+    .message.assistant .bubble h2{font-size:18px}
+    .message.assistant .bubble h3{font-size:16px}
+    .message.assistant .bubble h4{font-size:14px}
+
+    .message.assistant .bubble p{
+      margin:7px 0;
+      line-height:1.55;
+    }
+
+    .message.assistant .bubble a{
+      color:#005e27;
+      font-weight:700;
+      text-decoration:underline;
+      text-decoration-thickness:1.5px;
+      text-underline-offset:3px;
+      overflow-wrap:anywhere;
+      cursor:pointer;
+    }
+
+    .message.assistant .bubble a:hover{
+      color:#0b7a38;
+      text-decoration-thickness:2px;
+    }
+
+    .message.assistant .bubble a.pdf-download-link{
+      display:inline-flex;
+      align-items:center;
+      justify-content:center;
+      min-height:36px;
+      margin-top:4px;
+      padding:0 16px;
+      border:1px solid #005e27;
+      border-radius:9px;
+      background:linear-gradient(135deg,#005e27,#0b7a38);
+      color:#fff;
+      font-weight:700;
+      text-decoration:none;
+      box-shadow:0 5px 14px rgba(0,94,39,.16);
+    }
+
+    .message.assistant .bubble a.pdf-download-link:hover{
+      color:#fff;
+      background:linear-gradient(135deg,#00451d,#005e27);
+      box-shadow:0 7px 18px rgba(0,94,39,.22);
+      transform:translateY(-1px);
+    }
+
+    .message.assistant .bubble a.pdf-download-link.loading{
+      opacity:.72;
+      cursor:wait;
+      pointer-events:none;
+    }
+
+    .message.assistant .bubble hr{
+      border:0;
+      border-top:1px solid var(--line);
+      margin:14px 0;
+    }
+
+    .message.assistant .bubble code{
+      padding:2px 5px;
+      border-radius:5px;
+      background:#eef2f4;
+      color:#183849;
+      font-family:Consolas,"Courier New",monospace;
+      font-size:.92em;
+    }
+
+    .message.assistant .bubble ul,
+    .message.assistant .bubble ol{
+      margin:7px 0 9px;
+      padding-left:24px;
+    }
+
+    .message.assistant .bubble li{margin:4px 0}
+
+    .markdown-table-wrap{
+      width:100%;
+      overflow-x:auto;
+      margin:10px 0 12px;
+      border:1px solid var(--line);
+      border-radius:9px;
+    }
+
+    .markdown-table{
+      width:100%;
+      min-width:620px;
+      border-collapse:collapse;
+      background:#fff;
+      font-size:12.5px;
+    }
+
+    .markdown-table th,
+    .markdown-table td{
+      padding:9px 10px;
+      border-right:1px solid #e5ecef;
+      border-bottom:1px solid #e5ecef;
+      text-align:left;
+      vertical-align:top;
+      white-space:normal;
+    }
+
+    .markdown-table th{
+      background:#eef3f5;
+      color:#314e5e;
+      font-weight:800;
+    }
+
+    .markdown-table tr:last-child td{border-bottom:0}
+    .markdown-table th:last-child,
+    .markdown-table td:last-child{border-right:0}
+
+    .typing-caret{
+      display:inline-block;width:2px;height:1.05em;margin-left:2px;
+      vertical-align:-2px;background:currentColor;
+      animation:caretBlink 1s steps(1) infinite;
+    }
+    @keyframes caretBlink{50%{opacity:0}}
+
+    .welcome{
+      margin:auto;
+      width:min(620px,92%);
+      text-align:center;
+      padding:28px;
+      color:var(--muted);
+    }
+
+    .welcome h2{
+      margin:0 0 7px;
+      color:var(--nav);
+      font-size:21px;
+    }
+
+    .welcome p{
+      margin:0;
+      line-height:1.55;
+    }
+
+    .typing{
+      display:none;
+      align-items:center;
+      gap:7px;
+      color:var(--muted);
+      padding:0 18px 8px;
+      font-size:12px;
+    }
+
+    .typing.show{display:flex}
+
+    .typing-dots{
+      display:flex;
+      gap:3px;
+    }
+
+    .typing-dots span{
+      width:5px;
+      height:5px;
+      border-radius:50%;
+      background:var(--green);
+      animation:pulse 1s infinite ease-in-out;
+    }
+
+    .typing-dots span:nth-child(2){animation-delay:.15s}
+    .typing-dots span:nth-child(3){animation-delay:.30s}
+
+    @keyframes pulse{
+      0%,100%{opacity:.25;transform:translateY(0)}
+      50%{opacity:1;transform:translateY(-2px)}
+    }
+
+    .composer-wrap{
+      flex:0 0 auto;
+      padding:12px;
+      background:#ffffffd9;
+      backdrop-filter:blur(8px);
+      border-top:1px solid var(--line);
+    }
+
+    /* Resposta a um aviso proativo específico */
+    .reply-chip{display:flex;align-items:center;justify-content:space-between;gap:10px;max-width:980px;margin:0 auto 8px;
+      padding:7px 12px;border-left:3px solid #0f8f6b;border-radius:8px;background:#eef7f3;color:#1f3b33;font-size:12.5px}
+    .reply-chip[hidden]{display:none}
+    .reply-chip b{font-weight:700}
+    .reply-chip button{border:0;background:transparent;color:#476b60;font-size:18px;line-height:1;cursor:pointer;padding:0 2px}
+    .reply-link{display:inline-flex;align-items:center;gap:4px;margin-top:8px;padding:3px 9px;border:1px solid #b9d9cc;border-radius:999px;
+      background:#f4fbf8;color:#0f6f53;font:700 11.5px/1.4 inherit;cursor:pointer}
+    .reply-link:hover{background:#e3f4ec}
+    .quoted{display:block;margin-bottom:6px;padding-left:8px;border-left:2px solid currentColor;font-size:11.5px;opacity:.85}
+    /* Aviso do próprio sistema (agente sem conexão): dados do Health Center, não é texto do Optimus */
+    .message.system{justify-content:center}
+    .message.system .bubble{max-width:min(680px,92%);background:#fff7ed;color:#5b3412;border:1px solid #f3c99b;border-left:4px solid #d9771f;
+      border-radius:10px;font-size:13px;box-shadow:none}
+    .message.system .bubble .system-title{display:block;margin-bottom:4px;font-size:11px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:#b45d12}
+
+    .composer{
+      display:grid;
+      grid-template-columns:1fr auto;
+      gap:8px;
+      align-items:end;
+      max-width:980px;
+      margin:auto;
+    }
+
+    textarea{
+      width:100%;
+      min-height:44px;
+      max-height:140px;
+      resize:none;
+      border:1px solid #b8c9d2;
+      border-radius:10px;
+      padding:11px 12px;
+      font:inherit;
+      color:var(--text);
+      background:#fff;
+      outline:none;
+    }
+
+    textarea:focus{
+      border-color:var(--green);
+      box-shadow:0 0 0 3px #087f7218;
+    }
+
+    .send{
+      height:44px;
+      min-width:92px;
+      border:0;
+      border-radius:10px;
+      padding:0 16px;
+      background:var(--green);
+      color:#fff;
+      font:inherit;
+      font-weight:800;
+      cursor:pointer;
+    }
+
+    .send:hover{background:#066f64}
+    .send:disabled{opacity:.55;cursor:not-allowed}
+    .send.stop{background:#b42318}
+    .send.stop:hover{background:#912018}
+
+    .error-box{
+      display:none;
+      max-width:980px;
+      margin:0 auto 8px;
+      padding:8px 10px;
+      border-radius:8px;
+      color:#7e2020;
+      background:#fff1f1;
+      border:1px solid #efcaca;
+      font-size:12px;
+    }
+
+    .error-box.show{display:block}
+
+    @media(max-width:700px){
+      .optimus-title p{display:none}
+      .optimus-status{font-size:11px}
+      .messages{padding:12px}
+      .bubble{max-width:92%}
+      .composer-wrap{padding:9px}
+      .send{min-width:74px}
+    }
+  </style>
+</head>
+
+<body>
+  <header class="optimus-header">
+    <div class="optimus-title">
+      <div>
+        <h1>Optimus</h1>
+        <p>Especialista do Estoque Contábil</p>
+      </div>
+    </div>
+
+    <div class="optimus-status">
+      <span class="status-dot" id="status-dot"></span>
+      <span id="optimus-status-text">Inicializando</span>
+    </div>
+  </header>
+
+  <main class="chat-shell">
+    <div class="messages" id="messages">
+      <section class="welcome" id="welcome">
+        <h2>Como posso ajudar?</h2>
+        <p>
+          Consulte informações do Estoque Contábil e utilize o Optimus
+          para análises, consultas e ações autorizadas do sistema.
+        </p>
+      </section>
+    </div>
+
+    <div class="typing" id="typing">
+      <span>Optimus está analisando</span>
+      <span class="typing-dots"><span></span><span></span><span></span></span>
+    </div>
+
+    <div class="composer-wrap">
+      <div class="error-box" id="error-box"></div>
+      <div class="reply-chip" id="reply-chip" hidden>
+        <span>↩ Respondendo a: <b id="reply-chip-text"></b></span>
+        <button type="button" id="reply-cancel" aria-label="Cancelar resposta ao aviso" title="Cancelar">×</button>
+      </div>
+
+      <form class="composer" id="chat-form">
+        <textarea
+          id="chat-input"
+          maxlength="4000"
+          placeholder="Pergunte algo ao Optimus..."
+          aria-label="Mensagem para o Optimus"
+        ></textarea>
+
+        <button class="send" id="send-button" type="submit">Enviar</button>
+      </form>
+    </div>
+  </main>
+
+  <script>
+    const messagesEl=document.getElementById('messages');
+    // Sempre que o chat volta a ficar visível (ao abrir a página Optimus), mostra o fim do histórico.
+    // Com a página oculta a rolagem não tem altura e ficaria presa no início.
+    let messagesWasHidden=true;
+    new ResizeObserver(()=>{const hidden=messagesEl.clientHeight===0;if(messagesWasHidden&&!hidden)messagesEl.scrollTop=messagesEl.scrollHeight;messagesWasHidden=hidden}).observe(messagesEl);
+    const welcomeEl=document.getElementById('welcome');
+    const form=document.getElementById('chat-form');
+    const input=document.getElementById('chat-input');
+    const sendButton=document.getElementById('send-button');
+    const typing=document.getElementById('typing');
+    const statusText=document.getElementById('optimus-status-text');
+    const statusDot=document.getElementById('status-dot');
+    const errorBox=document.getElementById('error-box');
+
+    let csrfToken='';
+    let activeController=null;
+    let isProcessing=false;
+
+    function getSessionId(){
+      const key='ops_optimus_session_id';
+      let value=localStorage.getItem(key);
+
+      if(!value){
+        value=(crypto.randomUUID
+          ? crypto.randomUUID()
+          : 'optimus-'+Date.now()+'-'+Math.random().toString(36).slice(2));
+        localStorage.setItem(key,value);
+      }
+
+      return value;
+    }
+
+    const sessionId=getSessionId();
+    let fallbackPeriod='';
+
+    function getCurrentPeriod(){
+      try{
+        const parentPeriod=window.parent?.document?.getElementById('global-period')?.value||'';
+        if(/^\d{4}-\d{2}$/.test(parentPeriod))return parentPeriod;
+      }catch{}
+
+      const queryPeriod=new URLSearchParams(location.search).get('period')||'';
+      if(/^\d{4}-\d{2}$/.test(queryPeriod))return queryPeriod;
+
+      return /^\d{4}-\d{2}$/.test(fallbackPeriod)?fallbackPeriod:'';
+    }
+
+    function setStatus(text,type='online'){
+      statusText.textContent=text;
+      statusDot.classList.remove('online','error');
+
+      if(type==='online')statusDot.classList.add('online');
+      if(type==='error')statusDot.classList.add('error');
+    }
+
+    function showError(message=''){
+      errorBox.textContent=message;
+      errorBox.classList.toggle('show',Boolean(message));
+    }
+
+    function appendInlineMarkdown(container,text){
+      const source=String(text??'');
+      const tokenPattern=/(\[[^\]]+\]\((?:https?:\/\/[^\s)]+|\/api\/reports\/pdf\/download\?period=\d{4}-\d{2})\)|https?:\/\/[^\s<>"']+|\/api\/reports\/pdf\/download\?period=\d{4}-\d{2}|`[^`]+`|\*\*[^*]+\*\*|\*[^*]+\*)/gi;
+      let cursor=0;
+      let match;
+
+      const link=(href,label)=>{
+        const element=document.createElement('a');
+        element.href=href;
+        const isPdf=/^\/api\/reports\/pdf\/download\?period=\d{4}-\d{2}$/i.test(href);
+        element.textContent=isPdf&&label===href?'Baixar PDF':label;
+        if(isPdf){
+          element.className='pdf-download-link';
+          element.setAttribute('aria-label','Baixar relatório PDF');
+          element.addEventListener('click',async event=>{
+            event.preventDefault();
+            if(element.classList.contains('loading'))return;
+            const originalText=element.textContent;
+            element.classList.add('loading');
+            element.setAttribute('aria-busy','true');
+            element.textContent='Baixando PDF…';
+            showError('');
+            try{
+              const response=await fetch(href,{credentials:'same-origin'});
+              if(!response.ok){
+                let detail='Não foi possível preparar o PDF.';
+                try{detail=(await response.json()).detail||detail}catch{}
+                throw new Error(detail);
+              }
+              const contentType=String(response.headers.get('content-type')||'').toLowerCase();
+              if(!contentType.includes('application/pdf'))throw new Error('O servidor não retornou um arquivo PDF válido.');
+              const blob=await response.blob();
+              if(blob.size<1000)throw new Error('O PDF retornado está incompleto.');
+              const disposition=response.headers.get('content-disposition')||'';
+              const matched=disposition.match(/filename="?([^";]+)"?/i);
+              const period=new URL(href,location.origin).searchParams.get('period')||'relatorio';
+              const filename=matched?.[1]||`Relatorio_Estoque_Contabil_${period}.pdf`;
+              const objectUrl=URL.createObjectURL(blob),downloadLink=document.createElement('a');
+              downloadLink.href=objectUrl;
+              downloadLink.download=filename;
+              document.body.appendChild(downloadLink);
+              downloadLink.click();
+              downloadLink.remove();
+              setTimeout(()=>URL.revokeObjectURL(objectUrl),30000);
+              element.textContent='PDF baixado';
+              setTimeout(()=>{element.textContent=originalText},1800);
+            }catch(error){
+              showError(`Falha no download do PDF: ${error.message}`);
+              element.textContent='Tentar novamente';
+            }finally{
+              element.classList.remove('loading');
+              element.removeAttribute('aria-busy');
+              if(element.textContent==='Baixando PDF…')element.textContent=originalText;
+            }
+          });
+        }else{
+          element.target='_blank';
+          element.rel='noopener noreferrer';
+        }
+        return element;
+      };
+
+      while((match=tokenPattern.exec(source))!==null){
+        if(match.index>cursor){
+          container.appendChild(document.createTextNode(source.slice(cursor,match.index)));
+        }
+
+        const token=match[0];
+        const markdownLink=token.match(/^\[([^\]]+)\]\((https?:\/\/[^\s)]+|\/api\/reports\/pdf\/download\?period=\d{4}-\d{2})\)$/i);
+        let element;
+        let trailing='';
+
+        if(markdownLink){
+          element=link(markdownLink[2],markdownLink[1]);
+        }else if(/^https?:\/\//i.test(token)){
+          trailing=token.match(/[.,;:!?]+$/)?.[0]||'';
+          const href=trailing?token.slice(0,-trailing.length):token;
+          element=link(href,href);
+        }else if(/^\/api\/reports\/pdf\/download\?period=\d{4}-\d{2}$/i.test(token)){
+          element=link(token,token);
+        }else if(token.startsWith('`')){
+          element=document.createElement('code');
+          element.textContent=token.slice(1,-1);
+        }else if(token.startsWith('**')){
+          element=document.createElement('strong');
+          element.textContent=token.slice(2,-2);
+        }else{
+          element=document.createElement('em');
+          element.textContent=token.slice(1,-1);
+        }
+
+        container.appendChild(element);
+        if(trailing)container.appendChild(document.createTextNode(trailing));
+        cursor=match.index+token.length;
+      }
+
+      if(cursor<source.length){
+        container.appendChild(document.createTextNode(source.slice(cursor)));
+      }
+    }
+
+    function normalizeMarkdownSource(text){
+      return String(text??'')
+        .replace(/\r\n/g,'\n')
+        .replace(/\\([#|*_`>-])/g,'$1');
+    }
+
+    function splitTableRow(line){
+      let value=line.trim();
+      if(value.startsWith('|'))value=value.slice(1);
+      if(value.endsWith('|'))value=value.slice(0,-1);
+      return value.split('|').map(cell=>cell.trim());
+    }
+
+    function isTableSeparator(line){
+      const cells=splitTableRow(line);
+      return cells.length>0 && cells.every(cell=>/^:?-{3,}:?$/.test(cell.replace(/\s/g,'')));
+    }
+
+    function renderAssistantMarkdown(container,text){
+      const source=normalizeMarkdownSource(text);
+      const lines=source.split('\n');
+      let index=0;
+
+      while(index<lines.length){
+        const line=lines[index];
+        const trimmed=line.trim();
+
+        if(!trimmed){
+          index++;
+          continue;
+        }
+
+        const heading=trimmed.match(/^(#{1,4})\s+(.+)$/);
+        if(heading){
+          const node=document.createElement('h'+heading[1].length);
+          appendInlineMarkdown(node,heading[2]);
+          container.appendChild(node);
+          index++;
+          continue;
+        }
+
+        if(/^[-*_]{3,}$/.test(trimmed.replace(/\s/g,''))){
+          container.appendChild(document.createElement('hr'));
+          index++;
+          continue;
+        }
+
+        if(trimmed.includes('|') && index+1<lines.length && isTableSeparator(lines[index+1])){
+          const headers=splitTableRow(line);
+          const rows=[];
+          index+=2;
+
+          while(index<lines.length && lines[index].trim() && lines[index].includes('|')){
+            rows.push(splitTableRow(lines[index]));
+            index++;
+          }
+
+          const wrap=document.createElement('div');
+          wrap.className='markdown-table-wrap';
+          const table=document.createElement('table');
+          table.className='markdown-table';
+          const thead=document.createElement('thead');
+          const headerRow=document.createElement('tr');
+
+          headers.forEach(value=>{
+            const th=document.createElement('th');
+            appendInlineMarkdown(th,value);
+            headerRow.appendChild(th);
+          });
+
+          thead.appendChild(headerRow);
+          table.appendChild(thead);
+
+          const tbody=document.createElement('tbody');
+          rows.forEach(row=>{
+            const tr=document.createElement('tr');
+            headers.forEach((_,cellIndex)=>{
+              const td=document.createElement('td');
+              appendInlineMarkdown(td,row[cellIndex]??'');
+              tr.appendChild(td);
+            });
+            tbody.appendChild(tr);
+          });
+
+          table.appendChild(tbody);
+          wrap.appendChild(table);
+          container.appendChild(wrap);
+          continue;
+        }
+
+        const ordered=trimmed.match(/^(\d+)\.\s+(.+)$/);
+        const unordered=trimmed.match(/^[-*]\s+(.+)$/);
+
+        if(ordered || unordered){
+          const orderedList=Boolean(ordered);
+          const list=document.createElement(orderedList?'ol':'ul');
+
+          while(index<lines.length){
+            const current=lines[index].trim();
+            const match=orderedList
+              ? current.match(/^(\d+)\.\s+(.+)$/)
+              : current.match(/^[-*]\s+(.+)$/);
+            if(!match)break;
+
+            const li=document.createElement('li');
+            appendInlineMarkdown(li,orderedList?match[2]:match[1]);
+            list.appendChild(li);
+            index++;
+          }
+
+          container.appendChild(list);
+          continue;
+        }
+
+        const paragraph=document.createElement('p');
+        appendInlineMarkdown(paragraph,trimmed);
+        container.appendChild(paragraph);
+        index++;
+      }
+    }
+
+    // Conversa guardada no navegador (por usuário): outra aba ou uma nova abertura do
+    // sistema mostra a mesma conversa, em vez de um chat novo.
+    const HISTORY_HOURS=8,HISTORY_MAX=60;
+    let historyKey=null;
+
+    function loadHistory(){
+      if(!historyKey)return [];
+      try{
+        const saved=JSON.parse(localStorage.getItem(historyKey)||'null');
+        if(!saved||!Array.isArray(saved.messages))return [];
+        if(Date.now()-Number(saved.updated_at||0)>HISTORY_HOURS*3600*1000)return [];
+        return saved.messages.filter(item=>item&&typeof item.text==='string'&&(item.role==='user'||item.role==='assistant'||item.role==='system'));
+      }catch{return [];}
+    }
+
+    function saveHistory(role,text,meta={}){
+      if(!historyKey)return;
+      try{
+        const messages=loadHistory();
+        const item={role,text:String(text).slice(0,20000)};
+        // Vínculos com avisos proativos: o botão "Responder" e a citação voltam ao recarregar.
+        if(meta.offerId)item.offerId=String(meta.offerId);
+        if(meta.title)item.title=String(meta.title);
+        if(meta.replyTo){item.replyTo=String(meta.replyTo);item.replyPreview=String(meta.replyPreview||'')}
+        messages.push(item);
+        localStorage.setItem(historyKey,JSON.stringify({updated_at:Date.now(),messages:messages.slice(-HISTORY_MAX)}));
+      }catch{}
+    }
+
+    // Título curto do aviso (primeira linha, sem marcações) para a faixa "Respondendo a".
+    function warningPreview(text){
+      const line=String(text||'').split('\n').map(item=>item.replace(/[#*_`>\[\]]/g,'').trim()).find(Boolean)||'aviso do Optimus';
+      return line.length>90?line.slice(0,87)+'…':line;
+    }
+
+    let replyTo=null;
+    const replyChip=document.getElementById('reply-chip');
+    function setReplyTo(target){
+      replyTo=target;
+      replyChip.hidden=!target;
+      document.getElementById('reply-chip-text').textContent=target?target.preview:'';
+      if(target)input.focus();
+    }
+    document.getElementById('reply-cancel').addEventListener('click',()=>setReplyTo(null));
+
+    function addMessage(role,text,persist=true,meta={}){
+      if(persist)saveHistory(role,text,meta);
+      // Mensagem nova do Optimus: o menu do sistema conta como não lida se a pessoa não estiver olhando o chat.
+      if(persist&&role!=='user'){
+        try{const top=window.top||window;if(top!==window&&typeof top.registerOptimusMessage==='function')top.registerOptimusMessage()}catch{}
+      }
+      welcomeEl?.remove();
+
+      const wrapper=document.createElement('div');
+      wrapper.className='message '+role;
+
+      const bubble=document.createElement('div');
+      bubble.className='bubble';
+
+      if(role==='assistant'){
+        renderAssistantMarkdown(bubble,text);
+        if(meta.offerId){
+          const reply=document.createElement('button');
+          reply.type='button';
+          reply.className='reply-link';
+          reply.textContent='↩ Responder a este aviso';
+          reply.addEventListener('click',()=>setReplyTo({id:String(meta.offerId),preview:warningPreview(text)}));
+          bubble.appendChild(reply);
+        }
+      }else if(role==='system'){
+        const title=document.createElement('span');
+        title.className='system-title';
+        title.textContent=meta.title||'Aviso do sistema';
+        bubble.appendChild(title);
+        bubble.appendChild(document.createTextNode(text));
+      }else{
+        if(meta.replyPreview){
+          const quoted=document.createElement('span');
+          quoted.className='quoted';
+          quoted.textContent='↪ '+meta.replyPreview;
+          bubble.appendChild(quoted);
+        }
+        bubble.appendChild(document.createTextNode(text));
+      }
+
+      wrapper.appendChild(bubble);
+      messagesEl.appendChild(wrapper);
+      messagesEl.scrollTop=messagesEl.scrollHeight;
+    }
+
+    function extractAnswer(payload){
+      if(payload==null)return 'O Optimus não retornou conteúdo.';
+
+      if(typeof payload==='string')return payload;
+
+      if(Array.isArray(payload)){
+        for(const item of payload){
+          const answer=extractAnswer(item);
+          if(answer && answer!=='O Optimus não retornou conteúdo.')return answer;
+        }
+      }
+
+      if(typeof payload==='object'){
+        const preferred=['output','text','message','answer','response'];
+
+        for(const key of preferred){
+          if(key in payload){
+            const value=payload[key];
+
+            if(typeof value==='string' && value.trim())return value;
+            if(value && typeof value==='object')return extractAnswer(value);
+          }
+        }
+      }
+
+      try{
+        return JSON.stringify(payload,null,2);
+      }catch{
+        return String(payload);
+      }
+    }
+
+    function firstNameFromEmail(email){
+      const local=String(email||'').split('@')[0];
+      const token=(local.split(/[._\-]+/)[0]||'').replace(/[^A-Za-zÀ-ÿ]/g,'');
+      if(token.length<2)return '';
+      return token.charAt(0).toLocaleUpperCase('pt-BR')+token.slice(1).toLocaleLowerCase('pt-BR');
+    }
+
+    function dayGreeting(){
+      const hour=new Date().getHours();
+      return hour<12?'Bom dia':hour<18?'Boa tarde':'Boa noite';
+    }
+
+    // Saudação local (não passa pelo n8n): aparece a cada entrada no sistema,
+    // alternando o texto e sem repetir a variação mostrada na entrada anterior.
+    const GREETINGS=[
+      name=>`Olá${name}! Sobre o que vamos conversar hoje?`,
+      name=>`${dayGreeting()}${name}! O que você gostaria de analisar no Estoque Contábil hoje?`,
+      name=>`Oi${name}! Posso analisar o estoque, explicar uma regra ou consultar uma base. Por onde começamos?`,
+      name=>`Que bom ter você por aqui${name}! Qual competência ou indicador vamos explorar agora?`,
+      name=>`Olá${name}! Quer começar pelos números da competência ou por um material específico?`,
+      name=>`${dayGreeting()}${name}! Estou à disposição para ajudar com as bases e os relatórios. Qual é a sua dúvida?`
+    ];
+
+    function showGreeting(user){
+      const first=firstNameFromEmail(user?.email);
+      const name=first?`, ${first}`:'';
+      let last=-1;
+      try{last=Number(localStorage.getItem('opsOptimusLastGreeting'));}catch{}
+      let index=Math.floor(Math.random()*GREETINGS.length);
+      if(GREETINGS.length>1&&index===last)index=(index+1+Math.floor(Math.random()*(GREETINGS.length-1)))%GREETINGS.length;
+      try{localStorage.setItem('opsOptimusLastGreeting',String(index));}catch{}
+      typeGreeting(GREETINGS[index](name));
+    }
+
+    let finishGreeting=null;
+
+    function motionDisabled(){
+      if(window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches)return true;
+      try{
+        // Preferência "Ativar animações da interface" da página principal (mesma origem).
+        return window.parent!==window&&window.parent.document.body.classList.contains('no-motion');
+      }catch{return false;}
+    }
+
+    // O chat roda num iframe da página principal: só está visível quando o
+    // carregamento do sistema terminou e a página Optimus está aberta.
+    function chatVisible(){
+      if(document.visibilityState!=='visible')return false;
+      try{
+        if(window.parent===window)return true;
+        const loader=window.parent.document.getElementById('system-loader');
+        const frame=window.frameElement;
+        return (!loader||loader.classList.contains('hidden'))&&!!frame&&frame.getClientRects().length>0;
+      }catch{return true;}
+    }
+
+    function whenChatVisible(callback){
+      if(chatVisible()){callback();return;}
+      const timer=setInterval(()=>{
+        if(chatVisible()){clearInterval(timer);callback();}
+      },200);
+    }
+
+    // Escreve a saudação letra a letra, no ritmo de digitação de uma pessoa:
+    // intervalo variável entre teclas e pausas naturais após pontuação.
+    function typeGreeting(text){
+      welcomeEl?.remove();
+      const wrapper=document.createElement('div');
+      wrapper.className='message assistant';
+      const bubble=document.createElement('div');
+      bubble.className='bubble';
+      bubble.setAttribute('aria-label',text);
+      const content=document.createElement('span');
+      const caret=document.createElement('span');
+      caret.className='typing-caret';
+      caret.setAttribute('aria-hidden','true');
+      bubble.append(content,caret);
+      wrapper.appendChild(bubble);
+      messagesEl.appendChild(wrapper);
+
+      let index=0,timer=null;
+      const done=()=>{
+        clearTimeout(timer);
+        content.textContent=text;
+        caret.remove();
+        finishGreeting=null;
+      };
+      if(motionDisabled()){done();return;}
+      finishGreeting=done;
+
+      const step=()=>{
+        index++;
+        content.textContent=text.slice(0,index);
+        messagesEl.scrollTop=messagesEl.scrollHeight;
+        if(index>=text.length){timer=setTimeout(done,700);return;}
+        const typed=text[index-1];
+        let delay=85+Math.random()*70;
+        if(typed===',')delay+=260;
+        else if('!?.'.includes(typed))delay+=450;
+        timer=setTimeout(step,delay);
+      };
+      // Começa só quando a pessoa está vendo o chat (a tela de carregamento some em ~0,45 s).
+      whenChatVisible(()=>{
+        if(finishGreeting)timer=setTimeout(step,600);
+      });
+    }
+
+    async function initialize(){
+      try{
+        const response=await fetch('/api/auth/session',{
+          credentials:'same-origin'
+        });
+
+        const session=await response.json();
+        csrfToken=session.csrf_token||'';
+
+        try{
+          const configResponse=await fetch('/api/config',{credentials:'same-origin'});
+          if(configResponse.ok){
+            const config=await configResponse.json();
+            fallbackPeriod=String(config.default_period||'');
+          }
+        }catch{}
+
+        if(!session.authenticated){
+          setStatus('Sessão não autenticada','error');
+          showError('Entre no Estoque Contábil antes de utilizar o Optimus.');
+          sendButton.disabled=true;
+          input.disabled=true;
+          return;
+        }
+
+        setStatus('Online','online');
+        historyKey='ops_optimus_history:'+String(session.user?.email||'').toLowerCase()+':'+sessionId;
+        const previous=loadHistory();
+        if(previous.length){
+          previous.forEach(item=>addMessage(item.role,item.text,false,item));
+        }else{
+          showGreeting(session.user);
+        }
+        input.focus();
+        // Mensagens proativas (ex.: extração SAP falhou e o Optimus oferece importar a planilha já baixada).
+        pollProactive();
+        setInterval(pollProactive,15000);
+      }catch(error){
+        setStatus('Indisponível','error');
+        showError('Não foi possível inicializar a sessão do Optimus.');
+        sendButton.disabled=true;
+        input.disabled=true;
+      }
+    }
+
+    let proactiveBusy=false,offlineShown=false;
+    async function pollProactive(){
+      if(proactiveBusy||isProcessing)return;
+      proactiveBusy=true;
+      try{
+        const response=await fetch('/api/optimus/proactive?session_id='+encodeURIComponent(sessionId),{credentials:'same-origin'});
+        if(!response.ok)return;
+        const data=await response.json();
+        (data.messages||[]).forEach(item=>{
+          finishGreeting?.();
+          if(item.kind==='system'){addMessage('system',String(item.text||''),true,{title:item.title});return}
+          addMessage('assistant',String(item.text||''),true,{offerId:item.id});
+          if(item.notify)notifyIfAway(item.text,'Optimus: aviso');
+        });
+        // Agente sem conexão (VPN/n8n): o status do chat mostra até a conexão voltar.
+        if(data.offline===true&&!isProcessing){offlineShown=true;setStatus('Sem conexão (VPN / n8n)','error')}
+        else if(data.offline===false&&offlineShown&&!isProcessing){offlineShown=false;setStatus('Online','online')}
+      }catch{}finally{proactiveBusy=false}
+    }
+
+    // Avisa o sistema (menu lateral) que o Optimus está analisando: três pontinhos animados.
+    function signalBusy(busy){
+      try{
+        const top=window.top||window;
+        if(top!==window&&typeof top.setOptimusBusy==='function')top.setOptimusBusy(busy);
+      }catch{}
+    }
+    signalBusy(false);
+    window.addEventListener('pagehide',()=>signalBusy(false));
+
+    function setProcessing(processing){
+      isProcessing=processing;
+      signalBusy(processing);
+      typing.classList.toggle('show',processing);
+      sendButton.disabled=false;
+      sendButton.classList.toggle('stop',processing);
+      sendButton.textContent=processing?'Parar':'Enviar';
+      sendButton.type=processing?'button':'submit';
+      input.disabled=processing;
+    }
+
+    function stopProcessing(){
+      if(!isProcessing)return;
+      activeController?.abort();
+      activeController=null;
+      setProcessing(false);
+      setStatus('Interrompido','online');
+      showError('');
+      input.focus();
+    }
+
+    // Notificação do Windows quando a resposta chega e o usuário não está olhando o chat
+    // (outra janela, aba minimizada ou outra página do sistema).
+    function userIsAway(){
+      try{
+        const top=window.top||window;
+        if(top.document.hidden||!top.document.hasFocus())return true;
+        const panel=top.document.querySelector('[data-panel="agent"]');
+        if(panel&&!panel.classList.contains('active'))return true;
+      }catch{
+        return document.hidden||!document.hasFocus();
+      }
+      return false;
+    }
+
+    function notifyIfAway(answer,title){
+      if(!userIsAway())return;
+      const text=String(answer||'').replace(/[#*_`>\[\]]/g,' ').replace(/\(https?:[^)]+\)/g,' ');
+      fetch('/api/optimus/notify',{method:'POST',credentials:'same-origin',
+        headers:{'Content-Type':'application/json','X-CSRF-Token':csrfToken},
+        body:JSON.stringify({text:text.slice(0,4000),...(title?{title}:{})})}).catch(()=>{});
+    }
+
+    async function sendMessage(message,reply=null){
+      finishGreeting?.();
+      showError('');
+      setStatus('Analisando sua consulta','online');
+      activeController=new AbortController();
+      setProcessing(true);
+
+      try{
+        const response=await fetch('/api/optimus/chat',{
+          method:'POST',
+          credentials:'same-origin',
+          signal:activeController.signal,
+          headers:{
+            'Content-Type':'application/json',
+            'X-CSRF-Token':csrfToken
+          },
+          body:JSON.stringify({
+            message,
+            session_id:sessionId,
+            period:getCurrentPeriod(),
+            ...(reply?{reply_to:reply.id}:{})
+          })
+        });
+
+        let body;
+
+        try{
+          body=await response.json();
+        }catch{
+          body={detail:'Resposta inválida do servidor local.'};
+        }
+
+        if(!response.ok){
+          const failure=new Error(body.detail||'Falha ao consultar o Optimus.');
+          failure.httpStatus=response.status;
+          throw failure;
+        }
+
+        const answer=extractAnswer(body.response);
+        addMessage('assistant',answer);
+        setStatus('Online','online');
+        notifyIfAway(answer);
+      }catch(error){
+        if(error?.name==='AbortError')return;
+        if(error?.httpStatus===504)setStatus('Tempo esgotado','error');
+        else if(error?.httpStatus===502||error?.httpStatus===503)setStatus('Serviço indisponível','error');
+        else if(error?.httpStatus===401)setStatus('Sessão expirada','error');
+        else if(error?.httpStatus===403)setStatus('Acesso negado','error');
+        else if(error instanceof TypeError)setStatus('Sistema local indisponível','error');
+        else setStatus('Falha na consulta','error');
+        showError(error.message||'Não foi possível obter a resposta do Optimus.');
+      }finally{
+        activeController=null;
+        if(isProcessing)setProcessing(false);
+        input.focus();
+      }
+    }
+
+    sendButton.addEventListener('click',event=>{
+      if(isProcessing){
+        event.preventDefault();
+        stopProcessing();
+      }
+    });
+
+    form.addEventListener('submit',async event=>{
+      event.preventDefault();
+
+      if(isProcessing){
+        stopProcessing();
+        return;
+      }
+
+      const message=input.value.trim();
+      if(!message)return;
+
+      const reply=replyTo;
+      addMessage('user',message,true,reply?{replyTo:reply.id,replyPreview:reply.preview}:{});
+      setReplyTo(null);
+      input.value='';
+      input.style.height='44px';
+
+      await sendMessage(message,reply);
+    });
+
+    input.addEventListener('keydown',event=>{
+      if(event.key==='Enter' && !event.shiftKey){
+        event.preventDefault();
+        form.requestSubmit();
+      }
+    });
+
+    input.addEventListener('input',()=>{
+      input.style.height='44px';
+      input.style.height=Math.min(input.scrollHeight,140)+'px';
+    });
+
+    initialize();
+  </script>
+</body>
+</html>

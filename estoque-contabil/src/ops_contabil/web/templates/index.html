@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Ops Contábil</title>
+  <style>
+    :root { color-scheme: light; --ink:#132238; --muted:#5e6b7a; --bg:#f3f6f9; --card:#fff; --accent:#0b6b5c; }
+    * { box-sizing:border-box; } body { margin:0; font:15px/1.5 "Segoe UI",sans-serif; color:var(--ink); background:var(--bg); }
+    header { background:#102a43; color:white; padding:24px 5vw; } h1 { margin:0; font-size:26px; } header p { margin:4px 0 0; opacity:.8; }
+    main { max-width:1100px; margin:32px auto; padding:0 24px; }
+    .grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(230px,1fr)); gap:16px; }
+    .card { background:var(--card); padding:20px; border-radius:12px; box-shadow:0 4px 18px #102a4312; }
+    .label { color:var(--muted); font-size:13px; text-transform:uppercase; letter-spacing:.05em; }
+    .value { margin-top:8px; font-size:22px; font-weight:650; } .ok { color:var(--accent); }
+    section { margin-top:24px; } code { background:#e9eef4; padding:2px 5px; border-radius:4px; }
+  </style>
+</head>
+<body>
+  <header><h1>Ops Contábil</h1><p>Automação de estoque, movimentos e controles contábeis</p></header>
+  <main>
+    <div class="grid">
+      <div class="card"><div class="label">Aplicação</div><div class="value ok">Disponível</div></div>
+      <div class="card"><div class="label">Motor de dados</div><div class="value">DuckDB + Parquet</div></div>
+      <div class="card"><div class="label">Fontes piloto</div><div class="value">ZMM119, MB59, All Brazil</div></div>
+      <div class="card"><div class="label">Modo</div><div class="value">Mapeamento</div></div>
+    </div>
+    <section class="card">
+      <h2>Próximo marco</h2>
+      <p>Homologar chaves, regras e totais de controle descritos em <code>docs/MAPEAMENTO_DADOS.md</code>. Depois disso, a ingestão e a geração do Excel-modelo serão ativadas por competência.</p>
+    </section>
+  </main>
+</body>
+</html>

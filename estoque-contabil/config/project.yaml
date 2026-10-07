@@ -1,0 +1,53 @@
+project:
+  name: Ops Contábil
+  timezone: America/Sao_Paulo
+  database: data/processed/ops_contabil.duckdb
+  inbox: data/inbox
+  processed: data/processed
+  output: data/output
+  logs: logs
+
+sources:
+  zmm119:
+    kind: sap_gui
+    transaction: ZMM119
+    target_dataset: posicao_estoque
+    export_directory: data/inbox/zmm119
+    template_workbook: "Posição de Estoque - FISIA.xlsb"
+    target_sheet: null
+    enabled: true
+  mb59:
+    kind: sap_gui
+    transaction: MB59
+    variant: BASE GR
+    target_dataset: movimentos_material
+    export_directory: data/inbox/mb59
+    template_workbook: "MB59_BASE GR - SEASON.XLSX"
+    target_sheet: null
+    enabled: true
+  all_brazil_materials:
+    kind: drive_folder
+    drive_id: "0ADIjoKAVEyzXUk9PVA"
+    drive_name: "@All Brazil Materials"
+    local_root: "%OPS_ALL_BRAZIL_ROOT%"
+    selection_rule: latest_snapshot_on_or_before_sap_as_of
+    sheet: Data
+    join_left: "Material exato; fallback LEFT(material, 10)"
+    join_right: "Material Nbr"
+    target_dataset: cadastro_materiais
+    enabled: true
+
+runtime:
+  stable_file_seconds: 10
+  excel_timeout_seconds: 900
+  sap_timeout_seconds: 300
+  keep_raw_files: true
+  overwrite_outputs: false
+
+agent:
+  enabled: true
+  provider: google_gemini_via_n8n
+  model: selected_in_n8n_credentials
+  allow_row_level_data: false
+  maximum_evidence_rows: 50
+  read_only: true

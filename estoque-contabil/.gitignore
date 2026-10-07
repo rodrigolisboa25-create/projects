@@ -1,0 +1,15 @@
+.venv/
+__pycache__/
+*.py[cod]
+.env
+data/inbox/**/*
+data/processed/**/*
+data/output/**/*
+logs/**/*
+reports/*.json
+!data/inbox/.gitkeep
+!data/processed/.gitkeep
+!data/output/.gitkeep
+!logs/.gitkeep
+*.duckdb
+~$*

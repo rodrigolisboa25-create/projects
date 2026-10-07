@@ -1,0 +1,514 @@
+{
+ "title": "Especificação Técnico-Documental — Estoque Contábil",
+ "doc_version": "1.5",
+ "version": "20261007T095043-080a9b9bab",
+ "generated_at": "2026-10-07T09:50:43-03:00",
+ "source_name": "Especificacao_Tecnico_Documental_Estoque_Contabil.docx",
+ "source_sha256": "080a9b9bab71e02f78fed4ca72167eb613f0ee8cfac2d6be19a91da8f05a9acb",
+ "source_modified": "2026-10-07T09:44:40-03:00",
+ "pdf_name": "Especificacao_Tecnico_Documental_Estoque_Contabil.pdf",
+ "pdf_sha256": "e4882152e9d2f65b1452b7c3aa246198b2b5b3a57f53f225eeedd137a8fedc3a",
+ "pdf_size": 1055779,
+ "pages": 36,
+ "summary_pages_fixed": 0,
+ "outline": [
+  {
+   "title": "Controle do documento",
+   "level": 1,
+   "page": 2
+  },
+  {
+   "title": "Sumário",
+   "level": 1,
+   "page": 2
+  },
+  {
+   "title": "1. Visão geral e objetivo",
+   "level": 1,
+   "page": 4
+  },
+  {
+   "title": "2. Escopo funcional e entregas",
+   "level": 1,
+   "page": 4
+  },
+  {
+   "title": "3. Arquitetura tecnológica",
+   "level": 1,
+   "page": 4
+  },
+  {
+   "title": "4. Estrutura do Google Drive e armazenamento",
+   "level": 1,
+   "page": 5
+  },
+  {
+   "title": "4.1 Projeto de código e documentação",
+   "level": 2,
+   "page": 5
+  },
+  {
+   "title": "4.2 Ponte operacional entre máquinas",
+   "level": 2,
+   "page": 6
+  },
+  {
+   "title": "5. Instalação, atualização e runtime local",
+   "level": 1,
+   "page": 6
+  },
+  {
+   "title": "6. Fontes de dados e contratos",
+   "level": 1,
+   "page": 7
+  },
+  {
+   "title": "6.1 ZMM119 – Transação SAP",
+   "level": 2,
+   "page": 7
+  },
+  {
+   "title": "6.2 MB59 - Transação SAP",
+   "level": 2,
+   "page": 7
+  },
+  {
+   "title": "6.3 All Brazil",
+   "level": 2,
+   "page": 7
+  },
+  {
+   "title": "6.4 Mapping",
+   "level": 2,
+   "page": 7
+  },
+  {
+   "title": "7. Fluxo de processamento e consolidação",
+   "level": 1,
+   "page": 8
+  },
+  {
+   "title": "8. Regras de negócio e cálculos",
+   "level": 1,
+   "page": 8
+  },
+  {
+   "title": "8.1 Faixas padrão de Aging",
+   "level": 2,
+   "page": 9
+  },
+  {
+   "title": "8.2 PASSO A PASSO",
+   "level": 2,
+   "page": 9
+  },
+  {
+   "title": "9. Páginas do sistema",
+   "level": 1,
+   "page": 9
+  },
+  {
+   "title": "9.1 Documentação",
+   "level": 2,
+   "page": 10
+  },
+  {
+   "title": "10. Visão e relatórios",
+   "level": 1,
+   "page": 11
+  },
+  {
+   "title": "11. Base de estoque",
+   "level": 1,
+   "page": 12
+  },
+  {
+   "title": "12. Extrações SAP",
+   "level": 1,
+   "page": 12
+  },
+  {
+   "title": "12.1 ZMM119 — posição de estoque",
+   "level": 2,
+   "page": 12
+  },
+  {
+   "title": "12.2 MB59 — movimentos de material",
+   "level": 2,
+   "page": 12
+  },
+  {
+   "title": "12.3 Automação de exportação",
+   "level": 2,
+   "page": 13
+  },
+  {
+   "title": "12.4 Upload contingencial",
+   "level": 2,
+   "page": 13
+  },
+  {
+   "title": "13. Bases All Brazil",
+   "level": 1,
+   "page": 13
+  },
+  {
+   "title": "14. Mapping",
+   "level": 1,
+   "page": 13
+  },
+  {
+   "title": "15. Controles e auditoria",
+   "level": 1,
+   "page": 14
+  },
+  {
+   "title": "16. Health Center",
+   "level": 1,
+   "page": 14
+  },
+  {
+   "title": "17. Optimus — agente contábil",
+   "level": 1,
+   "page": 15
+  },
+  {
+   "title": "17.1 Visão geral e ferramentas locais",
+   "level": 2,
+   "page": 15
+  },
+  {
+   "title": "17.2 Interface do chat",
+   "level": 2,
+   "page": 16
+  },
+  {
+   "title": "17.3 Protocolo de ações e confirmação",
+   "level": 2,
+   "page": 16
+  },
+  {
+   "title": "17.4 Importação contingencial de planilhas já baixadas",
+   "level": 2,
+   "page": 16
+  },
+  {
+   "title": "17.5 Optimus proativo: arquitetura",
+   "level": 2,
+   "page": 17
+  },
+  {
+   "title": "17.6 Evento: falha de extração SAP com planilha já salva",
+   "level": 2,
+   "page": 17
+  },
+  {
+   "title": "17.7 Evento: All Brazil mais nova que a usada no enriquecimento",
+   "level": 2,
+   "page": 18
+  },
+  {
+   "title": "17.8 Evento: centros sem regra no Mapping",
+   "level": 2,
+   "page": 18
+  },
+  {
+   "title": "17.9 Evento: linhas da Base de Estoque sem preenchimento",
+   "level": 2,
+   "page": 18
+  },
+  {
+   "title": "17.10 Evento: indicadores do Health Center",
+   "level": 2,
+   "page": 18
+  },
+  {
+   "title": "17.11 Evento: fechamento — competência do mês anterior não compilada",
+   "level": 2,
+   "page": 18
+  },
+  {
+   "title": "17.12 Evento: qualidade da All Brazil",
+   "level": 2,
+   "page": 18
+  },
+  {
+   "title": "17.13 Evento: variações relevantes e risco de obsolescência",
+   "level": 2,
+   "page": 18
+  },
+  {
+   "title": "17.14 Evento: extração SAP travada",
+   "level": 2,
+   "page": 19
+  },
+  {
+   "title": "17.15 Eventos informativos: nova competência e nova Documentação",
+   "level": 2,
+   "page": 19
+  },
+  {
+   "title": "17.16 Ação: reprocessar os joins",
+   "level": 2,
+   "page": 19
+  },
+  {
+   "title": "17.17 Ação: incluir ou alterar regra de Mapping",
+   "level": 2,
+   "page": 19
+  },
+  {
+   "title": "17.18 Ação: sincronizar a ponte e fazer backup agora",
+   "level": 2,
+   "page": 19
+  },
+  {
+   "title": "17.19 Ação: backup programado",
+   "level": 2,
+   "page": 19
+  },
+  {
+   "title": "17.20 Ação: acessos corporativos",
+   "level": 2,
+   "page": 19
+  },
+  {
+   "title": "17.21 Ação: preferências deste computador",
+   "level": 2,
+   "page": 19
+  },
+  {
+   "title": "17.22 Consultas de apoio do agente",
+   "level": 2,
+   "page": 19
+  },
+  {
+   "title": "17.23 Segurança e limites",
+   "level": 2,
+   "page": 20
+  },
+  {
+   "title": "17.24 Optimus sem conexão (VPN / n8n)",
+   "level": 2,
+   "page": 20
+  },
+  {
+   "title": "18. Configurações, competências, ponte, backup e restauração",
+   "level": 1,
+   "page": 20
+  },
+  {
+   "title": "18.1 Interface e experiência",
+   "level": 2,
+   "page": 20
+  },
+  {
+   "title": "18.2 Instalador",
+   "level": 2,
+   "page": 21
+  },
+  {
+   "title": "18.3 Competências compiladas",
+   "level": 2,
+   "page": 21
+  },
+  {
+   "title": "18.4 Ponte de dados — Drive compartilhado",
+   "level": 2,
+   "page": 21
+  },
+  {
+   "title": "18.5 Backup programado",
+   "level": 2,
+   "page": 21
+  },
+  {
+   "title": "18.6 Restauração",
+   "level": 2,
+   "page": 21
+  },
+  {
+   "title": "18.7 Acesso corporativo",
+   "level": 2,
+   "page": 21
+  },
+  {
+   "title": "18.8 Lista central de acessos",
+   "level": 2,
+   "page": 22
+  },
+  {
+   "title": "18.9 Notificações do Windows",
+   "level": 2,
+   "page": 22
+  },
+  {
+   "title": "19. Segurança, autenticação e permissões",
+   "level": 1,
+   "page": 23
+  },
+  {
+   "title": "20. API e rotas observadas",
+   "level": 1,
+   "page": 23
+  },
+  {
+   "title": "21. Workflow n8n — desenho e nós",
+   "level": 1,
+   "page": 24
+  },
+  {
+   "title": "21.1 Identificação e estado do workflow",
+   "level": 2,
+   "page": 25
+  },
+  {
+   "title": "21.2 Fluxo operacional correto",
+   "level": 2,
+   "page": 25
+  },
+  {
+   "title": "21.3 Nós, tipos e parâmetros",
+   "level": 2,
+   "page": 26
+  },
+  {
+   "title": "21.4 Roteamento e conexões",
+   "level": 2,
+   "page": 26
+  },
+  {
+   "title": "21.5 Parâmetros do chat Optimus",
+   "level": 2,
+   "page": 27
+  },
+  {
+   "title": "21.6 Detecção do retorno local",
+   "level": 2,
+   "page": 28
+  },
+  {
+   "title": "21.7 Protocolo de ações do Optimus",
+   "level": 2,
+   "page": 28
+  },
+  {
+   "title": "21.8 Ramificação PDF",
+   "level": 2,
+   "page": 29
+  },
+  {
+   "title": "21.9 Ramificação Google Slides",
+   "level": 2,
+   "page": 29
+  },
+  {
+   "title": "21.10 Marcadores substituídos no Google Slides",
+   "level": 2,
+   "page": 29
+  },
+  {
+   "title": "21.11 Resposta final da apresentação",
+   "level": 2,
+   "page": 30
+  },
+  {
+   "title": "22. Artefatos executivos — PDF, HTML e Google Slides",
+   "level": 1,
+   "page": 30
+  },
+  {
+   "title": "22.1 Apresentação executiva",
+   "level": 2,
+   "page": 31
+  },
+  {
+   "title": "23. Arquivos do projeto e responsabilidades",
+   "level": 1,
+   "page": 31
+  },
+  {
+   "title": "23.1 Documentos e artefatos principais no Drive",
+   "level": 2,
+   "page": 31
+  },
+  {
+   "title": "23.2 Manifesto do pacote Python",
+   "level": 2,
+   "page": 32
+  },
+  {
+   "title": "24. Dependências técnicas",
+   "level": 1,
+   "page": 33
+  },
+  {
+   "title": "25. Operação, contingência e suporte",
+   "level": 1,
+   "page": 33
+  },
+  {
+   "title": "Anexo A. Árvore técnica do projeto",
+   "level": 1,
+   "page": 34
+  },
+  {
+   "title": "Anexo B. Catálogo de campos da ZMM119",
+   "level": 1,
+   "page": 35
+  },
+  {
+   "title": "Anexo C. Marcadores do template executivo",
+   "level": 1,
+   "page": 35
+  },
+  {
+   "title": "Anexo D. Glossário",
+   "level": 1,
+   "page": 36
+  },
+  {
+   "title": "Fontes documentais consolidadas",
+   "level": 1,
+   "page": 36
+  }
+ ],
+ "page_text": [
+  "/\nESTOQUE CONTÁBIL\nEspecificação Técnico-Documental\nArquitetura, funcionalidades, páginas, parâmetros, dados, integrações, arquivos, Drive, n8n, segurança, instalação e operação\nVersão documental 1.5 • 07 de outubro de 2026\nBaseada na estrutura atual do projeto no Google Drive e nos artefatos operacionais do sistema",
+  "Controle do documento\nItem\nDescrição\nDocumento\nEspecificação Técnico-Documental — Estoque Contábil\nVersão\n1.2\nData de consolidação\n02/10/2026\nResponsável técnico\nRodrigo Lisboa (rodrigo.lisboa@gruposbf.com.br)\nEscopo\nAplicação local, dados, SAP, All Brazil, Mapping, DuckDB, Drive compartilhado, backup, instalação, Optimus e n8n\nFontes principais\nREADME.md; ARQUITETURA_FINAL.md; MAPEAMENTO_DADOS.md; manual_sistema.md; dashboard.html; optimus.html; ARTIFATOS_RELATORIO.md; manifesto SOURCES.txt; workflow n8n acessível e configuração atual\nCritério de prevalência\nArquivos mais recentes do Drive e comportamento atual da interface prevalecem sobre documentos históricos. Divergências relevantes são registradas neste documento.\nNota de inventário: O inventário cobre arquivos de aplicação, configuração, documentação e artefatos do projeto identificados no Drive e no manifesto do pacote. Dependências internas da .venv, __pycache__ e arquivos intermediários de build não são listados um a um, pois são gerados automaticamente e não constituem código-fonte funcional do sistema.\nSumário\n1. Visão geral e objetivo 4\n2. Escopo funcional e entregas 4\n3. Arquitetura tecnológica 4\n4. Estrutura do Google Drive e armazenamento 5\n5. Instalação, atualização e runtime local 6\n6. Fontes de dados e contratos 7\n7. Fluxo de processamento e consolidação 8\n8. Regras de negócio e cálculos 8\n9. Páginas do sistema 9\n10. Visão e relatórios 11\n11. Base de estoque 12\n12. Extrações SAP 12\n13. Bases All Brazil 13\n14. Mapping 13\n15. Controles e auditoria 14\n16. Health Center 14\n17. Optimus — agente contábil 15\n18. Configurações, competências, ponte, backup e restauração 20",
+  "19. Segurança, autenticação e permissões 23\n20. API e rotas observadas 23\n21. Workflow n8n — desenho e nós 24\n22. Artefatos executivos — PDF, HTML e Google Slides 30\n23. Arquivos do projeto e responsabilidades 31\n24. Dependências técnicas 33\n25. Operação, contingência e suporte 33\nAnexo A. Árvore técnica do projeto 34\nAnexo B. Catálogo de campos da ZMM119 35\nAnexo C. Marcadores do template executivo 35\nAnexo D. Glossário 36",
+  "1. Visão geral e objetivo\nO Estoque Contábil é uma plataforma local em Python/FastAPI criada para substituir o processamento pesado de planilhas contábeis de posição de estoque, automatizar extrações SAP, consolidar regras de negócio e disponibilizar consultas, controles e análises auditáveis em uma interface web local.\nA aplicação roda na máquina do usuário e abre no navegador em http://127.0.0.1:8765. O processamento principal é local: o Excel deixa de ser o motor de cálculo e passa a ser uma fonte legada, uma entrada de contingência ou um formato de exportação.\nO escopo atual está centrado na posição contábil de estoque da Fisia, empresa 7170. O fluxo operacional combina ZMM119, MB59/Base GR, cadastro All Brazil, Mapping e posição anterior para gerar uma base consolidada por competência, armazenada em DuckDB e consumida pelas páginas analíticas e pelo Optimus.\nPrincípio arquitetural: Python processa arquivos e dados pesados. O n8n orquestra a conversa do Optimus e a criação de artefatos externos. O Google Drive do projeto não é requisito para o uso diário de uma máquina já instalada.\n2. Escopo funcional e entregas\nAs entregas ativas do sistema podem ser agrupadas em processamento, análise, governança, distribuição e inteligência.\nEixo\nEntrega\nProcessamento\nExtração automática e upload contingencial de ZMM119 e MB59; importação; validação; joins; cálculos; persistência em DuckDB.\nAnálise\nKPIs, gráficos históricos, análises por Lifecycle, Aging, Division, Centro, Local, Origem, Season, PMM e composição de custo.\nBase detalhada\nGrade online com filtros, busca, paginação, agrupamento de colunas, pendências de joins e exportação XLSX.\nGovernança\nContratos de colunas, rastreabilidade de fontes, status operacional, consistência All Brazil e controles por competência.\nOperação multiusuário\nInstalador, ponte de dados via Drive compartilhado, sincronização de competências, backups e restauração.\nInteligência\nOptimus para consulta de dados, regras, fontes, operação, SAP, PDF e apresentações executivas.\nDistribuição\nHTML autônomo para compartilhamento, PDF autenticado, XLSX filtrado e Google Slides executivo.\n3. Arquitetura tecnológica\nA arquitetura atual é deliberadamente local-first. Cada máquina mantém sua própria aplicação e banco compilado, reduzindo dependência de serviços externos para a consulta diária.",
+  "SAP GUI / XLSX / All Brazil / Mapping\n ↓\n landing local + validações\n ↓\n importação e contratos\n ↓\n DuckDB + Parquet / competências\n ↓\n FastAPI + dashboard local (127.0.0.1:8765)\n ↙ ↓ ↘\n páginas Optimus/n8n exportações\n ↓\n Google Slides / PDF\nEntre máquinas:\nDuckDB local ⇄ Ponte Estoque_Cont no Drive compartilhado\nTecnologia\nPapel\nPython 3.12/3.13\nRuntime e processamento.\nFastAPI\nServidor local e API.\nDuckDB\nBanco analítico/local das competências.\nParquet / PyArrow\nTransporte e fotografia de dados por competência.\nOpenPyXL / pyxlsb\nLeitura e exportação de planilhas.\npywin32\nAutomação Windows/SAP GUI e integrações locais.\nHTML/CSS/JavaScript\nInterface web.\nn8n\nOrquestração do agente e materialização de apresentações.\nGemini via gateway corporativo\nModelo de linguagem do Optimus no workflow.\nGoogle Drive / Google Slides\nTemplate, apresentações e transporte entre máquinas.\nMicrosoft Edge headless\nGeração local do PDF e do HTML com os gráficos do dashboard.\n4. Estrutura do Google Drive e armazenamento\n4.1 Projeto de código e documentação\nO projeto está armazenado na pasta compartilhada Estoque-contabil. Esta pasta é usada pela manutenção/desenvolvimento e não precisa ser acessível aos usuários finais instalados.\nEstoque-contabil/\n├─ README.md\n├─ ARQUITETURA_FINAL.md\n├─ MAPEAMENTO_DADOS.md\n├─ MB59_BASE GR - SEASON.XLSX\n├─ TEMPLATE - Estoque Contábil - Apresentação Executiva\n├─ config/\n├─ src/\n│ └─ ops_contabil/\n│ ├─ extractors/",
+  "│ ├─ ingestion/\n│ ├─ sources/\n│ └─ web/templates/\n├─ n8n/\n│ ├─ ARTIFATOS_RELATORIO.md\n│ └─ workflows/\n├─ data/\n│ ├─ inbox/\n│ ├─ processed/\n│ └─ output/\n├─ installer/\n├─ build/\n├─ dist/\n├─ reports/\n├─ logs/\n├─ shared_data/\n├─ tests/\n├─ sql/\n├─ tools/\n├─ docs/\n├─ .venv/\n└─ caches / artefatos de build\nO template executivo atual é uma apresentação Google Slides separada, mantida no projeto e usada como base para cópias geradas pelo n8n.\n4.2 Ponte operacional entre máquinas\nA sincronização de dados compilados não usa a pasta de código. O sistema usa uma pasta de Drive compartilhado, chamada Estoque_Cont como meio de transporte. Cada máquina continua dona do próprio banco local.\nAo concluir uma atualização local, a competência é exportada em Parquet para períodos\\AAAA-MM\\<versão> e o ponteiro atual.json é atualizado somente depois da validação de tamanho e SHA-256. As três versões mais recentes são mantidas. O recebimento ocorre na inicialização, no login e em ciclos aproximados de dois minutos.\nNada é apagado localmente por ausência ou falha no Drive.\nPreferências, Mapping e auditoria permanecem locais; usuários e permissões seguem a lista central de acessos (seção 18.8).\nPara a mesma competência prevalece a versão mais recente; versões anteriores ficam no histórico do Drive.\nA contingência permite selecionar outra pasta e deixar pasta_movida.json na localização anterior.\nA subpasta documentacao transporta a versão mais recente do PDF desta especificação para a página Documentação.\nA subpasta acesso guarda a lista central de acessos: um arquivo por máquina de administrador (acesso\\alteracoes\\<COMPUTADOR>.json).\n5. Instalação, atualização e runtime local\nO primeiro acesso ocorre pelo pacote INSTALAR_ESTOQUE_CONTABIL.zip, distribuído por um administrador. Depois de extraído, o usuário executa INSTALAR_ESTOQUE_CONTABIL.bat.",
+  "1. Localiza Python 3.12/3.13 ou instala Python 3.13 por winget.\n2. Cria ambiente virtual em %LOCALAPPDATA%\\OpsContabil\\runtime\\.venv.\n3. Instala dependências e valida importações essenciais.\n4. Publica o código de forma transacional em %LOCALAPPDATA%\\OpsContabil\\runtime\\app.\n5. Instala uma fotografia consistente das competências compiladas para o primeiro acesso.\n6. Preserva dados locais mais novos em atualizações.\n7. Cria o atalho Estoque Contábil na Área de Trabalho.\nO banco compilado reside em %LOCALAPPDATA%\\OpsContabil\\processed\\ops_contabil.duckdb. Logs de instalação e inicialização ficam em %LOCALAPPDATA%\\OpsContabil\\logs. Para manutenção administrativa diretamente no projeto existe ABRIR_ESTOQUE_CONTABIL.bat.\nAtualização segura: Antes de aplicar competências do pacote a um banco existente, o sistema mantém uma cópia de segurança e atualiza apenas competências ausentes ou mais recentes que as locais. Dados operacionais locais mais novos não são apagados.\n6. Fontes de dados e contratos\n6.1 ZMM119 – Transação SAP\nFonte principal da posição de estoque. O contrato é posicional A:R, com 18 colunas fixas. Os cabeçalhos atuam como assinatura de segurança: mudança de ordem ou quantidade bloqueia a importação. Somente registros da empresa 7170 entram na Base de Estoque.\n6.2 MB59 - Transação SAP\nFonte de movimentos de material da competência. Usa variante BASE GR por padrão e chave CE & MAT. As colunas são resolvidas por nomes normalizados e aliases. Product Offer End Date, Season e Year são opcionais: quando ausentes, o PASSO A PASSO continua para a posição anterior e o All Brazil.\n6.3 All Brazil\nCadastro mestre de materiais disponível no drive em @All Brazil Materials, organizado por ano/mês. O sistema usa somente o snapshot mais recente do mesmo mês cuja data seja menor ou igual à data-base.\nO relacionamento não utiliza Centro. A implementação atual documentada em 29/09 tenta Material completo = Material Nbr e, quando o SKU completo não existe no cadastro, utiliza Estilo-Cor de 10 caracteres como fallback.\n6.4 Mapping\nQuatro conjuntos editáveis substituem a antiga aba (da planilha primária do projeto) Mapping: faixas de aging, planta/local, lifecycle e status da operação. Alterações recalculam todas as competências compiladas e não modificam as colunas-fonte de SAP, MB59 ou All Brazil.",
+  "7. Fluxo de processamento e consolidação\n1. MB59/Base GR é extraída ou carregada e validada.\n2. ZMM119 é extraída ou carregada; registros diferentes da empresa 7170 são descartados.\n3. All Brazil seleciona o snapshot válido da competência/data-base.\n4. PASSO A PASSO preenche Product Offer End Date, Season e Year por campo: MB59 → posição anterior → All Brazil.\n5. Mapping e fórmulas calculam campos auxiliares, custos, Aging, Lifecycle, Local e STATUS OPERAÇÃO.\n6. Dados consolidados são gravados no DuckDB e disponibilizados à interface.\n7. A competência atualizada é publicada na ponte do Drive quando disponível.\n8. Dashboard, controles, Optimus e exportações passam a usar a versão consolidada.\nAs exportações SAP podem ocorrer em paralelo, mas as escritas no DuckDB e os enriquecimentos passam por uma trava única. Isso evita concorrência entre importações e joins.\n8. Regras de negócio e cálculos\nCampo/indicador\nRegra\nCE & MAT\nCentro + Material; chave oficial da MB59 e da posição anterior.\nCE UNIT\nVlr Tot Emp ÷ Utilização livre; vazio quando a quantidade é zero.\nCusto Fiscal UNIT.\nVlr Tot Fisc ÷ Utilização livre; vazio quando zero.\nEstilo-Cor\n10 primeiros caracteres do Material.\nEstilo\n6 primeiros caracteres do Material.\nDays\nData-base contábil − Product Offer End Dt.\nAGING\nDays negativo = 0) Futures; demais faixas definidas no Mapping.\nFOB\n50% do Vlr Tot Fisc.\nII\n35% do Vlr Tot Fisc.\nOutros Custos\n15% do Vlr Tot Fisc.\nSeason/Coleção\nSeason + Year.\nHistórico\nAno anterior a 2022 é agrupado em <2022 nas visões históricas.\nPMM\nSoma do valor fiscal ÷ soma da quantidade do agrupamento. Nunca média simples de PMMs.\nCobertura All Brazil\nPercentual de linhas com Division Description preenchida.",
+  "8.1 Faixas padrão de Aging\nFaixa\nInício\n0) Futures\nDays < 0\n1) 0-3 meses\na partir de 0 dias\n2) 3-6 meses\na partir de 105 dias\n3) 6-9 meses\na partir de 195 dias\n4) 9-12 meses\na partir de 285 dias\n5) 12-18 meses\na partir de 375 dias\n6) 18-24 meses\na partir de 555 dias\n7) 2-5 anos\na partir de 735 dias\n8) >5 anos\na partir de 1.815 dias\n8.2 PASSO A PASSO\nProduct Offer End Date, Season e Year são resolvidos individualmente por campo. A busca para na primeira fonte que contenha valor:\n1. MB59 da competência por CE & MAT.\n2. Posição compilada anterior por CE & MAT.\n3. All Brazil por Material, sem Centro.\nQuando nenhuma fonte fornece o atributo, o campo permanece vazio e a linha pode ser localizada pelo filtro: Somente pendências de joins.\n9. Páginas do sistema\nPágina\nFinalidade\nVisão e relatórios\nKPIs, gráficos, histórico, comparativos e Share Link.\nBase de estoque\nPosição detalhada, filtros, exportação, joins e recarga.\nExtrações SAP\nZMM119, MB59, uploads contingenciais e monitor de jobs.\nBases All Brazil\nBiblioteca mensal de snapshots.\nMapping\nEdição das regras auxiliares.\nControles e auditoria\nContrato de dados, fonte selecionada e estado operacional.\nHealth Center\nDiagnóstico independente de componentes e integrações.\nOptimus\nChat analítico e operacional.\nDocumentação\nEspecificação Técnico-Documental em PDF, com busca por palavras-chave e sumário navegável.",
+  "Configurações\nPreferências, notificações, instalador, competências, ponte, backup, restauração e acessos.\nNavegação: o menu lateral organiza as páginas nos grupos ANÁLISE CONTÁBIL, OPERAÇÃO, INTELIGÊNCIA e ADMINISTRAÇÃO. Com o menu expandido, cada grupo pode ser recolhido ou expandido pelo próprio título (seta à direita), e a escolha fica guardada no navegador; ao navegar para uma página de um grupo recolhido, o grupo se abre. Com o menu recolhido, aparecem apenas os ícones de todas as páginas, sem grupos. Grupos sem nenhuma página liberada para o usuário ficam ocultos.\nPágina inicial: ao abrir, recarregar (F5) ou entrar novamente, o sistema sempre começa na Visão e relatórios, nunca na última página visitada. A única exceção é a abertura pelo clique numa notificação do Windows quando não há outra aba do sistema aberta: nesse caso ele vai direto à página da notificação.\nIdentidade visual: o ícone próprio do sistema (três placas empilhadas em tons de azul-marinho, representando as bases consolidadas, com um gráfico de barras crescente saindo do topo) aparece no atalho da área de trabalho, no topo do menu lateral, na tela de login, na tela de carregamento, nas notificações do Windows, na aba do navegador e na capa deste documento. Só a aba do navegador usa o ícone com fundo quadrado; nos demais lugares ele aparece sem fundo.\nTextos do cabeçalho: abaixo de \"Estoque Contábil\", o menu lateral mostra \"Inventory Mgmt\" (abreviado para não gerar rolagem; a tela de login mostra \"Inventory Management\" por extenso), e o topo de cada página mostra \"Inventory Management / página atual\".\nCores: a tela de carregamento (faixa superior e círculo de progresso) usa azul-marinho em dois tons. As páginas do grupo OPERAÇÃO seguem o tema azul-marinho de Configurações (faixa de título nos cards, botões, selos, avisos e cabeçalhos de tabela; painel Execuções atuais em azul-marinho escuro; selos de atenção continuam amarelos). Na Visão e relatórios, os cards dos gráficos têm fundo azul-marinho bem claro, o Aging for Season usa tons de laranja proporcionais ao valor, e os relatórios HTML e PDF reproduzem as mesmas cores.\n9.1 Documentação\nA página Documentação, no grupo ADMINISTRAÇÃO do menu, exibe esta especificação em PDF dentro do sistema.\nLocalizar no documento: busca por palavras-chave que ignora acentos e maiúsculas, exige todos os termos na mesma página e aceita frase exata entre aspas. Os resultados indicam página, seção, quantidade de ocorrências e trechos destacados, e abrem o PDF na página correspondente.\nSumário navegável com os capítulos e respectivas páginas; botões Abrir em nova aba e Baixar PDF.\nAcesso: administradores sempre; usuários quando a página Documentação é marcada em Configurações > Acesso corporativo.\nAtualização: o arquivo Especificacao_Tecnico_Documental_Estoque_Contabil.docx da pasta do projeto é a fonte. A ferramenta tools/build_documentation.py converte-o em PDF pelo Microsoft Word, recalcula as páginas do Sumário e gera o índice de busca em knowledge/documentacao. A conversão roda a cada geração do instalador, e a versão mais recente chega às máquinas pela ponte Estoque_Cont\\documentacao, sem reinstalação.",
+  "10. Visão e relatórios\nTítulo da página: Posição contábil do estoque - Fisia. Todos os indicadores respeitam a competência selecionada no topo.\nKPI\nDefinição\nValor fiscal\nSoma de Vlr Tot Fisc.\nUtilização livre\nSoma das unidades disponíveis.\nMateriais\nQuantidade de SKUs distintos.\nMédia PMM\nVlr Tot Fisc agregado ÷ quantidade livre agregada.\nCobertura All Brazil\nPercentual de registros com Division preenchida.\nLifecycle × Aging: valor fiscal por faixa e lifecycle.\nAging for Season: matriz ano × season e variação entre anos consecutivos.\nDivision Description: valor fiscal (colunas) e quantidade livre por Division, com uma linha de variação % em relação à competência anterior acima das colunas (o ponto mostra a variação em R$).\nLocal de estoque: valor fiscal e quantidade livre por local, distribuídos na altura do card. \"Não informado\" é o estoque de centros sem linha na aba Planta e local do Mapping; nesse caso uma nota abaixo do gráfico lista os centros, as linhas e o valor, e some quando o centro é cadastrado no Mapping.\nValor por centro: concentração do valor fiscal.\nOrigem do material: valor fiscal por origem.\nEvolução da posição de estoque: valor fiscal em barras com degradê laranja e quantidade livre em linha azul, ao longo das competências compiladas.\nRisco de obsolescência: barra empilhada 100% por Division com a composição do estoque já recebido por faixa de Aging e, à direita, o % com mais de 12 meses; Futures (pedidos não recebidos) fica fora da barra e é informado à parte. Substituiu o antigo gráfico Variação por categoria.\nPMM analítico: Período, Division, Centro, Local ou Season.\nComposição do custo fiscal: FOB, II e Outros Custos.\nDispersão do estoque livre: valor fiscal × quantidade, com tamanho do ponto representando volume de registros.\nO botão Share Link, exclusivo de administradores, gera Relatorio_Estoque_Contabil_AAAA-MM.html autônomo, sem n8n, Drive, Apps Script, CDN ou servidor local no destino.\nAjuda dos gráficos: cada gráfico da Visão e relatórios tem um ícone \"?\" ao lado do título; ao clicar, abre um balão com uma explicação simples do que o gráfico mostra. O ícone não é levado para o HTML do Share Link nem para o PDF.\nRelatórios com os mesmos gráficos da tela: o HTML do Share Link e o PDF gerado pela página ou pelo Optimus reproduzem fielmente esta página, com os mesmos tipos de gráfico, cores e valores (cards de indicadores, Lifecycle × Aging, matriz Aging for Season com setas, colunas por Division, barras de Local, Centro e Origem, Evolução, Variação por categoria, PMM analítico, Composição do custo fiscal e Dispersão). O backend abre a própria Visão e relatórios em modo relatório (?modo=relatorio&competencia=AAAA-MM) num Microsoft Edge invisível, com a sessão de quem solicitou, aguarda os gráficos e salva o painel como HTML autônomo, sem scripts nem endereços do",
+  "servidor local. O PDF é impresso desse HTML em A4 paisagem, sem quebrar cards entre páginas. A geração leva de 30 a 40 segundos; sem o Edge, é entregue a versão simplificada de barras e tabelas.\n11. Base de estoque\nA Base de Estoque — Planilha online representa a ZMM119 A:R somada aos campos calculados e enriquecidos. A tela possui carregamento com progresso e status da MB59 da competência.\nBusca geral por material, descrição, centro, NCM, Aging e outros campos textuais.\nPaginação com 25, 50, 100 ou 200 linhas.\nFiltros em cada coluna.\nAtalhos para mostrar/ocultar grupos: Identificação, SAP ZMM119 e Cálculos e enriquecimento.\nSomente pendências de joins.\nLimpar filtros.\nBaixar XLSX respeitando busca e filtros.\nReprocessar joins sem reler a ZMM119.\nRecarregar base a partir do arquivo ZMM119 já salvo.\nReprocessar joins reaplica All Brazil, PASSO A PASSO e Mapping. Recarregar base recompõe a competência a partir do arquivo bruto já salvo.\n12. Extrações SAP\n12.1 ZMM119 — posição de estoque\nParâmetro\nComportamento\nCompetência\nMês de referência.\nData-base contábil\nPadrão: último dia da competência.\nConexão SAP\nOpcional; vazio permite seleção automática de PRD/SSO.\nP_FISIA\nMarcado por padrão.\nDestino\n%LOCALAPPDATA%\\OpsContabil\\landing\\zmm119\\AAAA-MM\n12.2 MB59 — movimentos de material\nParâmetro\nComportamento\nCompetência\nMês de referência.\nVariante\nBASE GR por padrão.\nConexão SAP\nOpcional; seleção automática quando vazio.\nData inicial/final\nPadrão: primeiro e último dia da competência.\nDestino\n%LOCALAPPDATA%\\OpsContabil\\landing\\mb59\\AAAA-MM",
+  "12.3 Automação de exportação\nO robô usa a sessão SAP GUI do Windows já autenticada, sem armazenar senha. Na exportação ALV seleciona XLSX, preenche DY_PATH e DY_FILENAME, aciona explicitamente o botão Gerar e monitora o arquivo até confirmar integridade do ZIP interno do XLSX.\nSe o SAP ignorar o destino e gravar em C:\\TEMP, Downloads, Documentos, Desktop, %TEMP% ou outro caminho mostrado no diálogo, o watcher localiza o arquivo concluído, valida-o e o normaliza para o diretório oficial.\nCada job reserva uma sessão SAP exclusiva. ZMM119 e MB59 podem exportar simultaneamente, mas a importação no DuckDB é serializada.\n12.4 Upload contingencial\nCada quadro permite selecionar uma planilha .xlsx exportada manualmente do SAP. A transação é identificada pela estrutura e arquivos trocados são recusados antes de alterar a competência.\nZMM119: valida A:R e exige ao menos um registro da empresa 7170.\nMB59: valida o layout Base GR e lançamentos da competência.\nArquivo anterior é preservado como .anterior.xlsx até o novo carregamento ser concluído.\n13. Bases All Brazil\nA página organiza por ano e mês a biblioteca do cadastro mestre All Brazil sincronizada na máquina. Atualizar pastas relê a estrutura disponível.\nO snapshot operacional deve pertencer ao mês da competência e ter data menor ou igual à data-base. A página Controles e auditoria exibe o arquivo realmente aplicado, cobertura, duplicidades e conflitos.\nChaves repetidas com os mesmos atributos são aceitas com ressalva. Quando há divergência, os campos conflitantes podem ficar vazios e o conflito é registrado, sem necessariamente bloquear toda a competência.\n14. Mapping\nConjunto\nUso\nFaixas de aging\nDias iniciais, faixa AGING e meses de referência.\nPlanta e local\nPlanta, Local anterior e Local atual.\nLifecycle\nLifecycle Descrip. → Lifecycle; padrões Active/F1 e Inactive/F4.\nStatus da operação\nPlanta → STATUS OPERAÇÃO, como ATIVO ou BAIXADOS.\nToda inclusão, edição ou exclusão limpa e recalcula os campos derivados de Mapping em todas as competências existentes. Os dados-fonte das integrações não são alterados.",
+  "15. Controles e auditoria\nContrato da ZMM119 posicional A:R.\nResolução por nomes e aliases em MB59 e All Brazil.\nBloqueio por campo obrigatório ausente/duplicado.\nValidação de competência e data-base.\nFonte All Brazil aplicada, cobertura, duplicidades e conflitos.\nEstruturas reconhecidas de Posição de Estoque, MB59 e All Brazil.\nEstado operacional das extrações, regras e Optimus.\nCada importação deve registrar caminho, hash SHA-256, aba, linha de cabeçalho, quantidade de linhas, fingerprint do schema e horário.\n16. Health Center\nPágina de diagnóstico com semáforo por componente, pontuação geral, evidência técnica, orientação de correção e contato de suporte.\nIndicador\nValidação\nSAP GUI\nInstalação e última execução.\nVPN / rede\nPresença de adaptador/túnel corporativo e teste de rede; internet comum não prova VPN.\nn8n / Optimus\nDisponibilidade real do webhook; HTTP 4xx/5xx não é considerado saudável.\nGoogle Drive\nSincronização de @All Brazil Materials.\nGoogle Slides\nTemplate/rota; credencial é validada integralmente apenas numa geração ponta a ponta.\nDuckDB\nBanco local e quantidade de linhas da competência.\nFontes\nPresença de ZMM119, MB59 e All Brazil.\nPermissões\nSessão, perfil e páginas autorizadas.\nDrive compartilhado\nEstado da ponte Estoque_Cont.\nSincronização\nEnvios e recebimentos de competências.\nBackup\nDesativado, em dia, atrasado ou com falha.\nControle de acessos\nConsulta à lista central de acessos: em dia, sem verificação recente, envio pendente, erro, prazo próximo ou bloqueado (7 dias sem verificação).\nEnquanto a página está visível, o diagnóstico é renovado automaticamente a cada 15 segundos. O botão Atualizar força uma nova verificação.",
+  "17. Optimus — agente contábil\n17.1 Visão geral e ferramentas locais\nO Optimus é o chat especializado do Estoque Contábil. O escopo é fechado ao sistema, suas bases, regras, processos e ferramentas. O modelo de linguagem não acessa diretamente localhost, SAP GUI ou arquivos; o backend local fornece contexto e executa ferramentas.\nO agente consulta dados, regras, fontes e uso do sistema; pesquisa linhas reais; consulta Mapping, MB59, All Brazil, execuções e status SAP; compara competências; gera PDF; prepara apresentação executiva; e pode iniciar ZMM119/MB59 mediante autorização explícita; também importa planilhas ZMM119/MB59 já baixadas do SAP (contingência), sempre com confirmação.\nFerramenta lógica\nFinalidade\ninventory_search\nPesquisa detalhada da Base de Estoque com filtros, ordenação e paginação.\nmappings\nConsulta das regras atuais.\nmb59_status\nSituação/arquivo MB59 da competência.\nall_brazil_source\nSnapshot selecionado para a data-base.\nall_brazil_enrichment_status\nCobertura e consistência do enriquecimento.\nall_brazil_catalog\nCatálogo de snapshots por ano/mês.\nall_brazil_search\nConsulta histórica de materiais/termos em snapshots.\nruns\nHistórico de execuções do pipeline.\nsap_status\nSituação das extrações SAP.\nrun_sap\nSolicita execução de ZMM119 ou MB59, sujeita às validações locais.\nsystem_manual\nCarrega seções do manual do sistema quando necessário.\nfind_sap_exports\nLista planilhas ZMM119/MB59 recentes desta máquina (somente administradores).\nimport_sap_file\nPrepara a importação contingencial de uma planilha listada; executa só após confirm_sap.\ndocumentation_search\nBusca trechos, seção e página na Documentação técnica.\nhealth_center | inventory_gaps | mapping_gaps\nConsultas para orientar: Health Center, lacunas da Base de Estoque e centros sem regra no Mapping.\nsettings_overview\nVisão de Configurações: acessos, competências, ponte, backup e notificações (administradores).\nreprocess_enrichment | save_mapping_rule\nPreparam reprocessamento dos joins e regra de Mapping; executam só após confirm_sap.\nsync_bridge_now | backup_now\nPreparam sincronização da ponte e backup imediato; executam só após confirm_sap.\nsave_user_access | disable_user_access\nPreparam cadastro/alteração e desativação de acesso; executam só após confirm_sap.\nset_notification_preferences | set_interface_preferences\nPreferências deste computador (qualquer perfil); executam só após confirm_sap.\nreport_pdf\nSolicita PDF da Visão e relatórios.\nexecutive_presentation\nMonta o payload executivo para Google Slides.",
+  "17.2 Interface do chat\nO front-end do chat possui sessão persistida no navegador, indicador de status, renderização de Markdown, links clicáveis e fluxo de erro diferenciado pelo backend. A memória do n8n mantém janela de contexto de 20 mensagens.\nA conversa das últimas 8 horas fica guardada no navegador e reaparece ao voltar ao chat ou ao abrir o sistema em outra aba. Enquanto o Optimus analisa, o item Optimus do menu lateral exibe três pontinhos animados (apenas com o menu expandido). Erros que impedem a resposta geram notificação do Windows. Ao abrir a página Optimus, o chat aparece sempre rolado até a última mensagem.\nResponder a um aviso: cada mensagem proativa traz o botão \"Responder a este aviso\". Ao clicar, aparece acima da caixa de texto a faixa \"Respondendo a: <título do aviso>\" (com × para cancelar); a mensagem enviada leva reply_to com o identificador do aviso. No servidor, _optimus_chat coloca o aviso em replying_to_warning no contexto e, se o aviso tiver ação e ainda não tiver sido decidido, restaura a pendência DESSE aviso (mesmo que outra tenha sido preparada depois). Aviso já confirmado ou recusado é marcado como resolvido e não volta a ficar pendente. A citação e o botão são guardados no histórico do navegador.\nMensagens não lidas: quando chega uma mensagem do Optimus e a pessoa não está olhando o chat (outra página, janela ou aba minimizada), o ícone do Optimus no menu lateral mostra um contador vermelho (visível com o menu expandido ou recolhido). Ao abrir a página Optimus, o contador zera e as notificações do Optimus no sino são marcadas como lidas (POST /api/notifications/read com os ids da categoria optimus).\n17.3 Protocolo de ações e confirmação\nO agente pede ferramentas locais com [[OPS_ACTION]]{json}[[/OPS_ACTION]]; o sistema executa (até 4 interações por mensagem) e devolve [RESULTADO_FERRAMENTA_LOCAL]. Toda ferramenta que altera algo apenas PREPARA a ação: registra em SAP_CONFIRMATIONS[sessão] uma pendência com confirmation_id, parameters.kind e um resumo, e devolve status CONFIRMATION_REQUIRED. Nada é alterado até o usuário confirmar.\nConfirmação: confirm_sap (ou confirm_action) com o confirmation_id pendente; _run_confirmed_action executa pelo mesmo caminho das páginas (mesmas funções dos endpoints) e devolve DONE/STARTED ou FAILED com o erro.\nRecusa: cancel_sap (ou cancel_action) remove a pendência; mudança de valor: a ferramenta é chamada de novo e substitui a pendência.\nUma decisão pendente por sessão; a origem (conversation ou optimus_proactive) e o evento proativo vão no contexto.\nPermissões: ações de administração exigem perfil Administrador (FORBIDDEN para usuários); preferências do próprio computador (notificações e interface) valem para qualquer perfil.\n17.4 Importação contingencial de planilhas já baixadas\nFerramentas find_sap_exports e import_sap_file (somente administradores). Usadas quando o usuário pede para importar uma ZMM119/MB59 já baixada do SAP, ou pela oferta proativa após falha de extração.",
+  "Busca: sap_upload.find_sap_export_candidates lista até 15 arquivos .xlsx dos últimos 45 dias em Downloads, Área de Trabalho, Documentos, OneDrive, TEMP/TMP e X:\\TEMP|TMP (as mesmas pastas do robô SAP), ignorando ~$ e arquivos acima de 500 MB.\nIdentificação: quick_identify_sap_export lê só o cabeçalho direto do XML (abas, primeiras linhas e primeiros textos compartilhados) e aplica as regras de identify_sap_export (contrato posicional A:R da ZMM119 e contrato mb59_base); em caso de XML fora do padrão, usa a leitura completa.\nPendência kind=upload com caminho, tamanho e data do arquivo; na confirmação, _start_agent_upload confere se o arquivo não mudou (senão FILE_CHANGED), copia para landing/uploads e executa o mesmo run_upload_job do upload da página (validação completa, substituição da base da competência, notificação ao terminar). O arquivo original não é movido nem apagado.\n17.5 Optimus proativo: arquitetura\nO módulo optimus_watch.py apenas DETECTA FATOS por consultas exatas (DuckDB, pasta All Brazil do Drive, Health Center); não há mensagem pronta. A mensagem é escrita pelo próprio agente a partir do evento.\nPresença: o chat do Optimus é carregado em segundo plano e consulta GET /api/optimus/proactive a cada 15 s; o vigia só trabalha se um administrador consultou nos últimos 90 s (sistema aberto). Usuários comuns não recebem avisos.\nCiclo: optimus_watch_loop roda optimus_watch_once a cada 5 min (WATCH_INTERVAL_SECONDS) ou logo após optimus_watch_trigger (job SAP, upload ou recarga concluídos e recálculo de Mapping); a primeira consulta após abrir o sistema também dispara a verificação. VPN e n8n são conferidos à parte a cada 2 min (17.24). Antipoluição: além da impressão digital, o chat recebe no máximo um aviso do agente por minuto por sessão (optimus_watch[\"min_gap\"] = 60 s, last_delivery); a oferta de importação após falha SAP (já notificada pelo servidor) e os avisos do sistema não esperam.\nRepetição: new_events guarda chave→impressão digital em system_settings.optimus_watch_seen; só o que é novo ou mudou vira aviso; problema resolvido sai da memória e, se voltar, avisa de novo. Eventos informativos (silent_first) só avisam quando mudam.\nFila e entrega: queue_optimus_event guarda o evento em OPTIMUS_OFFERS (12 h). A cada consulta do chat, um evento é entregue: se tiver ação, vira a pendência da sessão (origin optimus_proactive); _optimus_chat é chamado com proactive_event, que troca [PERGUNTA_USUARIO] por [EVENTO_PROATIVO] e [INSTRUCAO_EVENTO_PROATIVO]. Se o n8n falhar, o evento volta para a fila.\nNotificação: o chat chama /api/optimus/notify com o título \"Optimus: aviso\" apenas se o administrador estiver em outra página ou janela; a falha de extração já é notificada pelo próprio servidor (mesma etiqueta do aviso da extração).\n17.6 Evento: falha de extração SAP com planilha já salva\nGatilho: fim de run_sap_job com status FAILED ou ACTION_REQUIRED.\nDetecção: offer_import_after_failure procura planilhas da mesma transação gravadas a partir de 2 minutos antes do início da extração, inclusive o destino oficial em landing.\nFatos ao agente: type sap_extraction_failed, transação, competência, erro e saved_export (arquivo, pasta, tamanho, hora).\nAção: importar a planilha (kind upload, ver 17.4). Sem planilha, o agente orienta a exportar manualmente e pedir a importação.",
+  "17.7 Evento: All Brazil mais nova que a usada no enriquecimento\nDetecção: all_brazil_event compara all_brazil_imports(período mais recente).snapshot_date/source_path com o snapshot mais recente do mês resolvido por resolve_all_brazil.\nFatos: new_file, new_snapshot_date, used_file, used_snapshot_date. Impressão digital: nome do arquivo novo.\nAção: reprocessar os joins da competência (kind reprocess, ver 17.16).\n17.8 Evento: centros sem regra no Mapping\nDetecção: mapping_gaps agrupa por centro as linhas da competência com Local (location_group) ou STATUS OPERAÇÃO (operation_status) vazios, com linhas e valor fiscal; inclui os locais e status já usados no Mapping.\nAção: o agente pergunta o local atual e o status de cada centro e prepara save_mapping_rule (ver 17.17).\n17.9 Evento: linhas da Base de Estoque sem preenchimento\nDetecção: inventory_gaps conta, por campo, as linhas vazias de Division Description, Material Origin e Lifecycle Descrip. (All Brazil), Season, Year e Product Offer End Dt (PASSO A PASSO), AGING e Lifecycle (Mapping), com valor fiscal e % de linhas.\nFatos: lista de campos com origem e causa provável. Impressão digital: campos e quantidades.\nOrientação: conferir a All Brazil e reprocessar os joins, garantir a MB59 da competência ou cadastrar a regra no Mapping.\n17.10 Evento: indicadores do Health Center\nDetecção: health_events lê system_health; indicadores em atenção ou crítico viram eventos (ignorados: Google Slides, Permissões, n8n — sem n8n o agente não escreve, ver 17.24 — e SAP em atenção, já tratado em 17.6).\nFatos: título, nível, status, detalhe, como corrigir, e-mail de suporte e trechos da Documentação (documentation_matches).\nAção possível conforme o caso: por exemplo, ativar o backup programado (17.19) ou sincronizar a ponte (17.18).\n17.11 Evento: fechamento — competência do mês anterior não compilada\nDetecção: closing_event verifica, a partir do dia 1, se existe Base de Estoque da competência do mês anterior.\nOrientação: preparar as extrações ZMM119 e MB59 (run_sap, com confirmação).\n17.12 Evento: qualidade da All Brazil\nDetecção: all_brazil_quality_event alerta quando coverage_pct < 100% ou conflict_keys > 0 na competência mais recente.\n17.13 Evento: variações relevantes e risco de obsolescência\nDetecção: variation_event compara com a competência anterior: valor fiscal total (±10%), valor por Division (±15%) e percentual do estoque recebido com mais de 12 meses (faixas 5 a 8 do AGING, sem Futures) subindo 2 pontos ou mais.\nFatos: findings com valores anterior/atual e os limites usados.",
+  "17.14 Evento: extração SAP travada\nDetecção: stuck_job_events marca execuções não finalizadas iniciadas há mais de 40 minutos; o agente orienta acompanhar ou cancelar em Extrações SAP.\n17.15 Eventos informativos: nova competência e nova Documentação\nlatest_period_event (competência mais recente compilada, local ou recebida pela ponte) e documentation_event (versão da Documentação técnica). São silent_first: na primeira verificação viram referência e só avisam quando mudam.\n17.16 Ação: reprocessar os joins\nFerramenta reprocess_enrichment {period}; kind reprocess. Após o \"sim\": start_inventory_enrichment (mesmo job ENRICHMENT_ONLY do botão Reprocessar joins), que reaplica All Brazil, PASSO A PASSO e Mapping preservando a ZMM119 carregada.\n17.17 Ação: incluir ou alterar regra de Mapping\nFerramenta save_mapping_rule {group, key_value, value_1, value_2}: location (Planta, Local anterior, Local atual), operation_status (Planta, STATUS OPERAÇÃO, Observação), lifecycle e aging. Se a chave existir, a regra é alterada; senão, criada.\nApós o \"sim\": create_mapping_row/update_mapping_row, refresh_mapping_dependents (recalcula todas as competências) e envio pela ponte.\n17.18 Ação: sincronizar a ponte e fazer backup agora\nsync_bridge_now → post_bridge_sync (recebe competências mais novas e envia as desta máquina). backup_now → run_backup_now(force) (o novo backup substitui o anterior desta máquina depois de conferido).\n17.19 Ação: backup programado\nFerramenta set_backup_schedule {enabled, frequency daily|weekly|monthly}; grava backup_enabled e backup_frequency em system_settings. A pasta do backup não é alterada pelo Optimus.\n17.20 Ação: acessos corporativos\nsave_user_access {email, role, pages} → add_allowed_user (valida domínio, perfil e páginas obrigatórias; vale em todas as máquinas pela lista central). disable_user_access {email} → disable_allowed_user (não desativa o administrador inicial nem o próprio acesso).\n17.21 Ação: preferências deste computador\nset_notification_preferences (enabled, sound, sap, uploads, optimus, bridge, backup, connectivity) e set_interface_preferences (density, default_page_size e animações), para qualquer perfil, com confirmação.\n17.22 Consultas de apoio do agente\ndocumentation_search (seção, página e trechos da Documentação técnica), health_center, inventory_gaps, mapping_gaps, settings_overview (administradores) e system_manual. Não alteram nada e servem para o agente orientar correções e indicar onde saber mais.",
+  "17.23 Segurança e limites\nNada é executado sem confirmação explícita; cada ação usa as mesmas validações das páginas; avisos só para administradores com o sistema aberto; números, arquivos e centros vêm sempre dos fatos detectados (o agente é instruído a não inventar).\nFora do Optimus por decisão do negócio: excluir competência, excluir usuário, restaurar backup, trocar a pasta do Drive e o instalador — o agente apenas orienta o caminho em Configurações.\n17.24 Optimus sem conexão (VPN / n8n)\nMotivo: sem a VPN o webhook do n8n recusa o acesso (HTTP 403) e o agente não consegue escrever. Como toda mensagem proativa é escrita pelo agente, a queda é avisada pelo próprio sistema, com o texto do Health Center (nada é inventado).\nVerificação: health_center.connectivity_indicators(N8N_CHAT_URL) executa só _vpn_probe (ipconfig /all + TCP) e _n8n_probe (OPTIONS no webhook, 5 s); system_health usa a mesma função. connectivity_check roda no optimus_watch_loop a cada 2 min (CONNECTIVITY_INTERVAL_SECONDS) com administrador presente, e já no ciclo seguinte quando uma entrega ao n8n falha.\nCausa: optimus_watch.connectivity_cause considera queda quando o n8n não está saudável; aponta a VPN como causa se ela estiver em atenção ou crítico, senão o próprio n8n. VPN fora com n8n acessível não é queda: o evento health:network vai para o agente normalmente (new_events com scope=CONNECTIVITY_KEYS atualiza só essa chave).\nInício da queda: optimus_watch[\"outage\"] = {since, indicator}; notificação do Windows na categoria connectivity (\"Optimus sem conexão · VPN / rede: Não detectada\", texto = como corrigir, clique abre o Health Center, etiqueta connectivity) e item system=True (connectivity_lost) na fila. GET /api/optimus/proactive entrega esse item sem chamar o n8n, como {kind: system, title: \"Aviso do sistema · Health Center\"} com título, status, detalhe e como resolver; o chat o mostra em quadro laranja centralizado, distinto das mensagens do Optimus, e conta como não lida no menu.\nDurante a queda: as respostas trazem offline=true e o status do chat mostra \"Sem conexão (VPN / n8n)\"; nenhum evento do agente é enviado ao n8n (evita chamadas inúteis); a notificação e o aviso não se repetem; eventos novos ficam na fila (12 h) e o health:network do ciclo completo não é enfileirado.\nRetorno: itens de queda ainda não entregues viram superseded e o evento connectivity_restored (offline_since, restored_at, minutes_offline, cause, queued_warnings) entra no início da fila; o agente escreve que a conexão voltou, quanto tempo ficou fora, a causa e o que ficou parado, e em seguida os avisos que aguardavam são entregues (respeitando 1 por minuto).\nTestes: test_vpn_down_the_system_warns_and_the_agent_explains_when_it_returns, test_vpn_down_with_the_agent_reachable_is_written_by_the_agent_once e test_chat_receives_at_most_one_agent_warning_per_minute (tests/test_optimus_proactive.py).\n18. Configurações, competências, ponte, backup e restauração\n18.1 Interface e experiência\nDensidade Compacta/Confortável.\nLinhas por página 25/50/100/200.\nAnimações gerais, de gráficos e de cards. Na Visão e relatórios, gráficos e cards animam só na primeira exibição após o carregamento do sistema (abrir, F5 ou novo login); ao sair e voltar para a página, aparecem prontos, sem repetir.",
+  "18.2 Instalador\nAdministradores podem baixar o pacote ZIP publicado para primeiro acesso ou atualização. O status exibe versão, tamanho, hash SHA-256 e fotografia de competências embarcada.\n18.3 Competências compiladas\nAdministradores podem excluir uma competência carregada incorretamente. A exclusão exige confirmação textual e cria backup recuperável. Arquivos SAP brutos são preservados para reimportação.\n18.4 Ponte de dados — Drive compartilhado\nMostra, por competência, a versão nesta máquina e no Drive e permite: ‘Sincronizar agora’ ou ‘Enviar competências desta máquina’. Há contingência para selecionar outra pasta compartilhada.\n18.5 Backup programado\nPode ser diário, semanal ou mensal. O backup é um ZIP consistente do banco, nomeado com a data e o computador (ops_contabil_backup_AAAAMMDD_HHMMSS_<COMPUTADOR>.zip). Cada novo backup substitui o anterior: o arquivo novo é gravado e conferido (ZIP íntegro e banco completo) e só então os backups anteriores deste computador na pasta são apagados; se a gravação ou a conferência falhar, o anterior permanece. Assim a pasta guarda um único backup por computador e não acumula arquivos. Backups de outros computadores na mesma pasta nunca são apagados. Por padrão usa Estoque_Cont\\backups\\<computador> e mantém também uma cópia local do backup mais recente quando o destino é externo, substituída da mesma forma. No Google Drive, arquivos apagados passam pela lixeira do drive compartilhado antes da exclusão definitiva.\n18.6 Restauração\n1. Procurar backups ou escolher arquivo ZIP.\n2. Conferir o backup em banco provisório, sem alterar o banco ativo.\n3. Digitar RESTAURAR para confirmar.\n4. Preservar acessos e configurações locais.\n5. Guardar banco anterior antes da troca.\n6. Após a restauração, reconciliar novamente com a ponte do Drive.\n18.7 Acesso corporativo\nPermite cadastrar e excluir usuários, atribuir perfil Usuário/Administrador e selecionar páginas disponíveis. Visão e relatórios e Documentação são obrigatórias para perfis Usuário, que também acessam Configurações apenas nas seções Interface e experiência e Notificações; Optimus e Health Center precisam ser liberados explicitamente. Administradores acessam todas as páginas. A lista mostra todos os",
+  "logins do sistema, inclusive os cadastrados por outros administradores, com o autor e a data da última alteração, além da situação da lista central de acessos.\n18.8 Lista central de acessos\nCadastros, alterações de perfil e páginas, desativações e exclusões feitos por qualquer administrador valem em todas as máquinas, sem reinstalar.\nArmazenamento: Estoque_Cont\\acesso\\alteracoes, com um arquivo por máquina de administrador; cada máquina grava apenas o próprio arquivo, o que evita conflitos de sincronização do Google Drive.\nRegra de decisão: para cada usuário vale a alteração mais recente feita por um administrador (carimbo próprio em UTC, independente dos logins). Exclusões ficam registradas e não são desfeitas por listas antigas.\nSincronização: na inicialização, no login e a cada ciclo de aproximadamente 2 minutos. Usuário desativado ou excluído perde a sessão no ciclo seguinte; usuário novo entra sem reinstalar.\nProteções: administradores iniciais nunca são desativados nem excluídos; usuários comuns ficam bloqueados se a máquina passar 7 dias sem consultar a lista, enquanto administradores continuam entrando.\nPermissões no Drive: administradores como Gerenciador de conteúdo no Estoque_Cont e usuários como Leitor; novos usuários também precisam receber acesso de Leitor ao drive para receber os dados.\nLimite: bloquear o login não apaga dados já existentes na máquina do usuário; para interromper o recebimento de dados novos, remova o usuário do drive Estoque_Cont.\n18.9 Notificações do Windows\nO sistema envia somente notificações nativas do Windows (as mesmas do Teams e do Outlook), com nome e ícone próprios (Estoque Contábil). Elas saem do servidor local, chegam mesmo com o navegador fechado ou minimizado e ficam na Central de Notificações. Ao clicar, se o sistema já estiver aberto no navegador, a mesma aba vem para frente na página da tarefa; caso contrário, o sistema é aberto.\nExtrações SAP: início (silencioso), conclusão com a base carregada, falha, ação necessária ou cancelamento; o aviso de conclusão substitui o de início da mesma execução.\nUploads e cargas da base: planilha carregada por upload (concluída ou com falha), recarga da Base de Estoque e reprocessamento de joins. Planilha da transação errada é recusada na hora, na tela, sem notificação.\nRespostas do Optimus: quando a resposta chega e o usuário está em outra janela, com a aba minimizada ou em outra página do sistema (olhando o chat, não há notificação); erros que impedem a resposta, como o limite de interações com ferramentas locais, também geram notificação.\nAtualizações recebidas pelo Drive (competências novas ou atualizadas por outra máquina), Backup e restauração (backup programado concluído ou com falha e restauração concluída) e VPN e conexão do Optimus (a VPN ou o n8n caiu e o Optimus ficou sem conexão; só administradores com o sistema aberto; o clique abre o Health Center).\nPreferências por computador: interruptor geral, por categoria e som, salvas na hora em Configurações > Notificações (todos os perfis) ou pelo link Preferências do sino. O botão Enviar notificação de teste confirma a exibição pelo Windows.\nImplementação: aplicativo registrado em HKCU (AppUserModelId GrupoSBF.EstoqueContabil, sem permissão de administrador) e envio por fila em segundo plano, que nunca atrasa nem interrompe a tarefa que gerou o aviso.",
+  "Sino no topo da tela: caixa com as notificações já enviadas (até 200 por computador) e contador vermelho das não lidas, atualizado na hora; clicar num aviso abre a página da tarefa e o marca como lido; opções Marcar todas como lidas, Limpar histórico e Preferências.\nClique na notificação: o protocolo estoquecontabil: aciona um script local que avisa o servidor (com uma chave local, inacessível a páginas da web), leva a aba aberta para a página e a traz para frente no Chrome ou Edge; sem aba aberta, abre o sistema; com o servidor parado, usa o inicializador do atalho.\n19. Segurança, autenticação e permissões\nLogin restrito a domínios corporativos homologados e validação da identidade do Windows.\nPermissões por página e perfil aplicadas localmente e sincronizadas entre as máquinas pela lista central de acessos (Estoque_Cont\\acesso).\nCredenciais do n8n mantidas no credential store do próprio n8n.\nSAP utiliza sessão interativa já autenticada; senha não é persistida pelo projeto.\nOptimus recebe contexto limitado e usa ferramentas locais; o modelo não acessa o computador diretamente.\nRequisições do chat utilizam sessão e proteção CSRF no backend local.\nAdministradores concentram operações destrutivas ou de escrita: SAP, Mapping, exclusão, distribuição e Configurações.\nRecomendação do Drive: somente administradores como editores da pasta de ponte; demais usuários como leitores.\n20. API e rotas observadas\nA tabela abaixo consolida as rotas diretamente referenciadas pelo dashboard atual. É um catálogo de interface observada, não substitui a definição interna de todas as rotas do FastAPI.\nRota\nUso\n/api/auth/login | logout | session\nAutenticação, encerramento e sessão/CSRF.\n/api/config\nConfiguração geral e competência padrão.\n/api/dashboard/summary\nResumo, KPIs e visuais da competência.\n/api/inventory\nConsulta paginada da Base de Estoque.\n/api/inventory/columns\nCatálogo de colunas.\n/api/inventory/export\nExportação XLSX com filtros.\n/api/inventory/enrichment/start\nReprocessamento de joins/enriquecimentos.\n/api/inventory/import/start\nRecarga/importação da Base.\n/api/inventory/import/jobs/{jobId}\nStatus de importação.\n/api/inventory/periods\nCompetências disponíveis.\n/api/sap/run\nDisparo de extração SAP.\n/api/sap/jobs\nLista/estado das execuções.\n/api/sap/jobs/{id}\nAções por job.\n/api/sap/jobs/cancel-active\nCancelamento de jobs ativos.",
+  "/api/sap/upload\nUpload contingencial de XLSX SAP.\n/api/sources/all-brazil/catalog\nBiblioteca de snapshots.\n/api/sources/all-brazil\nFonte All Brazil por data.\n/api/sources/mb59/status\nStatus MB59.\n/api/mappings\nLeitura dos conjuntos de Mapping.\n/api/mappings/{grupo}\nInclusão/alteração por grupo.\n/api/mappings/{grupo}/{id}\nEdição/exclusão de item.\n/api/governance/status\nControles e auditoria da competência.\n/api/health-center\nDiagnósticos de saúde.\n/api/reports/html/download\nGeração/download do HTML autônomo.\n/api/installer/download\nDownload do pacote do instalador.\n/api/settings\nPreferências/configurações.\n/api/settings/access\nGestão de usuários e permissões.\n/api/settings/environment\nInformações de versão/instalador.\n/api/settings/periods/{period}\nExclusão controlada de competência.\n/api/settings/bridge-root\nConfiguração da pasta de ponte.\n/api/settings/pick-folder\nSeletor nativo de pasta.\n/api/settings/backup/run | list | inspect | restore\nBackup, catálogo, conferência e restauração.\n/api/docs/info | pdf | search\nDocumentação: metadados e sumário, PDF (exibição ou download) e busca por palavras-chave.\n/api/notifications/preferences | test\nPreferências de notificação desta máquina e notificação de teste.\n/api/optimus/notify\nNotificação de resposta do Optimus quando o usuário não está olhando o chat.\n/api/optimus/proactive\nMensagens proativas do Optimus para o chat (ex.: oferta de importar a planilha após falha de extração).\n/api/notifications | read | stream | activate\nSino (histórico e não lidas), leitura, eventos em tempo real e clique na notificação do Windows.\n/api/preferences/interface\nInterface e experiência, disponível a todos os perfis.\n/api/bridge/status | sync | publish | revision\nSincronização de competências via Drive.\n21. Workflow n8n — desenho e nós\nO fluxo abaixo corresponde ao arquivo Ops Contábil - Optimus. Esta seção registra a topologia real do workflow, os parâmetros relevantes, as conexões e as ramificações de resposta.",
+  "21.1 Identificação e estado do workflow\nParâmetro\nValor\nNome do workflow\nOps Contábil - Optimus\nID do workflow\nwa1Xc34i3CFwsPhn\nVersion ID\nb067217d-fb27-45c3-a65f-cbaedf7ee5c3\nAtivo\nSim\nExecution Order\nv1\nBinary Mode\nseparate\nWebhook ID\ndf8be6d7-e39e-44c0-98b1-45db38a82109\nTags\nai-usage; ai-model-gemini-3-6-flas\nO nome técnico do workflow permanece “Ops Contábil - Optimus” no JSON, embora o produto e o agente sejam documentados como Estoque Contábil / Optimus.\n21.2 Fluxo operacional correto\nChat Trigger\n ↓\nDetectar retorno local\n ↓\nRoteamento Optimus\n ├─ agent ─────→ Optimus\n │ ↖ Memória da conversa\n │ ↖ OpenAI Chat Model / Gemini 3.6 Flash\n │\n ├─ pdf ───────→ Resposta PDF\n │\n ├─ slides ────→ Preparar apresentação\n │ ↓\n │ Copiar template\n │ (Google Drive)\n │ ↓\n │ Preencher apresentação\n │ (Google Slides)\n │ ↓\n │ Resposta Slides\n │\n └─ fallback ──→ Optimus",
+  "21.3 Nós, tipos e parâmetros\nNó\nTipo\nConfiguração / função\nChat Trigger\n@n8n/n8n-nodes-langchain.chatTrigger\nv1.4\nMode: webhook\nPublic: true\nAllowed Origins: *\nWebhook ID: df8be6d7-e39e-44c0-98b1-45db38a82109\nDetectar retorno local\nCode\nv2\nMode: Run Once for Each Item. Lê chatInput, procura [RESULTADO_FERRAMENTA_LOCAL], faz JSON.parse e define route como agent, pdf ou slides.\nRoteamento Optimus\nSwitch\nv3.4\nRules com comparação estrita/case-sensitive de $json.route. Saídas: agent, pdf e slides. Fallback Output: extra.\nOptimus\nLangChain AI Agent\nv3.1\nPrompt Type: Define. Entrada: “Pergunta do usuário: {{ $json.chatInput }}”. Streaming desativado. System Message contém escopo, regras, ferramentas locais, SAP, All Brazil, artefatos e manual.\nMemória da conversa\nMemory Buffer Window\nv1.3\nSession ID Type: customKey. Session Key: {{ $('Chat Trigger').item.json.sessionId }}. Context Window Length: 20. Ligada ao Optimus como ai_memory.\nOpenAI Chat Model\nLangChain Chat Model\nv1.3\nModelo: gemini-3.6-flash. Responses API: false. Credencial: Stargate - SBF. Envia metadados de workflow/agente/origem/ambiente.\nResposta PDF\nCode\nv2\nMode: Run Once for Each Item. Usa localResult.download_url e retorna texto com a URL pura do relatório ao chat.\nPreparar apresentação\nCode\nv2\nMode: Run Once for Each Item. Formata KPI, PMM, tendência, comparação, Division, locais e custos; gera fileName e textUi.textValues.\nCopiar template\nGoogle Drive\nv3\nOperation: copy. Copia o template por ID para a pasta de destino do My Drive. Credencial: Google Drive account 43.\nPreencher apresentação\nGoogle Slides\nv2\nOperation: replaceText. Presentation ID vem do nó Copiar template. Substitui 18 marcadores. Credencial: Google Slides account 6.\nResposta Slides\nCode\nv2\nMode: Run Once for Each Item. Monta https://docs.google.com/presentation/d/{id}/edit e devolve a URL pura ao chat.\n21.4 Roteamento e conexões\nOrigem\nDestino\nCanal\nChat Trigger\nDetectar retorno local\nmain\nDetectar retorno local\nRoteamento Optimus\nmain\nRoteamento Optimus / agent\nOptimus\nmain\nRoteamento Optimus / pdf\nResposta PDF\nmain\nRoteamento Optimus / slides\nPreparar apresentação\nmain\nRoteamento Optimus / fallback\nOptimus\nmain",
+  "Memória da conversa\nOptimus\nai_memory\nOpenAI Chat Model\nOptimus\nai_languageModel\nPreparar apresentação\nCopiar template\nmain\nCopiar template\nPreencher apresentação\nmain\nPreencher apresentação\nResposta Slides\nmain\nNo JSON correto, a Memória da conversa está conectada ao Optimus; não há conexão ai_memory da memória diretamente com o Chat Trigger.\n21.5 Parâmetros do chat Optimus\nUsuário no Optimus\n ↓\nSistema local — http://127.0.0.1:8765\n ↓\nWebhook do n8n — HTTPS porta 443\n ↓\nGemini e nós do workflow\n ↓\nResposta volta ao sistema\nA URL configurada atualmente é:\nhttps://n8n.gruposbf.com.br/webhook/df8be6d7-e39e-44c0-98b1-45db38a82109/chat\nNão foi necessário abrir uma porta específica do n8n. Como a URL começa com https://, ela usa a porta padrão segura 443. A porta 8765 é somente do sistema local:\nhttp://127.0.0.1:8765\nQuando o usuário envia uma mensagem:\nA tela do Optimus envia a pergunta para /api/optimus/chat no sistema local.\nO Python acrescenta usuário, competência selecionada, indicadores e contexto das bases.\nO Python envia tudo para o webhook do n8n.\nO n8n executa Gemini e os demais nós.\nA resposta volta ao Python.\nO Python exibe a resposta no chat.\nA URL do n8n é configurada pelo instalador na variável:",
+  "N8N_CHAT_URL\nPortanto, o navegador não conversa diretamente com o n8n. Quem faz essa comunicação é o backend Python, o que permite controlar login, permissões e acesso às bases locais.\nPontos importantes:\nSistema local: porta 8765;\nn8n: HTTPS na porta 443;\nAcesso ao n8n depende da VPN corporativa;\nO n8n não precisa acessar 127.0.0.1:8765;\nPDF é produzido pelo Python e disponibilizado pelo sistema local;\nApresentações são geradas pelos nós Google Slides do n8n.\n21.6 Detecção do retorno local\nO nó Detectar retorno local inicia com route='agent'. Ele procura no chatInput um bloco RESULTADO_FERRAMENTA_LOCAL. Se o JSON interno for válido e localResult.ok=true, o tipo report_pdf direciona para pdf e executive_presentation direciona para slides. Qualquer outro conteúdo permanece em agent.\nEntrada esperada:\n[RESULTADO_FERRAMENTA_LOCAL]\n{ ... JSON ... }\n[/RESULTADO_FERRAMENTA_LOCAL]\nRotas:\nreport_pdf → pdf\nexecutive_presentation → slides\ndemais entradas → agent\n21.7 Protocolo de ações do Optimus\nPDF:\n[[OPS_ACTION]]\n{\"type\":\"report_pdf\",\"period\":\"AAAA-MM\"}\n[[/OPS_ACTION]]\nApresentação:\n[[OPS_ACTION]]\n{\"type\":\"executive_presentation\",\"period\":\"AAAA-MM\"}\n[[/OPS_ACTION]]\nO protocolo é executado em duas passagens: na primeira, o Optimus devolve OPS_ACTION quando precisa de uma ação local; o aplicativo executa a ferramenta e envia o resultado novamente ao webhook dentro de RESULTADO_FERRAMENTA_LOCAL. Na segunda passagem, o nó Detectar retorno local encaminha diretamente para PDF ou Slides, sem reenviar o resultado ao agente.",
+  "21.8 Ramificação PDF\nO n8n não gera o PDF. O backend local do Estoque Contábil prepara o arquivo e devolve download_url. O nó Resposta PDF usa esse endereço e responde ao chat com a URL em texto puro, evitando a dependência de Markdown para o clique.\nSaída lógica:\nPDF da competência {period} preparado com sucesso.\nBaixe o relatório:\n{download_url}\n21.9 Ramificação Google Slides\nParâmetro\nValor no JSON\nTemplate de origem\n1wu3OxYe72YRApgXgc4o4yu-Ibh_tWxr2PL_epTA9pW0\nOperação Drive\nFile / Copy\nNome da cópia\n{{ $('Preparar apresentação').item.json.fileName }}\nDrive de destino\nMy Drive\nPasta de destino\n1lSi81CfpI5xhT1Ow-O24CQOkZLZpl7gS\nCredencial Drive\nGoogle Drive account 43\nOperação Slides\nPresentation / Replace Text\nPresentation ID\n{{ $('Copiar template').item.json.id || $('Copiar template').item.json.fileId }}\nCredencial Slides\nGoogle Slides account 6\nO nó Preparar apresentação limita listas executivas para preservar o layout: tendência aos últimos 6 períodos; variação por Division aos 6 primeiros itens; locais aos 7 primeiros; PMM por período a 5 itens e por Division, Centro, Local e Season a 7 itens.\nA comparação de PMM classifica a variação como aumento, redução ou estabilidade. PMM permanece calculado como valor fiscal agregado dividido pela quantidade agregada, nunca como média de PMMs individuais.\n21.10 Marcadores substituídos no Google Slides\nMarcador\nConteúdo\n{{TITULO}}\nTítulo do deck\n{{PERIODO}}\nCompetência\n{{FONTE}}\nFonte\n{{VALOR_FISCAL}}\nValor fiscal formatado em BRL\n{{QUANTIDADE}}\nQuantidade\n{{MATERIAIS}}\nMateriais",
+  "{{PMM}}\nPMM\n{{COBERTURA}}\nCobertura All Brazil\n{{COMPARACAO_PMM}}\nVariação de PMM versus competência anterior\n{{EVOLUCAO}}\nEvolução dos últimos períodos\n{{PMM_PERIODO}}\nPMM por período\n{{PMM_DIVISION}}\nPMM por Division\n{{PMM_CENTRO}}\nPMM por Centro\n{{PMM_LOCAL}}\nPMM por Local\n{{PMM_SEASON}}\nPMM por Season\n{{COMPOSICAO_CUSTO}}\nFOB, II e Outros Custos\n{{VARIACAO_DIVISION}}\nVariação por Division\n{{LOCAIS}}\nPrincipais locais de estoque\n21.11 Resposta final da apresentação\nApós o Replace Text, o nó Resposta Slides lê o ID da cópia, monta a URL do Google Slides e a devolve ao chat em uma linha separada. O texto retornado informa a competência e apresenta a URL completa da apresentação.\nApresentação executiva do Estoque Contábil referente à competência {period} criada com sucesso.\nAcesse a apresentação:\nhttps://docs.google.com/presentation/d/{presentation_id}/edit\n22. Artefatos executivos — PDF, HTML e Google Slides\nArtefato\nOrigem\nComportamento\nXLSX\nBase de Estoque\nExportação respeitando busca e filtros da grade.\nHTML autônomo\nVisão e relatórios\nGerado por Share Link a partir do próprio dashboard (mesmos gráficos); arquivo independente, sem scripts, para envio em Slack/outro canal.\nPDF\nVisão e relatórios / Optimus\nImpresso localmente pelo Edge headless a partir do mesmo HTML do dashboard (A4 paisagem), validado, guardado em cache e servido por rota autenticada.\nGoogle Slides\nOptimus / n8n\nCópia de template + substituição de marcadores.\nO PDF é responsabilidade do backend local. O n8n não deve reconstruir o relatório nem encaminhá-lo por Gmail. O HTML também independe do n8n. Os dois são produzidos por",
+  "reporting.render_dashboard_report(): o Edge headless é controlado pelo protocolo DevTools (pacote websockets), recebe o cookie de sessão do usuário solicitante, abre a Visão e relatórios em modo relatório e, quando a página sinaliza que terminou de desenhar, buildReportDocument() devolve o painel com os SVGs e o CSS embutidos; o PDF sai de Page.printToPDF. O PDF em cache só é reaproveitado se for mais recente que o banco e que o dashboard.html, e a gravação é atômica (arquivo parcial + substituição). A ferramenta report_pdf do Optimus roda fora do laço assíncrono do servidor, porque a página renderizada consulta o próprio servidor. Nenhum nó do n8n foi alterado: Resposta PDF continua apenas repassando download_url.\n22.1 Apresentação executiva\nO template técnico atual é “TEMPLATE - Estoque Contábil - Apresentação Executiva”. O payload entregue pelo backend inclui KPIs, comparação com a competência anterior, evolução mensal, PMM por dimensão, variação por Division, locais e composição de custos.\nDestino individual do Google Slides: A criação automática de uma pasta privada dentro do Meu Drive de cada usuário é requisito de evolução ainda não concluído. A implementação exige autenticação/delegação que permita criar arquivos em nome do usuário. Portanto, a especificação trata a geração do Slides como ativa, mas a individualização automática do destino por usuário como pendência.\n23. Arquivos do projeto e responsabilidades\n23.1 Documentos e artefatos principais no Drive\nArquivo/pasta\nResponsabilidade\nREADME.md\nOrientações de instalação, execução, distribuição e segurança.\nARQUITETURA_FINAL.md\nArquitetura atual, ponte de dados, backups, SAP, Optimus e Health Center.\nMAPEAMENTO_DADOS.md\nContratos de campos, mapeamentos e regras das bases.\nMB59_BASE GR - SEASON.XLSX\nBase piloto/referência de MB59/Base GR.\nTEMPLATE - Estoque Contábil - Apresentação Executiva\nModelo Google Slides usado pelo n8n.\nn8n/ARTIFATOS_RELATORIO.md\nProtocolo de PDF e apresentação executiva.\nEspecificacao_Tecnico_Documental_Estoque_Contabil.docx\nFonte desta especificação; convertida em PDF para a página Documentação.\ntools/build_documentation.py\nConverte o .docx em PDF e índice de busca; executado pelo build do instalador.\nweb/templates/dashboard.html\nInterface principal atual.\nweb/templates/optimus.html\nInterface do chat Optimus.\ndashboard_v2.html / backups UI\nVersões alternativas/históricas de interface; não devem ser presumidas ativas.\ninstaller/ e build/\nArtefatos de empacotamento, xref/warnings e build do instalador.",
+  "data/\nEstruturas de inbox, processed e output do projeto.\nshared_data/\nDados auxiliares/controle compartilhado do projeto.\n.venv / __pycache__ / .pytest_cache / .ruff_cache\nArtefatos locais/gerados; não são fonte funcional do produto.\n23.2 Manifesto do pacote Python\nArquivo\nResponsabilidade funcional\nsrc/ops_contabil/__init__.py\nInicialização do pacote.\nsrc/ops_contabil/__main__.py\nEntrada do pacote por python -m.\nsrc/ops_contabil/audit.py\nAuditoria e rastreabilidade.\nsrc/ops_contabil/cli.py\nCLI Typer; entry point ops-contabil.\nsrc/ops_contabil/dashboard.py\nCamada de dashboard/consultas.\nsrc/ops_contabil/dashboard_runtime.py\nAplicação runtime atual.\nsrc/ops_contabil/dashboard_runtime_20260915.py\nSnapshot/histórico de runtime.\nsrc/ops_contabil/db.py\nConexões, esquema e manutenção do DuckDB.\nsrc/ops_contabil/inventory.py\nCarga, consulta e operações da Base de Estoque.\nsrc/ops_contabil/pipeline.py\nOrquestração do pipeline.\nsrc/ops_contabil/reporting.py\nRelatórios HTML/PDF renderizados a partir do dashboard (modo relatório) e versão simplificada de contingência.\nsrc/ops_contabil/runtime_entry.py\nComandos de inicialização/doctor/runtime.\nsrc/ops_contabil/settings.py\nConfigurações da aplicação.\nsrc/ops_contabil/settings_runtime.py\nConfigurações específicas de runtime.\nsrc/ops_contabil/staging.py\nStaging/landing e preparação de arquivos.\nextractors/sap_gui.py\nAutomação SAP GUI.\ningestion/excel.py\nLeitura/ingestão de Excel.\ningestion/schema_resolver.py\nResolução de schemas por nomes/aliases.\nsources/all_brazil.py\nSeleção/leitura de All Brazil.\nweb/app.py\nCamada web/API.\nweb/app_v2.py\nVersão alternativa/evolutiva da camada web.\nweb/templates/dashboard.html\nUI principal.\nweb/templates/dashboard_v2.html\nUI alternativa/histórica.\nweb/templates/index.html\nEntrada/template auxiliar.\ntests/test_core.py\nTestes-base.\nA arquitetura de 29/09 referência módulos adicionais mais novos, como backup_restore.py, folder_picker.py, system_manual.py, knowledge/manual_sistema.md, documentation.py, access_sync.py,",
+  "notifications.py, assets/estoque_contabil.png, knowledge/documentacao/, tools/build_documentation.py, tests/conftest.py e tests/test_optimus_manual.py. Eles representam evolução posterior ao manifesto SOURCES.txt de 15/09; por isso, o manifesto antigo não deve ser tratado como lista completa da versão atual.\n24. Dependências técnicas\nPacote\nFaixa\nUso\nduckdb\n>=1.4,<2\nBanco analítico.\nfastapi\n>=0.116,<1\nAPI e servidor web.\njinja2\n>=3.1,<4\nTemplates HTML.\nopenpyxl\n>=3.1,<4\nExcel XLSX.\npydantic\n>=2.11,<3\nModelos/validação.\npydantic-settings\n>=2.10,<3\nConfigurações.\npyarrow\n>=20,<22\nParquet.\npyxlsb\n>=1.0.10,<2\nLeitura XLSB.\nPyYAML\n>=6,<7\nConfigurações YAML.\ntyper\n>=0.16,<1\nCLI.\nuvicorn[standard]\n>=0.35,<1\nServidor ASGI.\npywin32\n>=311 (Windows)\nSAP/Windows.\nwebsockets\n>=12,<18\nControle do Edge (DevTools) para gerar PDF/HTML com os gráficos do dashboard.\npytest\n>=8.4,<9\nTestes de desenvolvimento.\nruff\n>=0.12,<1\nLint/qualidade.\nEntry point do pacote: ops-contabil = ops_contabil.cli:app.\n25. Operação, contingência e suporte\nSituação\nProcedimento\nCompetência não aparece\nSincronizar ponte; verificar Health Center > Sincronização; confirmar que existe Base de Estoque local.\nDados diferentes entre máquinas\nComparar “Nesta máquina” × “No Drive” na Ponte de dados; a versão mais recente prevalece.\nExtração SAP falha\nVer jobs, SAP GUI, VPN/rede; usar upload manual validado.\nPendências de Division/Season/PO End\nUsar Somente pendências de joins; conferir MB59, All Brazil e reprocessar joins.\nOptimus não responde\nVerificar Health Center > n8n/Optimus e VPN/rede.\nPágina não aparece\nAdministrador deve liberar a página no Acesso corporativo.",
+  "Drive de ponte indisponível\nSistema continua localmente; envio fica pendente; pode trocar pasta em contingência.\nUsuário desativado ainda entra\nVerificar Health Center > Controle de acessos na máquina do usuário (Drive/VPN); a revogação vale na próxima sincronização.\nNotificações não aparecem\nUsar Enviar notificação de teste; conferir Não incomodar/Assistente de foco e Windows > Configurações > Notificações > Estoque Contábil.\nBanco danificado/perdido\nUsar restauração por backup; preservar configurações/acessos locais.\nO Health Center apresenta evidência e orientação de correção por componente. O contato de suporte exibido no sistema é o canal de Transformação Digital corporativo.\nAnexo A. Árvore técnica do projeto\nPacote Python (manifesto):\nREADME.md\npyproject.toml\nsrc/ops_contabil/\n __init__.py\n __main__.py\n audit.py\n cli.py\n dashboard.py\n dashboard_runtime.py\n dashboard_runtime_20260915.py\n db.py\n inventory.py\n pipeline.py\n runtime_entry.py\n settings.py\n settings_runtime.py\n staging.py\n extractors/\n __init__.py\n sap_gui.py\n ingestion/\n __init__.py\n excel.py\n schema_resolver.py\n sources/\n __init__.py\n all_brazil.py\n web/\n __init__.py\n app.py\n app_v2.py\n templates/\n dashboard.html\n dashboard_v2.html\n index.html",
+  "tests/\n test_core.py\nEvoluções referenciadas na arquitetura atual:\n backup_restore.py\n folder_picker.py\n system_manual.py\n knowledge/manual_sistema.md\n tests/conftest.py\n tests/test_optimus_manual.py\nAnexo B. Catálogo de campos da ZMM119\nColuna\nCampo interno\nCabeçalho SAP\nA\ncompany\nEmpresa\nB\nplant\nCentro\nC\nmaterial\nMaterial\nD\nmaterial_description\nTexto breve material\nE\nbase_unit\nUM básica\nF\nncm\nNCM\nG\nunrestricted_quantity\nUtilização livre\nH\nblocked_quantity\nBloqueado\nI\naverage_company_cost\nCusto Médio Empresa\nJ\nfiscal_cost\nCusto Fiscal\nK\ntotal\nTotal\nL\nicms_st_amount\nVlr ICMS ST\nM\nipi_amount\nVlr IPI\nN\ninventory_type\nTipo\nO\ncompany_total_amount\nVlr Tot Emp\nP\nfiscal_total_amount\nVlr Tot Fisc\nQ\naverage_commercial_cost\nCusto Médio Comercial\nR\ncommercial_total_amount\nVlr Total CC\nAnexo C. Marcadores do template executivo\n{{TITULO}}\n{{PERIODO}}\n{{FONTE}}\n{{VALOR_FISCAL}}\n{{QUANTIDADE}}\n{{MATERIAIS}}",
+  "{{PMM}}\n{{COBERTURA}}\n{{COMPARACAO_PMM}}\n{{EVOLUCAO}}\n{{PMM_PERIODO}}\n{{PMM_DIVISION}}\n{{PMM_CENTRO}}\n{{PMM_LOCAL}}\n{{PMM_SEASON}}\n{{COMPOSICAO_CUSTO}}\n{{VARIACAO_DIVISION}}\n{{LOCAIS}}\nAnexo D. Glossário\nTermo\nDefinição\nCompetência\nMês contábil de referência, no formato AAAA-MM.\nData-base\nData usada como referência para Aging e seleção de snapshot.\nCE & MAT\nChave formada por Centro e Material.\nPMM\nPreço médio ponderado: valor fiscal agregado ÷ quantidade agregada.\nAll Brazil\nCadastro mestre utilizado para enriquecimento de atributos.\nPASSO A PASSO\nCascata de fontes para Product Offer End Date, Season e Year.\nMapping\nConjuntos editáveis de regras auxiliares.\nDuckDB\nBanco local que armazena as competências consolidadas.\nPonte Estoque_Cont\nPasta de Drive usada para transportar versões de competências entre máquinas.\nOptimus\nAgente de IA do Estoque Contábil.\nHealth Center\nPágina de diagnóstico técnico da instalação.\nShare Link\nGeração de HTML autônomo para compartilhamento.\nFontes documentais consolidadas\nREADME.md — versão atual consultada no Drive (atualizada em 24/09/2026).\nARQUITETURA_FINAL.md — versão atual consultada no Drive (atualizada em 29/09/2026).\nMAPEAMENTO_DADOS.md — contrato/mapeamento das bases e regras.\nmanual_sistema.md — manual operacional usado como conhecimento do Optimus (29/09/2026).\ndashboard.html — interface atual, páginas, formulários e rotas de API (29/09/2026).\noptimus.html — interface atual do chat (29/09/2026).\nARTIFATOS_RELATORIO.md — protocolo de artefatos do Optimus.\nSOURCES.txt / requires.txt / entry_points.txt — manifesto e dependências do pacote.\nOps Contábil - Optimus (7).json — workflow n8n correto utilizado como referência desta especificação."
+ ]
+}

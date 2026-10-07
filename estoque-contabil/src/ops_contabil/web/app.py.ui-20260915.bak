@@ -1,0 +1,274 @@
+from __future__ import annotations
+
+import calendar
+import json
+import os
+import threading
+import time
+import uuid
+from datetime import date, datetime
+from pathlib import Path
+
+from fastapi import Depends, FastAPI, Header, HTTPException, Query
+from fastapi.responses import HTMLResponse
+from pydantic import BaseModel, Field
+
+from ..db import connect
+from ..extractors.sap_gui import SapGuiError, SapGuiRobot
+from ..inventory import dashboard_summary, import_inventory_xlsb, import_zmm119_xlsx, inventory_columns, list_inventory
+from ..pipeline import run_pipeline
+from ..settings import Settings, load_settings
+from ..sources.all_brazil import enrich_inventory_from_all_brazil, resolve_all_brazil
+
+
+class RunRequest(BaseModel):
+    period: str = Field(pattern=r"^\d{4}-\d{2}$")
+
+
+class ImportRequest(BaseModel):
+    period: str = Field(pattern=r"^\d{4}-\d{2}$")
+    force: bool = False
+
+
+class SapRunRequest(BaseModel):
+    transaction: str = Field(pattern=r"^(ZMM119|MB59)$")
+    period: str = Field(pattern=r"^\d{4}-\d{2}$")
+    date_from: date | None = None
+    date_to: date | None = None
+    as_of: date | None = None
+    variant: str = Field(default="BASE GR", max_length=40)
+    fisia_only: bool = True
+
+
+class SystemSettingsRequest(BaseModel):
+    density: str = Field(default="compact", pattern=r"^(compact|comfortable)$")
+    default_page_size: int = Field(default=50, ge=10, le=200)
+    animations_enabled: bool = True
+    backup_folder: str = Field(default="", max_length=500)
+    backup_frequency: str = Field(default="daily", pattern=r"^(daily|weekly|monthly)$")
+    backup_retention_days: int = Field(default=90, ge=7, le=3650)
+
+
+class AccessUserRequest(BaseModel):
+    email: str = Field(pattern=r"^[^\s@]+@[^\s@]+\.[^\s@]+$", max_length=254)
+
+
+SAP_JOBS: dict[str, dict[str, object]] = {}
+SAP_JOB_LOCK = threading.Lock()
+
+
+DEFAULT_SYSTEM_SETTINGS: dict[str, object] = {
+    "density": "compact",
+    "default_page_size": 50,
+    "animations_enabled": True,
+    "backup_folder": str(Path(os.getenv("LOCALAPPDATA", Path.home())) / "OpsContabil" / "backup"),
+    "backup_frequency": "daily",
+    "backup_retention_days": 90,
+}
+
+
+def create_app(settings: Settings | None = None) -> FastAPI:
+    settings = settings or load_settings()
+    app = FastAPI(title="Ops Contábil", version="0.2.0")
+
+    def require_token(authorization: str | None = Header(default=None)) -> None:
+        expected = os.getenv("OPS_API_TOKEN")
+        if expected and authorization != f"Bearer {expected}":
+            raise HTTPException(status_code=401, detail="Token inválido")
+
+    @app.get("/", response_class=HTMLResponse)
+    def home() -> str:
+        return (Path(__file__).parent / "templates" / "index.html").read_text(encoding="utf-8")
+
+    @app.get("/health")
+    def health() -> dict[str, str]:
+        return {"status": "ok", "application": "Ops Contábil"}
+
+    @app.get("/api/config")
+    def client_config() -> dict[str, object]:
+        return {
+            "n8n_chat_url": os.getenv("N8N_CHAT_URL", ""),
+            "default_period": os.getenv("OPS_DEFAULT_PERIOD", "2026-07"),
+            "agent_provider": "Google Gemini via n8n",
+        }
+
+    @app.get("/api/inventory/columns", dependencies=[Depends(require_token)])
+    def get_inventory_columns() -> list[dict[str, str]]:
+        return inventory_columns()
+
+    @app.get("/api/inventory", dependencies=[Depends(require_token)])
+    def get_inventory(
+        period: str = Query(default="2026-07", pattern=r"^\d{4}-\d{2}$"),
+        page: int = Query(default=1, ge=1),
+        page_size: int = Query(default=50, ge=10, le=200),
+        q: str = Query(default="", max_length=120),
+        sort: str = Query(default="source_row", max_length=50),
+        direction: str = Query(default="asc", pattern=r"^(asc|desc)$"),
+    ) -> dict[str, object]:
+        return list_inventory(settings, period, page, page_size, q, sort, direction)
+
+    @app.get("/api/dashboard/summary", dependencies=[Depends(require_token)])
+    def get_dashboard_summary(
+        period: str = Query(default="2026-07", pattern=r"^\d{4}-\d{2}$")
+    ) -> dict[str, object]:
+        return dashboard_summary(settings, period)
+
+    @app.post("/api/inventory/import", dependencies=[Depends(require_token)])
+    def import_inventory(request: ImportRequest) -> dict[str, object]:
+        try:
+            return import_inventory_xlsb(settings, request.period, force=request.force)
+        except Exception as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    @app.get("/api/sources/all-brazil", dependencies=[Depends(require_token)])
+    def all_brazil_source(as_of: date = Query()) -> dict[str, object]:
+        try:
+            snapshot = resolve_all_brazil(settings, as_of)
+        except (FileNotFoundError, ValueError) as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        return {
+            "period": snapshot.period,
+            "snapshot_date": snapshot.snapshot_date.isoformat(),
+            "file_name": snapshot.path.name,
+            "source_path": str(snapshot.path),
+            "selection_rule": "latest_snapshot_on_or_before_as_of",
+            "join_key": "LEFT(Posição.Material, 10) = All Brazil.Material Nbr",
+        }
+
+    def run_sap_job(job_id: str, request: SapRunRequest) -> None:
+        started = time.time()
+        with SAP_JOB_LOCK:
+            SAP_JOBS[job_id].update(status="RUNNING", started_at=datetime.now().isoformat(timespec="seconds"))
+        try:
+            timeout = int(settings.raw["runtime"]["sap_timeout_seconds"])
+            with SapGuiRobot(timeout) as robot:
+                if request.transaction == "ZMM119":
+                    target = settings.path("landing") / "zmm119" / request.period / f"ZMM119_{request.period}.xlsx"
+                    robot.run_zmm119(fisia_only=request.fisia_only, output_path=target)
+                else:
+                    if request.date_from is None or request.date_to is None:
+                        raise ValueError("MB59 exige data inicial e data final.")
+                    target = settings.path("landing") / "mb59" / request.period / f"MB59_{request.period}.xlsx"
+                    robot.run_mb59(request.date_from, request.date_to, request.variant, output_path=target)
+            if target.exists() and request.transaction == "ZMM119":
+                loaded = import_zmm119_xlsx(settings, request.period, target)
+                year, month = map(int, request.period.split("-"))
+                effective_as_of = request.as_of or date(year, month, calendar.monthrange(year, month)[1])
+                enriched = enrich_inventory_from_all_brazil(settings, request.period, effective_as_of)
+                result = {
+                    "status": "COMPLETED",
+                    "message": f"ZMM119 carregada ({loaded['rows']} linhas) e enriquecida pelo All Brazil ({enriched['coverage_pct']}%).",
+                    "target_path": str(target),
+                }
+            elif target.exists():
+                result = {
+                    "status": "COMPLETED",
+                    "message": "MB59 extraída; arquivo pronto para a consolidação da competência.",
+                    "target_path": str(target),
+                }
+            else:
+                result = {
+                    "status": "ACTION_REQUIRED",
+                    "message": "O SAP concluiu a exportação, mas não confirmou o arquivo no destino. Salve o XLSX na pasta indicada e processe a competência.",
+                    "target_path": str(target),
+                }
+        except (SapGuiError, ValueError, TimeoutError) as exc:
+            result = {"status": "FAILED", "message": str(exc)}
+        except Exception as exc:
+            result = {"status": "FAILED", "message": f"Falha não prevista: {exc}"}
+        with SAP_JOB_LOCK:
+            SAP_JOBS[job_id].update(
+                **result,
+                finished_at=datetime.now().isoformat(timespec="seconds"),
+                duration_seconds=round(time.time() - started, 1),
+            )
+
+    @app.post("/api/sap/run", dependencies=[Depends(require_token)])
+    def start_sap(request: SapRunRequest) -> dict[str, object]:
+        if request.transaction == "MB59" and (request.date_from is None or request.date_to is None):
+            raise HTTPException(status_code=422, detail="Informe as datas inicial e final para a MB59.")
+        if request.date_from and request.date_to and request.date_to < request.date_from:
+            raise HTTPException(status_code=422, detail="A data final não pode ser anterior à inicial.")
+        job_id = str(uuid.uuid4())
+        job = {
+            "job_id": job_id,
+            "transaction": request.transaction,
+            "period": request.period,
+            "status": "QUEUED",
+            "created_at": datetime.now().isoformat(timespec="seconds"),
+            "parameters": request.model_dump(mode="json"),
+        }
+        with SAP_JOB_LOCK:
+            SAP_JOBS[job_id] = job
+        threading.Thread(target=run_sap_job, args=(job_id, request), daemon=True).start()
+        return job
+
+    @app.get("/api/sap/jobs/{job_id}", dependencies=[Depends(require_token)])
+    def get_sap_job(job_id: str) -> dict[str, object]:
+        with SAP_JOB_LOCK:
+            job = SAP_JOBS.get(job_id)
+            if job is None:
+                raise HTTPException(status_code=404, detail="Execução SAP não encontrada.")
+            return dict(job)
+
+    @app.get("/api/sap/jobs", dependencies=[Depends(require_token)])
+    def list_sap_jobs() -> list[dict[str, object]]:
+        with SAP_JOB_LOCK:
+            return list(reversed([dict(job) for job in SAP_JOBS.values()]))[:20]
+
+    @app.post("/api/runs", dependencies=[Depends(require_token)])
+    def create_run(request: RunRequest) -> dict[str, int | str]:
+        run_id = run_pipeline(settings, request.period)
+        with connect(settings.path("database")) as connection:
+            status = connection.execute("select status from pipeline_runs where run_id=?", [run_id]).fetchone()[0]
+        return {"run_id": run_id, "period": request.period, "status": status}
+
+    @app.get("/api/runs", dependencies=[Depends(require_token)])
+    def list_runs(limit: int = Query(default=20, ge=1, le=200)) -> list[dict[str, object]]:
+        with connect(settings.path("database")) as connection:
+            rows = connection.execute(
+                "select run_id, period, status, started_at, finished_at, message from pipeline_runs order by run_id desc limit ?",
+                [limit],
+            ).fetchall()
+        keys = ["run_id", "period", "status", "started_at", "finished_at", "message"]
+        return [dict(zip(keys, row, strict=True)) for row in rows]
+
+    @app.get("/api/runs/{run_id}", dependencies=[Depends(require_token)])
+    def get_run(run_id: int) -> dict[str, object]:
+        with connect(settings.path("database")) as connection:
+            row = connection.execute(
+                "select run_id, period, status, started_at, finished_at, message from pipeline_runs where run_id=?",
+                [run_id],
+            ).fetchone()
+        if row is None:
+            raise HTTPException(status_code=404, detail="Execução não encontrada")
+        keys = ["run_id", "period", "status", "started_at", "finished_at", "message"]
+        return dict(zip(keys, row, strict=True))
+
+    @app.get("/api/agent/context", dependencies=[Depends(require_token)])
+    def agent_context(period: str = Query(pattern=r"^\d{4}-\d{2}$")) -> dict[str, object]:
+        summary = dashboard_summary(settings, period)
+        with connect(settings.path("database")) as connection:
+            run = connection.execute(
+                "select run_id, status from pipeline_runs where period=? order by run_id desc limit 1", [period]
+            ).fetchone()
+            insights = [] if run is None else connection.execute(
+                "select insight_code, severity, title, description, amount, evidence_json from accounting_insights where run_id=? order by severity, abs(amount) desc nulls last",
+                [run[0]],
+            ).fetchall()
+        return {
+            "period": period,
+            "run_id": None if run is None else run[0],
+            "status": "DATA_AVAILABLE" if run is None and summary["rows"] else ("NOT_PROCESSED" if run is None else run[1]),
+            "data_policy": "aggregated_read_only",
+            "summary": summary,
+            "insights": [
+                dict(zip(["code", "severity", "title", "description", "amount", "evidence"], row, strict=True))
+                for row in insights
+            ],
+        }
+
+    return app
+
+
+app = create_app()

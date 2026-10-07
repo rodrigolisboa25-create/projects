@@ -1,0 +1,338 @@
+schemas:
+  all_brazil_data:
+    workbook_patterns: ["ALL_BRAZIL_*.xlsx", "ALL BRAZIL *.xlsx"]
+    sheet_aliases: ["Data", "DATA"]
+    header_search_rows: 5
+    columns:
+      material_number:
+        {
+          required: true,
+          type: text,
+          aliases: ["Material Nbr", "Material Number"],
+        }
+      type_material: { required: false, type: text, aliases: ["Type Material"] }
+      number_of_sizes:
+        { required: false, type: integer, aliases: ["Number of Sizes"] }
+      ean_upc:
+        {
+          required: false,
+          type: text,
+          aliases: ["Código EAN/UPC", "Codigo EAN/UPC"],
+        }
+      activity_sector:
+        { required: false, type: text, aliases: ["Setor Atividade"] }
+      division_description:
+        { required: true, type: text, aliases: ["Division Description"] }
+      us_style_name: { required: false, type: text, aliases: ["Us Style Name"] }
+      brazil_style_name:
+        { required: false, type: text, aliases: ["Brazil Style Name"] }
+      price: { required: false, type: decimal, aliases: ["Price"] }
+      silhouette: { required: false, type: text, aliases: ["Silhouette"] }
+      silhouette_description:
+        { required: false, type: text, aliases: ["Silhouette Descrip."] }
+      gender: { required: false, type: text, aliases: ["Gender"] }
+      gender_description:
+        { required: false, type: text, aliases: ["Gender Description"] }
+      category: { required: false, type: text, aliases: ["Category"] }
+      category_description:
+        { required: false, type: text, aliases: ["Category Description"] }
+      subcategory: { required: false, type: text, aliases: ["Subcategory"] }
+      subcategory_description:
+        { required: false, type: text, aliases: ["Subcategory Descrip."] }
+      matrix: { required: false, type: text, aliases: ["Matriz"] }
+      matrix_description:
+        { required: false, type: text, aliases: ["Matriz Description"] }
+      segment: { required: false, type: text, aliases: ["Segment"] }
+      segment_description:
+        { required: false, type: text, aliases: ["Segment Description"] }
+      sport_activity: { required: false, type: text, aliases: ["Sport Act"] }
+      sport_activity_description:
+        { required: false, type: text, aliases: ["Sport Act Descrip."] }
+      base_uom: { required: false, type: text, aliases: ["Base UOM"] }
+      delivery_units:
+        { required: false, type: text, aliases: ["Delivery Units"] }
+      ncm: { required: false, type: text, aliases: ["NCM"] }
+      source_destination_type:
+        { required: false, type: text, aliases: ["Source Dest Type"] }
+      source_destination_description:
+        { required: false, type: text, aliases: ["Source Dest Tp Desc."] }
+      cfop: { required: false, type: text, aliases: ["CFOP"] }
+      cfop_description:
+        { required: false, type: text, aliases: ["CFOP Description"] }
+      material_origin:
+        { required: false, type: text, aliases: ["Material Origin"] }
+      material_origin_description:
+        { required: true, type: text, aliases: ["Material Origin Des."] }
+      lifecycle: { required: true, type: text, aliases: ["Lifecycle"] }
+      lifecycle_description:
+        { required: true, type: text, aliases: ["Lifecycle Descrip."] }
+      launch_indicator:
+        { required: false, type: text, aliases: ["Launch Ind."] }
+      launch_indicator_description:
+        { required: false, type: text, aliases: ["Launch Ind. Descrip."] }
+      material_type: { required: false, type: text, aliases: ["Material Type"] }
+      tax_classification:
+        { required: false, type: text, aliases: ["Tax Classification"] }
+      product_offer_begin_date:
+        { required: false, type: date, aliases: ["Prod Offer Begin Dt"] }
+      futures_offer_end_date:
+        { required: false, type: date, aliases: ["Futures Offer End DT"] }
+      product_offer_end_date:
+        { required: true, type: date, aliases: ["Product Offer End Dt"] }
+      collection_code:
+        { required: true, type: text, aliases: ["Collection Code"] }
+      collection_year:
+        { required: true, type: integer, aliases: ["Collection Year"] }
+      promotion_indicator:
+        { required: false, type: text, aliases: ["Indicador Promo"] }
+      carry_over: { required: false, type: text, aliases: ["Carry Over"] }
+      attribute_language:
+        { required: false, type: text, aliases: ["Idioma Att"] }
+      sneakers: { required: false, type: text, aliases: ["Sneakers"] }
+      rebuy: { required: false, type: text, aliases: ["Rebuy"] }
+      created_at: { required: false, type: date, aliases: ["Criado em"] }
+
+  mb59_base:
+    workbook_patterns: ["MB59*BASE*GR*.xlsx", "*.xlsx"]
+    sheet_aliases: ["BASE", "Base"]
+    header_search_rows: 30
+    columns:
+      material:
+        {
+          required: true,
+          type: text,
+          aliases: ["Material", "Código material", "MATNR"],
+        }
+      material_description:
+        {
+          required: true,
+          type: text,
+          aliases: ["Texto breve material", "Descrição material", "MAKTX"],
+        }
+      plant:
+        { required: true, type: text, aliases: ["Centro", "Planta", "WERKS"] }
+      storage_location:
+        {
+          required: true,
+          type: text,
+          aliases: ["Depósito", "Deposito", "LGORT"],
+        }
+      movement_type:
+        {
+          required: true,
+          type: text,
+          aliases: ["Tipo de movimento", "Tp.movimento", "BWART"],
+        }
+      material_document:
+        {
+          required: true,
+          type: text,
+          aliases: ["Doc.material", "Documento material", "MBLNR"],
+        }
+      posting_date:
+        {
+          required: true,
+          type: date,
+          aliases: ["Data de lançamento", "Data lancamento", "BUDAT"],
+        }
+      product_offer_end_date:
+        {
+          required: false,
+          type: date,
+          aliases:
+            [
+              "Product Offer End Dt",
+              "Product Offer End Date",
+              "Prod Offer End Dt",
+            ],
+        }
+      entry_quantity:
+        {
+          required: true,
+          type: decimal,
+          aliases:
+            [
+              "Qtd.  UM registro",
+              "Qtd. UM registro",
+              "Quantidade UM registro",
+              "ERFMG",
+            ],
+        }
+      user_name:
+        {
+          required: true,
+          type: text,
+          aliases: ["Nome do usuário", "Nome do usuario", "USNAM"],
+        }
+      debit_credit_code:
+        {
+          required: true,
+          type: text,
+          aliases: ["Cód.débito/crédito", "Cod.debito/credito", "SHKZG"],
+        }
+      entry_date:
+        { required: true, type: date, aliases: ["Data de entrada", "CPUDT"] }
+      reference:
+        {
+          required: false,
+          type: text,
+          aliases: ["Referência", "Referencia", "XBLNR"],
+        }
+      purchase_order:
+        {
+          required: true,
+          type: text,
+          aliases: ["Pedido", "Documento de compra", "EBELN"],
+        }
+      purchase_order_item:
+        {
+          required: true,
+          type: text,
+          aliases: ["Item", "Item pedido", "EBELP"],
+        }
+      document_date:
+        { required: true, type: date, aliases: ["Data do documento", "BLDAT"] }
+      vendor: { required: false, type: text, aliases: ["Fornecedor", "LIFNR"] }
+      amount_local_currency:
+        {
+          required: true,
+          type: decimal,
+          aliases: ["Montante em MI", "Montante moeda interna", "DMBTR"],
+        }
+      quantity: { required: false, type: decimal, aliases: ["Quantidade"] }
+      sku: { required: false, type: text, aliases: ["SKU"] }
+      po_prefix: { required: false, type: text, aliases: ["PO"] }
+      product_offer_end_date:
+        { required: false, type: date, aliases: ["Product Offer End Dt", "Product Offer End Date"] }
+      season: { required: false, type: text, aliases: ["Season"] }
+      year: { required: false, type: integer, aliases: ["Year", "Ano"] }
+      season_year:
+        { required: false, type: text, aliases: ["SEASON&YEAR", "Season Year"] }
+      material_origin:
+        {
+          required: false,
+          type: text,
+          aliases: ["Material Origin Des.", "Material Origin Description"],
+        }
+      model_color_quantity:
+        {
+          required: false,
+          type: text,
+          aliases: ["Modelo-cor&quantidade", "Modelo cor quantidade"],
+        }
+
+  zmm119_base_orig:
+    workbook_patterns: ["Posição de Estoque*.xlsb", "Posicao de Estoque*.xlsb"]
+    sheet_aliases: ["Base Orig.", "Base Orig", "BASE ORIG."]
+    header_search_rows: 30
+    columns:
+      center_material_key:
+        {
+          required: false,
+          type: text,
+          aliases: ["CE & MAT", "Centro & Material"],
+        }
+      operation_status:
+        {
+          required: false,
+          type: text,
+          aliases: ["STATUS OPERAÇÃO", "STATUS OPERACAO"],
+        }
+      company: { required: true, type: text, aliases: ["Empresa", "BUKRS"] }
+      plant:
+        { required: true, type: text, aliases: ["Centro", "Planta", "WERKS"] }
+      material: { required: true, type: text, aliases: ["Material", "MATNR"] }
+      material_description:
+        {
+          required: true,
+          type: text,
+          aliases: ["Texto breve material", "Descrição material", "MAKTX"],
+        }
+      base_unit:
+        {
+          required: true,
+          type: text,
+          aliases: ["Unid.medida básica", "Unid.medida basica", "MEINS"],
+        }
+      ncm: { required: true, type: text, aliases: ["NCM"] }
+      unrestricted_quantity:
+        {
+          required: true,
+          type: decimal,
+          aliases: ["Utilização livre", "Utilizacao livre"],
+        }
+      blocked_quantity:
+        { required: true, type: decimal, aliases: ["Bloqueado"] }
+      average_company_cost:
+        {
+          required: true,
+          type: decimal,
+          aliases: ["Custo Médio Empresa", "Custo Medio Empresa"],
+        }
+      fiscal_cost: { required: true, type: decimal, aliases: ["Custo Fiscal"] }
+      total: { required: true, type: decimal, aliases: ["Total"] }
+      icms_st_amount:
+        { required: true, type: decimal, aliases: ["Vlr ICMS ST"] }
+      ipi_amount: { required: true, type: decimal, aliases: ["Vlr IPI"] }
+      inventory_type: { required: true, type: text, aliases: ["Tipo"] }
+      company_total_amount:
+        { required: true, type: decimal, aliases: ["Vlr Tot Emp"] }
+      fiscal_total_amount:
+        { required: true, type: decimal, aliases: ["Vlr Tot Fisc"] }
+      average_commercial_cost:
+        {
+          required: true,
+          type: decimal,
+          aliases: ["Custo Médio Comercial", "Custo Medio Comercial"],
+        }
+      commercial_total_amount:
+        { required: true, type: decimal, aliases: ["Vlr Total CC"] }
+      company_unit_cost:
+        { required: false, type: decimal, aliases: ["CE UNIT"] }
+      style_color:
+        { required: false, type: text, aliases: ["Estilo-Cor", "Estilo Cor"] }
+      style: { required: false, type: text, aliases: ["Estilo"] }
+      fiscal_unit_cost:
+        {
+          required: false,
+          type: decimal,
+          aliases: ["Custo Fiscal UNIT.", "Custo Fiscal Unit"],
+        }
+      division_description:
+        { required: false, type: text, aliases: ["Division Description"] }
+      material_origin:
+        {
+          required: false,
+          type: text,
+          aliases: ["Material Origin Des.", "Material Origin Description"],
+        }
+      product_offer_end_date:
+        { required: false, type: date, aliases: ["Product Offer End Dt"] }
+      aging_days: { required: false, type: integer, aliases: ["Days", "Dias"] }
+      aging_bucket: { required: false, type: text, aliases: ["AGING", "Aging"] }
+      lifecycle: { required: false, type: text, aliases: ["Lifecycle"] }
+      lifecycle_description:
+        {
+          required: false,
+          type: text,
+          aliases: ["Lifecycle Descrip.", "Lifecycle Description"],
+        }
+      location_group: { required: false, type: text, aliases: ["Local"] }
+      fob_amount: { required: false, type: decimal, aliases: ["FOB"] }
+      import_tax_amount: { required: false, type: decimal, aliases: ["II"] }
+      other_costs_amount:
+        { required: false, type: decimal, aliases: ["Outros Custos"] }
+      season_year:
+        {
+          required: false,
+          type: text,
+          aliases: ["Season/Coleção", "Season/Colecao"],
+        }
+      season: { required: false, type: text, aliases: ["Season"] }
+      year: { required: false, type: integer, aliases: ["Year", "Ano"] }
+      historical_year_bucket:
+        {
+          required: false,
+          type: text,
+          aliases: ["Tudo que for antes de 2022 deixar <2022"],
+        }

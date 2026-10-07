@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell($r=\"$env:LOCALAPPDATA\\\\OpsContabil\"; Get-ChildItem $r -Force | Format-Table LastWriteTime, Name -AutoSize; Get-ChildItem \"$r\\\\runtime\" -Force | Format-Table LastWriteTime, Name -AutoSize; Get-ChildItem \"$r\\\\runtime\\\\app\" -Force -ErrorAction SilentlyContinue | Format-Table LastWriteTime, Name -AutoSize)"
+    ]
+  }
+}

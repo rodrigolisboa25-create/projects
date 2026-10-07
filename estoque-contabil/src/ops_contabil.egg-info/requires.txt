@@ -1,0 +1,18 @@
+duckdb<2,>=1.4
+fastapi<1,>=0.116
+jinja2<4,>=3.1
+openpyxl<4,>=3.1
+pydantic<3,>=2.11
+pydantic-settings<3,>=2.10
+pyarrow<22,>=20
+pyxlsb<2,>=1.0.10
+PyYAML<7,>=6.0
+typer<1,>=0.16
+uvicorn[standard]<1,>=0.35
+
+[:sys_platform == "win32"]
+pywin32>=311
+
+[dev]
+pytest<9,>=8.4
+ruff<1,>=0.12

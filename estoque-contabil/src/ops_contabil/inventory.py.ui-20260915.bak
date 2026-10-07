@@ -1,0 +1,422 @@
+from __future__ import annotations
+
+import hashlib
+import math
+import os
+import re
+import shutil
+from datetime import date, datetime, timedelta
+from pathlib import Path
+from typing import Any
+
+import pythoncom
+import pyarrow as pa
+import win32com.client
+from openpyxl import load_workbook
+
+from .db import connect
+from .ingestion.schema_resolver import SchemaContract, load_contracts, resolve_headers
+
+
+INVENTORY_COLUMNS: tuple[tuple[str, str], ...] = (
+    ("center_material_key", "CE & MAT"),
+    ("operation_status", "STATUS OPERAÇÃO"),
+    ("company", "Empresa"),
+    ("plant", "Centro"),
+    ("material", "Material"),
+    ("material_description", "Texto breve material"),
+    ("base_unit", "Unid.medida básica"),
+    ("ncm", "NCM"),
+    ("unrestricted_quantity", "Utilização livre"),
+    ("blocked_quantity", "Bloqueado"),
+    ("average_company_cost", "Custo Médio Empresa"),
+    ("fiscal_cost", "Custo Fiscal"),
+    ("total", "Total"),
+    ("icms_st_amount", "Vlr ICMS ST"),
+    ("ipi_amount", "Vlr IPI"),
+    ("inventory_type", "Tipo"),
+    ("company_total_amount", "Vlr Tot Emp"),
+    ("fiscal_total_amount", "Vlr Tot Fisc"),
+    ("average_commercial_cost", "Custo Médio Comercial"),
+    ("commercial_total_amount", "Vlr Total CC"),
+    ("company_unit_cost", "CE UNIT"),
+    ("style_color", "Estilo-Cor"),
+    ("style", "Estilo"),
+    ("fiscal_unit_cost", "Custo Fiscal UNIT."),
+    ("division_description", "Division Description"),
+    ("material_origin", "Material Origin Des."),
+    ("product_offer_end_date", "Product Offer End Dt"),
+    ("aging_days", "Days"),
+    ("aging_bucket", "AGING"),
+    ("lifecycle", "Lifecycle"),
+    ("lifecycle_description", "Lifecycle Descrip."),
+    ("location_group", "Local"),
+    ("fob_amount", "FOB"),
+    ("import_tax_amount", "II"),
+    ("other_costs_amount", "Outros Custos"),
+    ("season_year", "Season/Coleção"),
+    ("season", "Season"),
+    ("year", "Year"),
+    ("historical_year_bucket", "Tudo que for antes de 2022 deixar <2022"),
+)
+
+NUMERIC_COLUMNS = {
+    "unrestricted_quantity", "blocked_quantity", "average_company_cost", "fiscal_cost",
+    "total", "icms_st_amount", "ipi_amount", "company_total_amount", "fiscal_total_amount",
+    "average_commercial_cost", "commercial_total_amount", "company_unit_cost", "fiscal_unit_cost",
+    "aging_days", "fob_amount", "import_tax_amount", "other_costs_amount", "year",
+}
+DATE_COLUMNS = {"product_offer_end_date"}
+
+
+def _project_root() -> Path:
+    configured = os.getenv("OPS_PROJECT_ROOT")
+    return Path(configured).resolve() if configured else Path.cwd().resolve()
+
+
+def sample_workbook() -> Path:
+    return _project_root() / "Posição de Estoque - FISIA.xlsb"
+
+
+def _sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for block in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def ensure_inventory_schema(connection: Any) -> None:
+    columns = ",\n".join(
+        f'"{name}" {"date" if name in DATE_COLUMNS else "double" if name in NUMERIC_COLUMNS else "varchar"}'
+        for name, _ in INVENTORY_COLUMNS
+    )
+    connection.execute(
+        f"""
+        create table if not exists inventory_rows (
+            period varchar not null,
+            source_row bigint not null,
+            {columns}
+        );
+        create table if not exists inventory_imports (
+            period varchar primary key,
+            source_path varchar not null,
+            source_sha256 varchar not null,
+            source_sheet varchar not null,
+            header_row integer not null,
+            row_count bigint not null,
+            schema_fingerprint varchar not null,
+            imported_at timestamp not null default current_timestamp
+        );
+        """
+    )
+
+
+def _as_rows(value: Any) -> list[list[Any]]:
+    if value is None:
+        return []
+    if not isinstance(value, tuple):
+        return [[value]]
+    if value and not isinstance(value[0], tuple):
+        return [list(value)]
+    return [list(row) for row in value]
+
+
+def _clean_number(value: Any) -> float | None:
+    if value is None or value == "":
+        return None
+    if isinstance(value, (int, float)):
+        result = float(value)
+        return None if math.isnan(result) else result
+    text = str(value).strip().replace("R$", "").replace(" ", "")
+    if not text:
+        return None
+    if "," in text:
+        text = text.replace(".", "").replace(",", ".")
+    try:
+        return float(text)
+    except ValueError:
+        return None
+
+
+def _clean_value(name: str, value: Any) -> Any:
+    if value is None or value == "":
+        return None
+    if name in NUMERIC_COLUMNS:
+        return _clean_number(value)
+    if name in DATE_COLUMNS:
+        if isinstance(value, datetime):
+            return value.date()
+        if isinstance(value, date):
+            return value
+        if isinstance(value, (int, float)):
+            return (datetime(1899, 12, 30) + timedelta(days=float(value))).date()
+        return None
+    if isinstance(value, float) and value.is_integer():
+        return str(int(value))
+    return str(value).strip()
+
+
+def _read_records_pyxlsb(path: Path, contract: SchemaContract, period: str) -> tuple[list[list[Any]], Any, str]:
+    from pyxlsb import open_workbook
+
+    workbook = open_workbook(str(path))
+    try:
+        source_sheet = next((name for name in contract.sheet_aliases if name in workbook.sheets), None)
+        if source_sheet is None:
+            raise ValueError(f"Aba Base Orig. não encontrada em {path.name}")
+        worksheet = workbook.get_sheet(source_sheet)
+        try:
+            preview = [[cell.v for cell in row] for _, row in zip(range(contract.header_search_rows), worksheet.rows())]
+        finally:
+            worksheet.close()
+        resolution = resolve_headers(preview, contract)
+        worksheet = workbook.get_sheet(source_sheet)
+        records: list[list[Any]] = []
+        names = [name for name, _ in INVENTORY_COLUMNS]
+        try:
+            for source_row, cells in enumerate(worksheet.rows(), start=1):
+                if source_row <= resolution.header_row:
+                    continue
+                row = [cell.v for cell in cells]
+                material_position = resolution.positions["material"]
+                if material_position >= len(row) or row[material_position] in (None, ""):
+                    continue
+                values = []
+                for name in names:
+                    position = resolution.positions.get(name)
+                    raw = None if position is None or position >= len(row) else row[position]
+                    values.append(_clean_value(name, raw))
+                records.append([period, source_row, *values])
+        finally:
+            worksheet.close()
+        return records, resolution, source_sheet
+    finally:
+        workbook.close()
+
+
+def _store_inventory_records(
+    settings: Any,
+    period: str,
+    path: Path,
+    source_hash: str,
+    source_sheet: str,
+    resolution: Any,
+    records: list[list[Any]],
+) -> dict[str, Any]:
+    names = [name for name, _ in INVENTORY_COLUMNS]
+    batch_names = ["period", "source_row", *names]
+    batch_types = [pa.string(), pa.int64(), *[
+        pa.date32() if name in DATE_COLUMNS else pa.float64() if name in NUMERIC_COLUMNS else pa.string()
+        for name in names
+    ]]
+    batch = pa.Table.from_arrays(
+        [pa.array([row[index] for row in records], type=data_type) for index, data_type in enumerate(batch_types)],
+        names=batch_names,
+    )
+    quoted = ",".join(f'"{name}"' for name, _ in INVENTORY_COLUMNS)
+    with connect(settings.path("database")) as connection:
+        ensure_inventory_schema(connection)
+        connection.execute("begin")
+        try:
+            connection.execute("delete from inventory_rows where period=?", [period])
+            connection.register("inventory_batch", batch)
+            connection.execute(
+                f"insert into inventory_rows(period, source_row, {quoted}) select * from inventory_batch"
+            )
+            connection.execute("delete from inventory_imports where period=?", [period])
+            connection.execute(
+                "insert into inventory_imports(period,source_path,source_sha256,source_sheet,header_row,row_count,schema_fingerprint) values (?,?,?,?,?,?,?)",
+                [period, str(path), source_hash, source_sheet, resolution.header_row, len(records), resolution.fingerprint],
+            )
+            connection.execute("commit")
+        except Exception:
+            connection.execute("rollback")
+            raise
+    return {"status": "imported", "period": period, "rows": len(records), "path": str(path), "header_row": resolution.header_row}
+
+
+def import_inventory_xlsb(settings: Any, period: str, path: Path | None = None, force: bool = False) -> dict[str, Any]:
+    """Importa a aba Base Orig. por cabeçalho, independentemente da ordem física das colunas."""
+    datetime.strptime(period, "%Y-%m")
+    path = (path or sample_workbook()).resolve()
+    if not path.exists():
+        raise FileNotFoundError(f"Planilha de posição não encontrada: {path}")
+    source_hash = _sha256(path)
+    with connect(settings.path("database")) as connection:
+        ensure_inventory_schema(connection)
+        current = connection.execute(
+            "select source_sha256, row_count from inventory_imports where period=?", [period]
+        ).fetchone()
+        if current and current[0] == source_hash and not force:
+            return {"status": "unchanged", "period": period, "rows": int(current[1]), "path": str(path)}
+
+    contract: SchemaContract = load_contracts(settings.root / "config" / "schemas.yaml")["zmm119_base_orig"]
+    staging = Path(os.path.expandvars("%LOCALAPPDATA%")) / "OpsContabil" / "staging"
+    staging.mkdir(parents=True, exist_ok=True)
+    staged_path = staging / f"inventory_{source_hash[:16]}.xlsb"
+    if not staged_path.exists() or staged_path.stat().st_size != path.stat().st_size:
+        shutil.copy2(path, staged_path)
+    records, resolution, source_sheet = _read_records_pyxlsb(staged_path, contract, period)
+    return _store_inventory_records(settings, period, path, source_hash, source_sheet, resolution, records)
+
+
+def import_zmm119_xlsx(settings: Any, period: str, path: Path) -> dict[str, Any]:
+    """Ingere a exportação bruta ZMM119 e calcula as colunas derivadas do modelo."""
+    datetime.strptime(period, "%Y-%m")
+    path = path.resolve()
+    source_hash = _sha256(path)
+    contract = load_contracts(settings.root / "config" / "schemas.yaml")["zmm119_base_orig"]
+    workbook = load_workbook(path, read_only=True, data_only=True)
+    try:
+        best: tuple[Any, Any] | None = None
+        for worksheet in workbook.worksheets:
+            preview = [list(row) for row in worksheet.iter_rows(min_row=1, max_row=contract.header_search_rows, values_only=True)]
+            try:
+                candidate = resolve_headers(preview, contract)
+            except Exception:
+                continue
+            if best is None or len(candidate.positions) > len(best[1].positions):
+                best = (worksheet, candidate)
+        if best is None:
+            raise ValueError("Nenhuma aba da exportação ZMM119 atende ao contrato de colunas.")
+        worksheet, resolution = best
+        names = [name for name, _ in INVENTORY_COLUMNS]
+        records: list[list[Any]] = []
+        for source_row, row in enumerate(
+            worksheet.iter_rows(min_row=resolution.header_row + 1, values_only=True),
+            start=resolution.header_row + 1,
+        ):
+            material_pos = resolution.positions["material"]
+            if material_pos >= len(row) or row[material_pos] in (None, ""):
+                continue
+            values = {}
+            for name in names:
+                position = resolution.positions.get(name)
+                raw = None if position is None or position >= len(row) else row[position]
+                values[name] = _clean_value(name, raw)
+            material = str(values["material"])
+            plant = "" if values["plant"] is None else str(values["plant"])
+            quantity = values["unrestricted_quantity"] or 0
+            fiscal_total = values["fiscal_total_amount"] or 0
+            company_total = values["company_total_amount"] or 0
+            values.update({
+                "center_material_key": f"{plant}{material}",
+                "style_color": material[:10],
+                "style": material[:6],
+                "company_unit_cost": company_total / quantity if quantity else None,
+                "fiscal_unit_cost": fiscal_total / quantity if quantity else None,
+                "fob_amount": fiscal_total * 0.50,
+                "import_tax_amount": fiscal_total * 0.35,
+                "other_costs_amount": fiscal_total * 0.15,
+            })
+            records.append([period, source_row, *[values[name] for name in names]])
+        return _store_inventory_records(
+            settings, period, path, source_hash, str(worksheet.title), resolution, records
+        )
+    finally:
+        workbook.close()
+
+
+def _worksheet_exists(workbook: Any, name: str) -> bool:
+    try:
+        workbook.Worksheets(name)
+        return True
+    except Exception:
+        return False
+
+
+def inventory_columns() -> list[dict[str, str]]:
+    numeric = NUMERIC_COLUMNS
+    return [
+        {"key": name, "label": label, "type": "date" if name in DATE_COLUMNS else "number" if name in numeric else "text"}
+        for name, label in INVENTORY_COLUMNS
+    ]
+
+
+def _serialize(value: Any) -> Any:
+    if isinstance(value, (date, datetime)):
+        return value.isoformat()
+    return value
+
+
+def list_inventory(settings: Any, period: str, page: int, page_size: int, query: str, sort: str, direction: str) -> dict[str, Any]:
+    allowed = {name for name, _ in INVENTORY_COLUMNS} | {"source_row"}
+    sort = sort if sort in allowed else "source_row"
+    direction = "desc" if direction.lower() == "desc" else "asc"
+    names = [name for name, _ in INVENTORY_COLUMNS]
+    where = "period=?"
+    params: list[Any] = [period]
+    if query.strip():
+        searched = ["material", "material_description", "plant", "style_color", "ncm", "aging_bucket", "lifecycle_description"]
+        where += " and (" + " or ".join(f'coalesce(cast("{name}" as varchar),\'\') ilike ?' for name in searched) + ")"
+        params.extend([f"%{query.strip()}%"] * len(searched))
+    select = ",".join(["source_row", *[f'"{name}"' for name in names]])
+    with connect(settings.path("database")) as connection:
+        ensure_inventory_schema(connection)
+        total = int(connection.execute(f"select count(*) from inventory_rows where {where}", params).fetchone()[0])
+        rows = connection.execute(
+            f'select {select} from inventory_rows where {where} order by "{sort}" {direction} nulls last limit ? offset ?',
+            [*params, page_size, (page - 1) * page_size],
+        ).fetchall()
+    keys = ["source_row", *names]
+    return {
+        "period": period,
+        "page": page,
+        "page_size": page_size,
+        "total": total,
+        "pages": max(1, math.ceil(total / page_size)),
+        "rows": [{key: _serialize(value) for key, value in zip(keys, row, strict=True)} for row in rows],
+    }
+
+
+def dashboard_summary(settings: Any, period: str) -> dict[str, Any]:
+    with connect(settings.path("database")) as connection:
+        ensure_inventory_schema(connection)
+        core = connection.execute(
+            """select count(*), count(distinct material), coalesce(sum(unrestricted_quantity),0),
+                      coalesce(sum(fiscal_total_amount),0), count(distinct style_color)
+               from inventory_rows where period=?""", [period]
+        ).fetchone()
+        def grouped(column: str, limit: int = 6) -> list[dict[str, Any]]:
+            rows = connection.execute(
+                f'''select coalesce(nullif(trim(cast("{column}" as varchar)),''),'Não informado'),
+                           count(*), coalesce(sum(fiscal_total_amount),0)
+                    from inventory_rows where period=? group by 1 order by 3 desc limit ?''',
+                [period, limit],
+            ).fetchall()
+            return [{"label": row[0], "rows": int(row[1]), "value": float(row[2])} for row in rows]
+        import_info = connection.execute(
+            "select source_path, header_row, imported_at from inventory_imports where period=?", [period]
+        ).fetchone()
+        enriched = connection.execute(
+            """select count(distinct case when division_description is not null then style_color end),
+                      count(distinct style_color)
+               from inventory_rows where period=? and style_color is not null""", [period]
+        ).fetchone()
+        try:
+            measured_coverage = connection.execute(
+                "select coverage_pct from all_brazil_imports where period=?", [period]
+            ).fetchone()
+        except Exception:
+            measured_coverage = None
+        cost = connection.execute(
+            "select coalesce(sum(fob_amount),0),coalesce(sum(import_tax_amount),0),coalesce(sum(other_costs_amount),0) from inventory_rows where period=?",
+            [period],
+        ).fetchone()
+        aging = grouped("aging_bucket")
+        plants = grouped("plant")
+        lifecycle = grouped("lifecycle_description")
+        origins = grouped("material_origin")
+        locations = grouped("location_group")
+        top_styles = grouped("style_color", 8)
+    coverage = float(measured_coverage[0]) if measured_coverage else ((100 * enriched[0] / enriched[1]) if enriched and enriched[1] else 0)
+    return {
+        "period": period,
+        "rows": int(core[0]), "materials": int(core[1]), "quantity": float(core[2]),
+        "fiscal_value": float(core[3]), "style_colors": int(core[4]), "all_brazil_coverage": round(coverage, 2),
+        "aging": aging, "plants": plants, "lifecycle": lifecycle,
+        "origins": origins, "locations": locations, "top_styles": top_styles,
+        "cost_composition": {"fob": float(cost[0]), "ii": float(cost[1]), "others": float(cost[2])},
+        "source": None if import_info is None else {"path": import_info[0], "header_row": int(import_info[1]), "imported_at": _serialize(import_info[2])},
+    }

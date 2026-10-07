@@ -1,0 +1,34 @@
+from __future__ import annotations
+
+import os
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
+
+import yaml
+
+
+@dataclass(frozen=True)
+class Settings:
+    root: Path
+    raw: dict[str, Any]
+
+    @property
+    def project(self) -> dict[str, Any]:
+        return self.raw["project"]
+
+    def path(self, key: str) -> Path:
+        value = Path(os.path.expandvars(str(self.project[key])))
+        return value if value.is_absolute() else self.root / value
+
+
+def load_settings(config_path: str | Path | None = None) -> Settings:
+    requested = Path(config_path or os.getenv("OPS_CONFIG", "config/project.yaml"))
+    if not requested.is_absolute():
+        requested = Path.cwd() / requested
+    requested = requested.resolve()
+    with requested.open("r", encoding="utf-8") as handle:
+        raw = yaml.safe_load(handle)
+    if not isinstance(raw, dict) or "project" not in raw or "sources" not in raw:
+        raise ValueError(f"Configuração inválida: {requested}")
+    return Settings(root=requested.parent.parent, raw=raw)

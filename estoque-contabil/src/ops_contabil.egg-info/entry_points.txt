@@ -1,0 +1,2 @@
+[console_scripts]
+ops-contabil = ops_contabil.cli:app

@@ -1,0 +1,57 @@
+from __future__ import annotations
+
+from pathlib import Path
+
+import duckdb
+
+
+SCHEMA_SQL = """
+create sequence if not exists run_seq start 1;
+create table if not exists pipeline_runs (
+    run_id bigint primary key default nextval('run_seq'),
+    period varchar not null,
+    status varchar not null,
+    started_at timestamp not null default current_timestamp,
+    finished_at timestamp,
+    message varchar
+);
+create table if not exists source_files (
+    source_file_id varchar primary key,
+    run_id bigint not null,
+    source_name varchar not null,
+    source_path varchar not null,
+    sha256 varchar not null,
+    size_bytes bigint not null,
+    loaded_at timestamp not null default current_timestamp,
+    row_count bigint,
+    schema_version varchar,
+    status varchar not null
+);
+create table if not exists control_results (
+    run_id bigint not null,
+    control_name varchar not null,
+    severity varchar not null,
+    status varchar not null,
+    expected_value varchar,
+    actual_value varchar,
+    details varchar,
+    checked_at timestamp not null default current_timestamp
+);
+create table if not exists accounting_insights (
+    run_id bigint not null,
+    insight_code varchar not null,
+    severity varchar not null,
+    title varchar not null,
+    description varchar not null,
+    amount decimal(38, 2),
+    evidence_json json,
+    created_at timestamp not null default current_timestamp
+);
+"""
+
+
+def connect(database: Path) -> duckdb.DuckDBPyConnection:
+    database.parent.mkdir(parents=True, exist_ok=True)
+    connection = duckdb.connect(str(database))
+    connection.execute(SCHEMA_SQL)
+    return connection

@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Ops Contábil</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='13' fill='%230b2a3f'/%3E%3Cpath d='M15 14h34v36H15z' fill='white'/%3E%3Cpath d='M20 20h24v8H20zm0 14h6v6h-6zm9 0h6v6h-6zm9 0h6v6h-6zm-18 9h6v3h-6zm9 0h15v3H29z' fill='%23068b7b'/%3E%3C/svg%3E">
+  <link href="https://cdn.jsdelivr.net/npm/@n8n/chat/dist/style.css" rel="stylesheet">
+  <style>
+    :root{--nav:#0b2538;--nav2:#123b52;--ink:#172a3a;--muted:#667789;--line:#dce5eb;--bg:#f2f5f7;--card:#fff;--green:#087f72;--green2:#12a091;--soft:#e4f4f1;--amber:#a96800;--red:#b33b3b;--blue:#286b9b}
+    *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:13px/1.4 "Segoe UI",Arial,sans-serif}.layout{min-height:100vh;display:grid;grid-template-columns:226px minmax(0,1fr)}.side{background:linear-gradient(180deg,var(--nav),#091e2e);color:#cedae3;padding:18px 13px;position:sticky;top:0;height:100vh;overflow:auto}.brand{display:flex;gap:10px;align-items:center;padding:2px 7px 16px;border-bottom:1px solid #ffffff1d}.logo{width:36px;height:36px;border-radius:9px;background:white;color:var(--nav);display:grid;place-items:center;font-weight:900;font-size:12px}.brand b{display:block;color:white;font-size:16px}.brand small{color:#91a8b8}.nav{margin-top:10px}.nav .group{display:block;color:#72c8bc;font-size:14px;font-weight:800;letter-spacing:.02em;padding:14px 10px 5px}.nav a{display:flex;align-items:center;gap:9px;color:#c9d5de;text-decoration:none;padding:8px 10px;border-radius:7px;margin:2px 0;cursor:pointer;font-size:12.5px}.nav a:hover{background:#ffffff0c;color:#fff}.nav a.active{background:#ffffff16;color:#fff;border-left:3px solid #56c5b5}.ico{width:18px;text-align:center;color:#81a0b3}.main{min-width:0}.top{height:58px;background:#fff;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;padding:0 22px;position:sticky;top:0;z-index:10}.crumb{color:var(--muted)}.crumb b{color:var(--ink)}.top-actions{display:flex;gap:7px;align-items:center}.btn,input,select{font:inherit}.btn{padding:8px 11px;border:1px solid var(--line);background:#fff;border-radius:7px;color:var(--ink);cursor:pointer}.btn:hover{border-color:#91a9ba}.btn.primary{background:var(--green);border-color:var(--green);color:#fff;font-weight:700}.btn.danger{background:#fff5f5;color:var(--red);border-color:#efcaca}.content{max-width:1680px;margin:auto;padding:18px 22px}.panel{display:none}.panel.active{display:block}.heading{display:flex;justify-content:space-between;align-items:start;margin-bottom:12px}.heading h1{font-size:23px;margin:0}.heading p{color:var(--muted);margin:3px 0}.status{background:var(--soft);color:var(--green);padding:6px 10px;border-radius:16px;font-weight:750}.status.warn{background:#fff2d6;color:var(--amber)}.kpis{display:grid;grid-template-columns:repeat(5,1fr);gap:10px}.card{background:var(--card);border:1px solid #dfe7ed;border-radius:10px;box-shadow:0 5px 19px #1631480a}.kpi{padding:13px 14px;min-height:88px}.label{color:var(--muted);font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.06em}.value{font-size:21px;font-weight:780;margin:6px 0 1px}.sub{font-size:11px;color:var(--muted)}.dashboard-grid{display:grid;grid-template-columns:repeat(12,1fr);gap:10px;margin-top:10px}.span4{grid-column:span 4}.span6{grid-column:span 6}.span8{grid-column:span 8}.section{padding:14px}.head{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}.head h2{font-size:14px;margin:0}.head small{color:var(--muted)}.bars{display:grid;gap:9px}.bar{display:grid;grid-template-columns:minmax(90px,145px) 1fr 90px;gap:8px;align-items:center;font-size:11px}.bar-label{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.track{height:7px;background:#edf1f4;border-radius:8px;overflow:hidden}.fill{height:100%;background:linear-gradient(90deg,var(--green),var(--green2));border-radius:8px}.bar b{text-align:right}.source-list{display:grid;gap:7px}.source{display:grid;grid-template-columns:34px 1fr auto;gap:9px;align-items:center;border:1px solid var(--line);border-radius:8px;padding:9px}.source .symbol{width:31px;height:31px;border-radius:7px;background:var(--soft);color:var(--green);display:grid;place-items:center;font-weight:800}.source b{display:block}.source small{color:var(--muted)}.badge{display:inline-block;background:var(--soft);color:var(--green);padding:3px 6px;border-radius:10px;font-size:10px;font-weight:750}.badge.warn{background:#fff2d6;color:var(--amber)}.toolbar{padding:10px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}.field{display:grid;gap:4px}.field label{font-size:10px;font-weight:800;color:var(--muted);text-transform:uppercase}.field input,.field select,.search{height:35px;border:1px solid var(--line);background:#fff;border-radius:7px;padding:0 9px;color:var(--ink)}.search{min-width:300px}.spacer{flex:1}.grid-wrap{overflow:auto;max-height:calc(100vh - 245px);border-top:1px solid var(--line)}table{border-collapse:separate;border-spacing:0;width:max-content;min-width:100%}th,td{padding:7px 9px;border-right:1px solid #edf1f4;border-bottom:1px solid #edf1f4;white-space:nowrap;max-width:330px;overflow:hidden;text-overflow:ellipsis}th{position:sticky;top:0;z-index:3;background:#eef3f6;color:#496171;font-size:10px;text-transform:uppercase;text-align:left;cursor:pointer}td.number{text-align:right;font-variant-numeric:tabular-nums}tr:hover td{background:#f5fbfa}.rownum{position:sticky;left:0;z-index:2;background:#f6f8fa!important;color:#788b98;text-align:right;min-width:44px}.grid-status{padding:8px 11px;display:flex;justify-content:space-between;color:var(--muted);border-top:1px solid var(--line)}.pager{display:flex;gap:5px}.forms{display:grid;grid-template-columns:1fr 1fr;gap:10px}.form-card{padding:15px}.form-card h2{font-size:16px;margin:0 0 4px}.form-card>p{margin:0 0 12px;color:var(--muted)}.form-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}.full{grid-column:1/-1}.check{display:flex;align-items:center;gap:7px;margin-top:18px}.callout{border-left:3px solid var(--blue);background:#eef6fb;padding:9px 11px;margin-top:10px;color:#31566d}.jobs{margin-top:10px}.job{display:grid;grid-template-columns:100px 90px 1fr 160px;gap:10px;padding:9px 12px;border-top:1px solid var(--line);align-items:center}.audit-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}.control-list{display:grid;gap:7px}.control{display:flex;justify-content:space-between;gap:12px;border:1px solid var(--line);padding:9px;border-radius:8px}.control b{display:block}.control small{color:var(--muted)}.agent-box{
+  min-height:650px;
+  height:650px;
+  overflow:hidden;
+  padding:0;
+}
+
+#n8n-chat{
+  width:100%;
+  height:100%;
+
+  --chat--color--primary:#087f72;
+  --chat--color--primary-shade-50:#076f64;
+  --chat--color--primary--shade-100:#065f56;
+
+  --chat--color--secondary:#12a091;
+  --chat--color-secondary-shade-50:#0d8c80;
+
+  --chat--color-white:#ffffff;
+  --chat--color-light:#f2f5f7;
+  --chat--color-light-shade-50:#e6edf1;
+  --chat--color-light-shade-100:#dce5eb;
+  --chat--color-medium:#d2dce3;
+  --chat--color-dark:#0b2538;
+
+  --chat--border-radius:10px;
+  --chat--font-family:"Segoe UI",Arial,sans-serif;
+
+  --chat--header--background:#0b2538;
+  --chat--header--color:#ffffff;
+  --chat--heading--font-size:1.35rem;
+  --chat--subtitle--font-size:.85rem;
+
+  --chat--body--background:#f2f5f7;
+  --chat--footer--background:#ffffff;
+
+  --chat--message--font-size:.9rem;
+  --chat--message--bot--background:#ffffff;
+  --chat--message--bot--color:#172a3a;
+  --chat--message--user--background:#087f72;
+  --chat--message--user--color:#ffffff;
+
+  --chat--input--background:#ffffff;
+  --chat--input--text-color:#172a3a;
+  --chat--input--send--button--color:#087f72;
+}.agent-empty{min-height:520px;display:grid;place-items:center;text-align:center;padding:30px}.agent-empty div{max-width:650px}.agent-mark{width:55px;height:55px;margin:auto;border-radius:15px;background:var(--soft);color:var(--green);display:grid;place-items:center;font-size:18px;font-weight:900}.toast{position:fixed;right:20px;bottom:20px;z-index:100;background:#132b3d;color:#fff;padding:10px 14px;border-radius:8px;box-shadow:0 10px 28px #0003;opacity:0;transform:translateY(8px);transition:.2s;pointer-events:none}.toast.show{opacity:1;transform:none}.loading{color:var(--muted)}@media(max-width:1100px){.kpis{grid-template-columns:repeat(3,1fr)}.span4,.span6,.span8{grid-column:span 6}.forms,.audit-grid{grid-template-columns:1fr}}@media(max-width:760px){.layout{grid-template-columns:72px 1fr}.brand div:last-child,.nav .group,.nav a span{display:none}.nav a{justify-content:center}.content{padding:12px}.top{padding:0 12px}.crumb{display:none}.kpis{grid-template-columns:1fr 1fr}.span4,.span6,.span8{grid-column:1/-1}.search{min-width:180px}.form-grid{grid-template-columns:1fr}.full{grid-column:auto}.job{grid-template-columns:1fr}.grid-wrap{max-height:65vh}}
+  </style>
+</head>
+<body>
+<div class="layout">
+  <aside class="side">
+    <div class="brand"><div class="logo">OC</div><div><b>Ops Contábil</b><small>Estoque inteligente</small></div></div>
+    <nav class="nav" aria-label="Menu principal">
+      <span class="group">ANÁLISE CONTÁBIL</span>
+      <a href="#overview" data-view="overview"><i class="ico">▦</i><span>Visão e relatórios</span></a>
+      <a href="#inventory" data-view="inventory"><i class="ico">▤</i><span>Base de estoque</span></a>
+      <span class="group">OPERAÇÃO</span>
+      <a href="#sap" data-view="sap"><i class="ico">↻</i><span>Extrações SAP</span></a>
+      <a href="#governance" data-view="governance"><i class="ico">✓</i><span>Controles e auditoria</span></a>
+      <span class="group">INTELIGÊNCIA</span>
+      <a href="#agent" data-view="agent"><i class="ico">✦</i><span>Agente contábil</span></a>
+    </nav>
+  </aside>
+  <main class="main">
+    <header class="top"><div class="crumb">Fechamento / <b id="section-name">Visão e relatórios</b></div><div class="top-actions"><input id="global-period" type="month" value="2026-07" aria-label="Competência"><button class="btn" id="refresh">Atualizar</button><button class="btn primary" data-open-view="sap">Extrair SAP</button></div></header>
+    <div class="content">
+      <section class="panel" data-panel="overview">
+        <div class="heading"><div><h1>Posição contábil do estoque</h1><p id="overview-sub">Indicadores calculados diretamente da Base Orig.</p></div><span class="status" id="data-status">Carregando</span></div>
+        <div class="kpis">
+          <div class="card kpi"><div class="label">Valor fiscal</div><div class="value" id="k-fiscal">—</div><div class="sub">Vlr Tot Fisc</div></div>
+          <div class="card kpi"><div class="label">Utilização livre</div><div class="value" id="k-qty">—</div><div class="sub">unidades disponíveis</div></div>
+          <div class="card kpi"><div class="label">Materiais</div><div class="value" id="k-materials">—</div><div class="sub">SKUs distintos</div></div>
+          <div class="card kpi"><div class="label">Estilo-cor</div><div class="value" id="k-styles">—</div><div class="sub">chaves de enriquecimento</div></div>
+          <div class="card kpi"><div class="label">Cobertura All Brazil</div><div class="value" id="k-coverage">—</div><div class="sub">atributo Division preenchido</div></div>
+        </div>
+        <div class="dashboard-grid">
+          <div class="card section span4"><div class="head"><h2>Valor por aging</h2><small>R$ fiscal</small></div><div class="bars" id="chart-aging"></div></div>
+          <div class="card section span4"><div class="head"><h2>Valor por centro</h2><small>concentração</small></div><div class="bars" id="chart-plants"></div></div>
+          <div class="card section span4"><div class="head"><h2>Lifecycle</h2><small>All Brazil</small></div><div class="bars" id="chart-lifecycle"></div></div>
+          <div class="card section span4"><div class="head"><h2>Origem do material</h2><small>valor fiscal</small></div><div class="bars" id="chart-origins"></div></div>
+          <div class="card section span4"><div class="head"><h2>Local de estoque</h2><small>valor fiscal</small></div><div class="bars" id="chart-locations"></div></div>
+          <div class="card section span4"><div class="head"><h2>Fontes da competência</h2></div><div class="source-list"><div class="source"><div class="symbol">Z</div><div><b>ZMM119</b><small>Base Orig. · 39 colunas</small></div><span class="badge">Mapeada</span></div><div class="source"><div class="symbol">M</div><div><b>MB59</b><small>BASE · movimentos GR</small></div><span class="badge">Mapeada</span></div><div class="source"><div class="symbol">AB</div><div><b>All Brazil</b><small id="all-brazil-file">ano/mês da data-base</small></div><span class="badge" id="ab-badge">Dinâmica</span></div></div></div>
+        </div>
+      </section>
+
+      <section class="panel" data-panel="inventory">
+        <div class="heading"><div><h1>Base Orig. — planilha online</h1><p>As mesmas 39 colunas, localizadas pelo nome do cabeçalho mesmo quando a ordem muda.</p></div><span class="status" id="grid-count">—</span></div>
+        <div class="card">
+          <div class="toolbar"><input class="search" id="grid-search" placeholder="Buscar material, descrição, centro, NCM, aging..."><select id="page-size"><option>25</option><option selected>50</option><option>100</option><option>200</option></select><button class="btn" id="search-btn">Pesquisar</button><span class="spacer"></span><button class="btn" id="reload-grid">Recarregar base</button></div>
+          <div class="grid-wrap"><table id="inventory-table"><thead><tr id="inventory-head"></tr></thead><tbody id="inventory-body"><tr><td class="loading">Carregando dados…</td></tr></tbody></table></div>
+          <div class="grid-status"><span id="grid-info">—</span><div class="pager"><button class="btn" id="prev-page">Anterior</button><button class="btn" id="next-page">Próxima</button></div></div>
+        </div>
+      </section>
+
+      <section class="panel" data-panel="sap">
+        <div class="heading"><div><h1>Central de extrações SAP</h1><p>Preencha os parâmetros, mantenha o SAP GUI aberto e autenticado e execute pelo sistema.</p></div><span class="status warn">SAP GUI Scripting</span></div>
+        <div class="forms">
+          <form class="card form-card" id="z-form"><h2>ZMM119 — posição de estoque</h2><p>Replica o Script1.vbs e grava a saída na pasta local da competência.</p><div class="form-grid"><div class="field"><label>Competência</label><input name="period" type="month" value="2026-07" required></div><div class="field"><label>Data-base contábil</label><input name="as_of" type="date" value="2026-07-31" required></div><label class="check full"><input name="fisia_only" type="checkbox" checked> Marcar parâmetro P_FISIA</label><div class="full"><button class="btn primary" type="submit">Executar ZMM119</button></div></div><div class="callout">Destino: <b>%LOCALAPPDATA%\OpsContabil\landing\zmm119\AAAA-MM</b></div></form>
+          <form class="card form-card" id="m-form"><h2>MB59 — movimentos de material</h2><p>Replica o Script2.vbs com variante e intervalo contábil informados.</p><div class="form-grid"><div class="field"><label>Competência</label><input name="period" type="month" value="2026-07" required></div><div class="field"><label>Variante SAP</label><input name="variant" value="BASE GR" required></div><div class="field"><label>Data inicial</label><input name="date_from" type="date" value="2026-07-01" required></div><div class="field"><label>Data final</label><input name="date_to" type="date" value="2026-07-31" required></div><div class="full"><button class="btn primary" type="submit">Executar MB59</button></div></div><div class="callout">Destino: <b>%LOCALAPPDATA%\OpsContabil\landing\mb59\AAAA-MM</b></div></form>
+        </div>
+        <div class="card jobs"><div class="head section"><h2>Execuções desta sessão</h2><button class="btn" id="refresh-jobs">Atualizar status</button></div><div id="jobs-list"><div class="job"><span>—</span><span class="badge warn">Aguardando</span><span>Nenhuma extração iniciada nesta sessão.</span><span>—</span></div></div></div>
+      </section>
+
+      <section class="panel" data-panel="governance">
+        <div class="heading"><div><h1>Controles e auditoria</h1><p>Contrato de dados, rastreabilidade e bloqueios antes da publicação contábil.</p></div><span class="status">Fail closed</span></div>
+        <div class="audit-grid">
+          <div class="card section"><div class="head"><h2>Controles automáticos</h2></div><div class="control-list"><div class="control"><div><b>Ordem variável de colunas</b><small>reconhecimento por nome normalizado e aliases SAP</small></div><span class="badge">Ativo</span></div><div class="control"><div><b>Campo obrigatório ausente</b><small>carga bloqueada com sugestão de cabeçalho semelhante</small></div><span class="badge">Ativo</span></div><div class="control"><div><b>Unicidade All Brazil</b><small>join 10 caracteres, conflitos relevantes bloqueiam publicação</small></div><span class="badge">Ativo</span></div><div class="control"><div><b>Competência e data-base</b><small>não permite snapshot futuro do cadastro</small></div><span class="badge">Ativo</span></div></div></div>
+          <div class="card section"><div class="head"><h2>Fonte All Brazil selecionada</h2></div><div class="source-list"><div class="source"><div class="symbol">AB</div><div><b id="ab-name">Carregando…</b><small id="ab-path">@All Brazil Materials / ano / mês</small></div><span class="badge" id="ab-date">—</span></div><div class="callout">Regra: último snapshot diário cuja data seja menor ou igual à data-base SAP. Chave: <b>LEFT(Material,10) = Material Nbr</b>.</div></div></div>
+          <div class="card section"><div class="head"><h2>Estrutura reconhecida</h2></div><div class="control-list"><div class="control"><div><b>Posição de Estoque</b><small>Base Orig. · linha de cabeçalho detectada automaticamente</small></div><span class="badge">39 campos</span></div><div class="control"><div><b>MB59_BASE GR</b><small>BASE · SAP + campos derivados</small></div><span class="badge">25 campos</span></div><div class="control"><div><b>All Brazil</b><small>Data · cadastro mestre completo</small></div><span class="badge">49 campos</span></div></div></div>
+          <div class="card section"><div class="head"><h2>Limites de homologação</h2></div><div class="control-list"><div class="control"><div><b>Exportação do SAP</b><small>IDs dos diálogos podem variar por versão/tema do SAP GUI</small></div><span class="badge warn">Homologar</span></div><div class="control"><div><b>Regras contábeis finais</b><small>comparar Python × Excel em duas competências fechadas</small></div><span class="badge warn">Homologar</span></div><div class="control"><div><b>Publicação do n8n</b><small>exige instância e credencial Gemini corporativa</small></div><span class="badge warn">Pendente</span></div></div></div>
+        </div>
+      </section>
+
+<section class="panel" data-panel="agent">
+  <div class="heading">
+    <div>
+      <h1>Optimus</h1>
+      <p>Seu agente de inteligência contábil para análise de estoque, aging, origem, lifecycle, centros e controles.</p>
+    </div>
+    <span class="status warn" id="agent-status">Conectando ao Optimus</span>
+  </div>
+
+  <div class="card agent-box">
+    <div id="n8n-chat"></div>
+  </div>
+</section>
+    </div>
+  </main>
+</div>
+<div class="toast" id="toast" role="status"></div>
+<script type="module">
+import { createChat } from 'https://cdn.jsdelivr.net/npm/@n8n/chat/dist/chat.bundle.es.js';
+const state={period:'2026-07',page:1,pageSize:50,q:'',sort:'source_row',direction:'asc',columns:[],pages:1};
+const labels={overview:'Visão e relatórios',inventory:'Base de estoque',sap:'Extrações SAP',governance:'Controles e auditoria',agent:'Agente contábil'};
+const money=new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL',maximumFractionDigits:2}),num=new Intl.NumberFormat('pt-BR',{maximumFractionDigits:2});
+function toast(message){const el=document.getElementById('toast');el.textContent=message;el.classList.add('show');setTimeout(()=>el.classList.remove('show'),3500)}
+function esc(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]))}
+function activate(view,push=true){if(!labels[view])view='overview';document.querySelectorAll('[data-view]').forEach(a=>a.classList.toggle('active',a.dataset.view===view));document.querySelectorAll('[data-panel]').forEach(p=>p.classList.toggle('active',p.dataset.panel===view));document.getElementById('section-name').textContent=labels[view];if(push&&location.hash!=='#'+view)history.pushState(null,'','#'+view);if(view==='inventory')loadInventory();if(view==='sap')loadJobs();}
+document.querySelectorAll('[data-view]').forEach(a=>a.onclick=e=>{e.preventDefault();activate(a.dataset.view)});document.querySelectorAll('[data-open-view]').forEach(b=>b.onclick=()=>activate(b.dataset.openView));window.onhashchange=()=>activate(location.hash.slice(1),false);
+async function api(url,options){const response=await fetch(url,options);let body;try{body=await response.json()}catch{body={detail:'Resposta inválida do servidor'}}if(!response.ok)throw new Error(body.detail||'Erro na operação');return body}
+function chart(id,items){const el=document.getElementById(id),max=Math.max(1,...items.map(x=>Math.abs(x.value)));el.innerHTML=items.length?items.map(x=>`<div class="bar" title="${esc(x.label)}"><span class="bar-label">${esc(x.label)}</span><div class="track"><div class="fill" style="width:${Math.max(2,Math.abs(x.value)/max*100)}%"></div></div><b>${money.format(x.value)}</b></div>`).join(''):'<span class="sub">Sem dados para a competência.</span>'}
+async function loadSummary(){try{const s=await api(`/api/dashboard/summary?period=${state.period}`);document.getElementById('k-fiscal').textContent=money.format(s.fiscal_value);document.getElementById('k-qty').textContent=num.format(s.quantity);document.getElementById('k-materials').textContent=num.format(s.materials);document.getElementById('k-styles').textContent=num.format(s.style_colors);document.getElementById('k-coverage').textContent=num.format(s.all_brazil_coverage)+'%';document.getElementById('data-status').textContent=s.rows?`${num.format(s.rows)} linhas`:'Sem carga';document.getElementById('data-status').classList.toggle('warn',!s.rows);document.getElementById('overview-sub').textContent=`Competência ${state.period} · indicadores calculados da Base Orig.`;chart('chart-aging',s.aging);chart('chart-plants',s.plants);chart('chart-lifecycle',s.lifecycle);chart('chart-origins',s.origins);chart('chart-locations',s.locations)}catch(e){toast(e.message)}}
+async function loadAllBrazil(){const [y,m]=state.period.split('-').map(Number),last=new Date(y,m,0).getDate(),asOf=`${state.period}-${String(last).padStart(2,'0')}`;try{const s=await api(`/api/sources/all-brazil?as_of=${asOf}`);document.getElementById('all-brazil-file').textContent=`${s.file_name} · ${s.snapshot_date}`;document.getElementById('ab-name').textContent=s.file_name;document.getElementById('ab-path').textContent=s.source_path;document.getElementById('ab-date').textContent=s.snapshot_date}catch(e){document.getElementById('ab-name').textContent='Fonte não localizada';document.getElementById('ab-path').textContent=e.message;document.getElementById('ab-date').textContent='Revisar'}}
+function formatCell(value,type){if(value==null||value==='')return '';if(type==='number')return num.format(value);if(type==='date'){const p=String(value).slice(0,10).split('-');return p.length===3?`${p[2]}/${p[1]}/${p[0]}`:value}return value}
+async function loadInventory(){if(!state.columns.length)state.columns=await api('/api/inventory/columns');const params=new URLSearchParams({period:state.period,page:state.page,page_size:state.pageSize,q:state.q,sort:state.sort,direction:state.direction});try{const d=await api('/api/inventory?'+params);state.pages=d.pages;document.getElementById('inventory-head').innerHTML='<th class="rownum">#</th>'+state.columns.map(c=>`<th data-sort="${c.key}" title="Ordenar por ${esc(c.label)}">${esc(c.label)}${state.sort===c.key?(state.direction==='asc'?' ▲':' ▼'):''}</th>`).join('');document.querySelectorAll('#inventory-head [data-sort]').forEach(th=>th.onclick=()=>{const key=th.dataset.sort;state.direction=state.sort===key&&state.direction==='asc'?'desc':'asc';state.sort=key;loadInventory()});document.getElementById('inventory-body').innerHTML=d.rows.length?d.rows.map(r=>'<tr><td class="rownum">'+r.source_row+'</td>'+state.columns.map(c=>`<td class="${c.type==='number'?'number':''}" title="${esc(formatCell(r[c.key],c.type))}">${esc(formatCell(r[c.key],c.type))}</td>`).join('')+'</tr>').join(''):'<tr><td>Nenhum registro encontrado.</td></tr>';document.getElementById('grid-count').textContent=num.format(d.total)+' linhas';document.getElementById('grid-info').textContent=`Página ${d.page} de ${d.pages} · ${num.format(d.total)} registros`;document.getElementById('prev-page').disabled=d.page<=1;document.getElementById('next-page').disabled=d.page>=d.pages}catch(e){document.getElementById('inventory-body').innerHTML=`<tr><td>${esc(e.message)}</td></tr>`;toast(e.message)}}
+document.getElementById('search-btn').onclick=()=>{state.q=document.getElementById('grid-search').value;state.page=1;loadInventory()};document.getElementById('grid-search').onkeydown=e=>{if(e.key==='Enter')document.getElementById('search-btn').click()};document.getElementById('page-size').onchange=e=>{state.pageSize=+e.target.value;state.page=1;loadInventory()};document.getElementById('prev-page').onclick=()=>{if(state.page>1){state.page--;loadInventory()}};document.getElementById('next-page').onclick=()=>{if(state.page<state.pages){state.page++;loadInventory()}};
+document.getElementById('reload-grid').onclick=async()=>{toast('Lendo a Base Orig. pelo Excel; aguarde…');try{const r=await api('/api/inventory/import',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({period:state.period,force:true})});toast(`${r.rows} linhas atualizadas`);loadSummary();loadInventory()}catch(e){toast(e.message)}};
+async function submitSap(form,transaction){const data=Object.fromEntries(new FormData(form));const body={transaction,period:data.period,variant:data.variant||'BASE GR',date_from:data.date_from||null,date_to:data.date_to||null,as_of:data.as_of||null,fisia_only:data.fisia_only==='on'};try{const job=await api('/api/sap/run',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});toast(`${transaction} enviada ao SAP GUI`);loadJobs();setTimeout(loadJobs,2500)}catch(e){toast(e.message)}}
+document.getElementById('z-form').onsubmit=e=>{e.preventDefault();submitSap(e.target,'ZMM119')};document.getElementById('m-form').onsubmit=e=>{e.preventDefault();submitSap(e.target,'MB59')};
+async function loadJobs(){try{const jobs=await api('/api/sap/jobs');document.getElementById('jobs-list').innerHTML=jobs.length?jobs.map(j=>`<div class="job"><b>${esc(j.transaction)}</b><span class="badge ${j.status==='FAILED'?'warn':''}">${esc(j.status)}</span><span>${esc(j.message||'Aguardando execução no SAP GUI')}</span><span>${esc(j.created_at)}</span></div>`).join(''):'<div class="job"><span>—</span><span class="badge warn">Aguardando</span><span>Nenhuma extração iniciada nesta sessão.</span><span>—</span></div>'}catch(e){toast(e.message)}}document.getElementById('refresh-jobs').onclick=loadJobs;
+async function loadConfig(){
+  const c = await api('/api/config');
+
+  if(c.default_period){
+    state.period = c.default_period;
+    document.getElementById('global-period').value = state.period;
+    document.querySelectorAll('input[name=period]').forEach(x => x.value = state.period);
+  }
+
+  if(c.n8n_chat_url){
+    createChat({
+      webhookUrl: c.n8n_chat_url,
+      target: '#n8n-chat',
+      mode: 'fullscreen',
+      loadPreviousSession: true,
+      enableStreaming: false,
+      initialMessages: [
+        'Olá, eu sou o Optimus.',
+        'Posso ajudar nas análises contábeis e de estoque. Qual competência deseja analisar?'
+      ],
+      i18n: {
+        en: {
+          title: 'Optimus',
+          subtitle: 'Inteligência contábil do estoque',
+          footer: '',
+          getStarted: 'Nova conversa',
+          inputPlaceholder: 'Pergunte ao Optimus...'
+        }
+      }
+    });
+
+    document.getElementById('agent-status').textContent = 'Optimus online';
+    document.getElementById('agent-status').classList.remove('warn');
+  }
+}
+document.getElementById('global-period').onchange=e=>{state.period=e.target.value;state.page=1;document.querySelectorAll('input[name=period]').forEach(x=>x.value=state.period);loadSummary();loadAllBrazil();if(location.hash==='#inventory')loadInventory()};document.getElementById('refresh').onclick=()=>{loadSummary();loadAllBrazil();if(location.hash==='#inventory')loadInventory();toast('Dados atualizados')};
+(async()=>{await loadConfig();activate(location.hash.slice(1)||'overview',false);loadSummary();loadAllBrazil()})();
+</script>
+</body></html>

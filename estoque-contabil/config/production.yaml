@@ -1,0 +1,64 @@
+project:
+  name: Ops Contábil
+  timezone: America/Sao_Paulo
+  landing: "%LOCALAPPDATA%/OpsContabil/landing"
+  database: "%LOCALAPPDATA%/OpsContabil/processed/ops_contabil.duckdb"
+  inbox: "%LOCALAPPDATA%/OpsContabil/inbox"
+  processed: "%LOCALAPPDATA%/OpsContabil/processed"
+  output: "%LOCALAPPDATA%/OpsContabil/output"
+  logs: "%LOCALAPPDATA%/OpsContabil/logs"
+  archive: data/archive
+  published: data/output
+sources:
+  zmm119:
+    kind: sap_gui
+    transaction: ZMM119
+    target_dataset: posicao_estoque
+    export_directory: "%LOCALAPPDATA%/OpsContabil/landing/zmm119"
+    template_workbook: "Posição de Estoque - FISIA.xlsb"
+    target_sheet: "Base Orig."
+    enabled: true
+  mb59:
+    kind: sap_gui
+    transaction: MB59
+    variant: BASE GR
+    target_dataset: movimentos_material
+    export_directory: "%LOCALAPPDATA%/OpsContabil/landing/mb59"
+    template_workbook: "MB59_BASE GR - SEASON.XLSX"
+    target_sheet: "BASE"
+    enabled: true
+  all_brazil_materials:
+    kind: drive_folder
+    drive_id: "0ADIjoKAVEyzXUk9PVA"
+    drive_name: "@All Brazil Materials"
+    local_root: "%OPS_ALL_BRAZIL_ROOT%"
+    year_folder_pattern: "{year}"
+    month_folder_pattern: "{month:02d}. {month_name_pt}"
+    snapshot_pattern: "ALL_BRAZIL_DD_MM.xlsx"
+    selection_rule: latest_snapshot_on_or_before_sap_as_of
+    sheet: Data
+    header_row: 1
+    join_left: "Material exato; fallback LEFT(material, 10)"
+    join_right: "Material Nbr"
+    target_dataset: cadastro_materiais
+    enabled: true
+bridge:
+  # Ponte de dados entre máquinas pela pasta do Drive compartilhado (somente transporte).
+  enabled: true
+  drive_folder_names: ["Estoque_Cont"]
+  sync_interval_seconds: 120
+runtime:
+  # Rotina em segundo plano: envia/recebe competências pela ponte e executa o backup programado.
+  background_worker: true
+  stable_file_seconds: 10
+  excel_timeout_seconds: 900
+  sap_timeout_seconds: 300
+  keep_raw_files: true
+  overwrite_outputs: false
+agent:
+  enabled: true
+  provider: google_gemini_via_n8n
+  model: selected_in_n8n_credentials
+  allow_row_level_data: false
+  maximum_evidence_rows: 50
+  read_only: true
