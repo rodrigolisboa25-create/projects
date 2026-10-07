@@ -4,7 +4,7 @@ Esta pasta é uma cópia sanitizada do projeto Vektor para documentação, prese
 
 ## Conteúdo removido ou substituído
 
-- IDs de planilhas, pastas, arquivos, projetos Google Cloud e bibliotecas.
+- IDs de planilhas, pastas, arquivos, projetos Google Cloud e bibliotecas, exceto os dois links de planilhas cuja referência foi autorizada na documentação.
 - E-mails pessoais e corporativos.
 - URLs internas, links de painéis, agentes, documentos e treinamentos.
 - Endpoints específicos da implantação original.
@@ -19,6 +19,10 @@ Esta pasta é uma cópia sanitizada do projeto Vektor para documentação, prese
 - Regras de processamento e mecanismos de auditoria.
 - Declaração dos serviços avançados e nomes das bibliotecas vinculadas.
 - Pontos de integração necessários para reconstruir a solução em outro ambiente.
+
+## Referências externas autorizadas
+
+A documentação identifica as planilhas `Vektor_Info_calibrate` e `Capta_Clara` por link para explicar o contrato de integração. Os dados das planilhas não foram copiados para o GitHub, e o acesso ao conteúdo continua protegido pelas permissões do Google Drive. A exposição controlada desses links não autoriza a publicação de linhas, usuários, destinatários, valores ou históricos operacionais.
 
 ## Cuidados antes de implantar
 

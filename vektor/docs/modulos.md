@@ -34,6 +34,8 @@ sequenceDiagram
 
 O núcleo Clara transforma a base transacional em consultas e fluxos operacionais. Ele suporta mais de um contexto de empresa e separa as respectivas fontes e regras.
 
+A fonte operacional desta implantação é a planilha [Capta_Clara](https://docs.google.com/spreadsheets/d/1_XW0IqbYjiCPpqtwdEi1xPxDlIP2MSkMrLGbeinLIeI/edit?gid=1277104230#gid=1277104230). Ela é exclusiva do módulo Clara e concentra as bases transacionais, limites, pendências, contatos, acessos do módulo, logs SAP e históricos de comunicação e política. Métricas e alertas transversais do ecossistema são registrados separadamente em [Vektor_Info_calibrate](https://docs.google.com/spreadsheets/d/18yAuYoAR33JOagqapxgwHh86F1WeD0mZcj9AIJym07k/edit?gid=1670513007#gid=1670513007).
+
 ### Consultas e análises
 
 - transações por loja, time, categoria, estabelecimento e etiqueta;

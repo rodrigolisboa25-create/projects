@@ -45,6 +45,45 @@ Padrões presentes no projeto:
 - abas separadas para configuração, histórico e métricas;
 - cache de leituras pequenas e frequentes, como a matriz de acesso.
 
+### Planilhas operacionais documentadas
+
+#### Vektor_Info_calibrate
+
+[Abrir Vektor_Info_calibrate](https://docs.google.com/spreadsheets/d/18yAuYoAR33JOagqapxgwHh86F1WeD0mZcj9AIJym07k/edit?gid=1670513007#gid=1670513007)
+
+Base compartilhada de telemetria e controle operacional do ecossistema Vektor. A planilha separa responsabilidades por aba:
+
+| Grupo de abas | Responsabilidade |
+| --- | --- |
+| `Vektor_Metricas` | Uso do portal, intenção, tópico, resultado e função de origem |
+| `Vektor_Vertex_Cost` | Tokens e custo estimado das chamadas ao Vertex AI |
+| `VEKTOR_USER_ALERTS` | Configuração dos alertas criados pelos usuários |
+| `VEKTOR_USER_ALERT_RUNS` | Histórico das execuções dos alertas |
+| `Vektor_Alertas_Log` | Log de alertas enviados, destinatários e origem |
+| `Vektor_Demissoes_Notificadas` | Controle de notificações já realizadas para evitar repetição |
+| `RPA` | Solicitações, status, início, término e evidência da ponte RPA |
+
+Essa planilha não substitui as bases de negócio de cada módulo. Ela concentra métricas, custos, alertas e registros transversais usados para governança e acompanhamento da solução.
+
+#### Capta_Clara — uso exclusivo do módulo Clara
+
+[Abrir Capta_Clara](https://docs.google.com/spreadsheets/d/1_XW0IqbYjiCPpqtwdEi1xPxDlIP2MSkMrLGbeinLIeI/edit?gid=1277104230#gid=1277104230)
+
+Esta planilha pertence exclusivamente ao módulo **Clara**. Outros módulos do Vektor devem usar suas próprias fontes e não gravar dados operacionais nela.
+
+| Grupo de abas | Responsabilidade no Clara |
+| --- | --- |
+| `BaseClara` e `BaseClara_Fisia` | Transações, valores, cartões, status de aprovação, recibos, titulares, lojas e competência |
+| `Info_limites` | Limites por cartão, empresa e regra temporária de transação |
+| `HIST_PEND_CLARA_RAW` | Fotografias históricas das pendências de recibo, etiqueta ou descrição |
+| `HIST_ENVIO_PEND_RECUSADAS` e `Itens Irreg.` | Histórico auditável das comunicações de pendências e irregularidades |
+| `VEKTOR_SAP_SANGRIA_LOG` | Resultado das solicitações SAP relacionadas ao fluxo Clara |
+| `VEKTOR_EMAILS`, `VEKTOR_ACESSOS` e `VEKTOR_MODULOS` | Usuários, papéis, módulos e funções autorizadas dentro do Clara |
+| `Emails` | Contatos de lojas, responsáveis regionais e destinatários administrativos usados pelo módulo |
+| `Vertex_Func` e `VEKTOR_POLICY_HIST` | Funções de IA e histórico do Assistente de Política do Clara |
+
+Os nomes de abas formam o contrato operacional observado. Uma nova implantação pode separar essas responsabilidades em mais de uma planilha, desde que preserve os contratos esperados pelo código e configure os novos IDs nas propriedades do script.
+
 ## Arquivos JSON no Drive
 
 Numerário e POS utilizam JSON como persistência leve para partes da operação. A solução inclui:

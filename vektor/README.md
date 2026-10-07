@@ -165,6 +165,13 @@ vektor/
 
 ## Dados e persistência
 
+### Planilhas operacionais desta implantação
+
+- [**Vektor_Info_calibrate**](https://docs.google.com/spreadsheets/d/18yAuYoAR33JOagqapxgwHh86F1WeD0mZcj9AIJym07k/edit?gid=1670513007#gid=1670513007): base compartilhada de apoio ao ecossistema. Mantém métricas de uso, custos estimados do Vertex AI, alertas configurados e executados, log de alertas, notificações de desligamento e registros da ponte RPA.
+- [**Capta_Clara**](https://docs.google.com/spreadsheets/d/1_XW0IqbYjiCPpqtwdEi1xPxDlIP2MSkMrLGbeinLIeI/edit?gid=1277104230#gid=1277104230): base dedicada exclusivamente ao módulo **Clara**. Reúne transações do cartão corporativo, limites, pendências, históricos de comunicação, parâmetros, acessos do módulo, integrações SAP e registros do assistente de política.
+
+Os links identificam as fontes usadas pela implantação atual. O conteúdo das planilhas não é copiado para o repositório; o acesso continua sujeito às permissões do Google Drive. Em uma nova implantação, crie bases equivalentes e substitua os IDs nas propriedades do Apps Script.
+
 O repositório não contém nenhuma base real. Cada implantação precisa criar e configurar suas próprias fontes:
 
 - planilhas de transações, perfis, módulos e permissões;

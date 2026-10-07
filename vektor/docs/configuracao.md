@@ -50,6 +50,13 @@ A versão pública lê os valores específicos do ambiente em **Configurações 
 
 O código também utiliza propriedades próprias para tokens de APIs, chaves de workers e parâmetros de modelos. Revise as chamadas a `PropertiesService` antes da implantação e cadastre cada segredo diretamente no ambiente.
 
+### Referência das planilhas atuais
+
+- `VEKTOR_METRICAS_SHEET_ID` deve apontar para [Vektor_Info_calibrate](https://docs.google.com/spreadsheets/d/18yAuYoAR33JOagqapxgwHh86F1WeD0mZcj9AIJym07k/edit?gid=1670513007#gid=1670513007) quando a implantação usar a mesma base compartilhada de métricas, custos, alertas e RPA.
+- As propriedades do domínio Clara, como `BASE_CLARA_ID`, `SPREADSHEET_ID_CLARA`, `SPREADSHEET_ID_CLARA_PEND` e `VEKTOR_ACL_SPREADSHEET_ID`, devem apontar para [Capta_Clara](https://docs.google.com/spreadsheets/d/1_XW0IqbYjiCPpqtwdEi1xPxDlIP2MSkMrLGbeinLIeI/edit?gid=1277104230#gid=1277104230) ou para bases equivalentes criadas para o novo ambiente.
+
+`Capta_Clara` é exclusiva do módulo Clara. Ao reutilizar outros módulos do Vektor, configure planilhas próprias para eles em vez de compartilhar essa base.
+
 ## Roteiro de implantação
 
 ### 1. Definir o escopo
