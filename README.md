@@ -4,6 +4,20 @@ Repositório de projetos desenvolvidos para automatizar processos, organizar dad
 
 ## Projetos disponíveis
 
+### SmartSlip
+
+Aplicação web em Google Apps Script para receber comprovantes financeiros, organizar arquivos no Google Drive, extrair informações com Gemini e acompanhar filas, histórico, indicadores, alertas e custos de inteligência artificial.
+
+O projeto oferece uma interface responsiva para computador e celular, controle de acesso por usuário e loja, processamento auditável e persistência em Google Sheets. A versão pública foi sanitizada: não contém a planilha persistente, IDs, e-mails, URLs internas ou dados operacionais.
+
+**Tecnologias:** Google Apps Script, JavaScript, HTML, CSS, Google Sheets, Google Drive, Gemini API e Gmail API.
+
+- [Código, funcionalidades e instalação](smartslip/README.md)
+- [Arquitetura e fluxo](smartslip/docs/arquitetura.md)
+- [Segurança da versão pública](smartslip/docs/seguranca.md)
+
+---
+
 ### Estoque Contábil
 
 Plataforma local em Python e FastAPI para processar posições contábeis de estoque, automatizar extrações do SAP, consolidar regras de negócio e disponibilizar consultas e análises em uma interface web executada na máquina do usuário.
