@@ -6,6 +6,38 @@ O Vektor é uma aplicação modular hospedada no Google Apps Script. `Code.gs` c
 
 O frontend chama funções autorizadas do backend com `google.script.run`. O backend valida sessão e perfil antes de consultar bases, produzir análises ou executar uma ação transacional.
 
+```mermaid
+flowchart TB
+    subgraph Browser[Camada de apresentação]
+      Portal[index.html]
+      Num[numerario_index.html]
+      Ar[vektor_modulo_ar_htm.html]
+      Pos[pos_index.html]
+      Extras[Agentes de IA e Power BI]
+    end
+
+    subgraph Gas[Google Apps Script]
+      Router[doGet e roteamento]
+      Auth[Sessão, RBAC e empresa]
+      Rules[Regras e análises]
+      Jobs[Jobs, lotes e gatilhos]
+      Connectors[Conectores Google e APIs]
+    end
+
+    Browser -->|google.script.run| Gas
+    Router --> Auth
+    Auth --> Rules
+    Rules --> Jobs
+    Rules --> Connectors
+    Jobs --> Connectors
+    Connectors --> Sheets[(Sheets)]
+    Connectors --> Drive[(Drive)]
+    Connectors --> Gmail[Gmail]
+    Connectors --> BigQuery[(BigQuery)]
+    Connectors --> Vertex[Vertex AI]
+    Connectors --> External[SAP, RPA, BI e workers]
+```
+
 ## Camadas
 
 | Camada | Responsabilidade |
@@ -17,6 +49,14 @@ O frontend chama funções autorizadas do backend com `google.script.run`. O bac
 | Persistência | Google Sheets, arquivos JSON no Drive, propriedades do script e BigQuery |
 | IA | Vertex AI/Gemini para respostas baseadas em contexto e análises assistidas |
 | Observabilidade | Histórico, auditoria, status de jobs, métricas, custos e registros de execução |
+
+## Fronteiras entre os componentes
+
+- O navegador é responsável por interação, filtros, visualização e polling.
+- O backend mantém regras, credenciais indiretas, consultas e autorização.
+- Bases externas permanecem como fontes de verdade e não são incorporadas ao repositório.
+- Jobs longos persistem o estado para sobreviver ao limite de duração de uma chamada Apps Script.
+- Ações externas, como SAP e workers, usam contratos de fila ou API em vez de compartilhar memória com o Web App.
 
 ## Módulos
 
@@ -58,3 +98,73 @@ Os arquivos `vektor_modulo_powerbi*` encapsulam a exibição de um painel autori
 - Bases, pastas, projetos Google Cloud, painéis e agentes configurados por ambiente.
 
 As bibliotecas são dependências vinculadas ao projeto e não arquivos internos. O repositório não replica o código delas.
+
+## Padrões de execução
+
+### Chamada interativa
+
+Usada em filtros, consultas e carregamento de telas:
+
+1. o frontend chama uma função pelo `google.script.run`;
+2. o backend valida usuário, módulo e função;
+3. a fonte é consultada;
+4. o resultado é normalizado;
+5. um objeto reduzido retorna para a tela.
+
+### Ação transacional assistida
+
+Usada em envios, ajustes e alterações:
+
+1. o sistema prepara uma prévia;
+2. o usuário revisa os itens;
+3. o backend valida novamente a permissão;
+4. a ação é executada;
+5. uma chave ou histórico registra o resultado;
+6. repetições são bloqueadas ou sinalizadas.
+
+### Job em lotes
+
+Usado quando o volume pode exceder o tempo de execução do Apps Script:
+
+1. uma função cria o job e seu snapshot inicial;
+2. cada chamada processa um lote limitado;
+3. o heartbeat atualiza a última atividade;
+4. a interface consulta o status;
+5. o processo conclui, conclui com falhas ou expira;
+6. a retomada usa o estado persistido.
+
+### Rotina agendada
+
+Usada em alertas, backups, sincronizações e monitoramentos. Funções de instalação criam acionadores específicos; funções de remoção permitem desativá-los sem apagar a lógica do módulo.
+
+## Persistência por finalidade
+
+| Necessidade | Mecanismo |
+| --- | --- |
+| Parâmetro ou segredo | Propriedades do script |
+| Sessão e cache curto | CacheService / propriedades temporárias |
+| Tabela operacional colaborativa | Google Sheets |
+| Arquivo, documento ou estado estruturado | Google Drive |
+| Consulta analítica de maior escala | BigQuery |
+| Auditoria de documentos Prosegur | JSON no Drive |
+| Progresso de job | Propriedades, planilha ou JSON conforme o módulo |
+
+## Observabilidade
+
+O sistema combina indicadores de interface e registros persistentes:
+
+- status e heartbeat de jobs;
+- contadores de itens processados, salvos, ignorados, duplicados e com falha;
+- detalhes de erro classificados por etapa;
+- histórico de comunicações;
+- logs de alertas e monitoramentos;
+- métricas de uso das funções;
+- tokens, latência e custo estimado dos recursos de IA.
+
+## Decisões e limites técnicos
+
+- **Apps Script como orquestrador:** reduz infraestrutura, mas impõe quotas e limite de duração; por isso o projeto usa lotes, gatilhos e polling.
+- **Sheets e JSON como persistência operacional:** facilitam manutenção, mas exigem controle de concorrência, validação e backups.
+- **Múltiplos módulos no mesmo projeto:** simplifica acesso e navegação, mas torna essencial separar configurações e permissões.
+- **Duas rotas Prosegur preservadas:** facilita histórico e migração, mas uma implantação deve escolher qual delas é oficial.
+- **Escopos OAuth amplos:** atendem ao ecossistema completo; uma implantação parcial deve reduzi-los ao mínimo necessário.

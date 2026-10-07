@@ -38,8 +38,66 @@ A versão pública lê os valores específicos do ambiente em **Configurações 
 | `VEKTOR_POS_REGIONAL_SS_ID` | Base regional usada pelo POS |
 | `VEKTOR_TP_WORKER_URL` | Endpoint do agente de Numerário |
 | `VEKTOR_GUIA_FILE_ID` | Arquivo de orientação exibido pelo portal |
+| `VEKTOR_NUMERARIO_API_TOKEN` | Token da API usada pela ponte de Numerário |
+| `VEKTOR_RPA_API_TOKEN` | Token da API usada pela ponte RPA |
+| `VEKTOR_TP_WORKER_KEY` | Chave de autenticação do worker Tio Patinhas |
+| `VEKTOR_EXTRA_OFF_DAYS` | Datas adicionais sem expediente consideradas nas agendas |
+| `PEDRO_AI_PROVIDER` | Provedor usado pelo agente Pedro |
+| `PEDRO_AI_ENDPOINT` | Endpoint do provedor de IA do POS |
+| `PEDRO_AI_MODEL` | Modelo configurado para a análise |
+| `PEDRO_AI_API_KEY` | Chave do provedor escolhido |
+| `PEDRO_AI_PROJECT_ID` | Projeto Google Cloud, quando exigido pelo provedor |
 
 O código também utiliza propriedades próprias para tokens de APIs, chaves de workers e parâmetros de modelos. Revise as chamadas a `PropertiesService` antes da implantação e cadastre cada segredo diretamente no ambiente.
+
+## Roteiro de implantação
+
+### 1. Definir o escopo
+
+Escolha quais módulos serão implantados. Essa decisão determina os serviços, escopos, fontes e acionadores necessários. Um ambiente que usa apenas Power BI e Governança Clara não precisa habilitar a mesma infraestrutura de um ambiente com Prosegur, POS e agentes de IA.
+
+### 2. Criar os recursos de dados
+
+- planilha de acesso e suas abas;
+- bases operacionais dos módulos escolhidos;
+- pastas do Drive para documentos e arquivos de estado;
+- datasets e tabelas BigQuery;
+- projeto Google Cloud para Vertex AI;
+- caixas, marcadores e remetentes autorizados no Gmail.
+
+### 3. Importar o código
+
+Copie os 19 arquivos de `src/` para o projeto Apps Script. Preserve os nomes porque o backend usa `HtmlService.createTemplateFromFile()` e `createHtmlOutputFromFile()` para localizar páginas e fontes internas.
+
+### 4. Ajustar o manifesto
+
+Os campos `libraryId` são marcadores e precisam ser substituídos antes da implantação. Revise também:
+
+- serviços avançados realmente utilizados;
+- escopos OAuth;
+- modo de execução do Web App;
+- público autorizado;
+- fuso horário.
+
+### 5. Configurar acesso
+
+Cadastre usuários, papéis, empresas, módulos e funções. Teste pelo menos um usuário de cada perfil e confirme que uma função não autorizada também é bloqueada no backend.
+
+### 6. Configurar integrações
+
+Preencha as propriedades do script, ajuste nomes de abas e tabelas, substitua domínios de exemplo e informe os endpoints externos.
+
+### 7. Inicializar os módulos
+
+Execute apenas as funções de setup dos módulos escolhidos. Elas podem criar arquivos, cabeçalhos, estruturas de armazenamento ou configurações iniciais.
+
+### 8. Instalar acionadores
+
+Ative individualmente os gatilhos de alertas, backups, relatórios e sincronizações. Registre quem instalou cada acionador e qual conta será usada na execução.
+
+### 9. Homologar e publicar
+
+Use dados e destinatários de teste. Valide consultas, gravações, deduplicação, retomada, auditoria e falhas simuladas antes de publicar para o público final.
 
 ## Serviços avançados
 
@@ -52,6 +110,15 @@ Habilite no Apps Script os serviços com os mesmos símbolos usados pelo projeto
 - `Sheets`
 
 As APIs correspondentes também precisam estar habilitadas no projeto Google Cloud associado ao script.
+
+| Módulo | Serviços principais |
+| --- | --- |
+| Governança Clara | Sheets, BigQuery, Gmail e Drive |
+| Assistente de Política | Vertex AI, Sheets e Drive |
+| Numerário | Sheets, Drive e Gmail |
+| AR / Prosegur | Gmail, Drive e Sheets |
+| POS | Drive, Gmail, Sheets, BigQuery e IA configurada |
+| Power BI | HTML Service e URL de incorporação autorizada |
 
 ## Bibliotecas
 
@@ -78,3 +145,6 @@ Substitua os marcadores de configuração usados para:
 5. Confirme permissões de Drive, Gmail, Sheets, BigQuery e Vertex AI.
 6. Valide auditoria, deduplicação e retomada de jobs interrompidos.
 7. Revise acionadores antes de ativar as rotinas programadas.
+8. Simule reprocessamento para confirmar as barreiras de duplicidade.
+9. Verifique a expiração de sessão e o bloqueio de funções não autorizadas.
+10. Registre responsáveis, rotina de backup e procedimento de recuperação.

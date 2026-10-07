@@ -14,6 +14,8 @@ A versão pública contém os 19 arquivos do projeto Apps Script e documenta os 
 
 - [Código, módulos e instalação](vektor/README.md)
 - [Arquitetura do ecossistema](vektor/docs/arquitetura.md)
+- [Módulos e fluxos operacionais](vektor/docs/modulos.md)
+- [Dados e integrações](vektor/docs/dados-integracoes.md)
 - [Configuração para uma nova implantação](vektor/docs/configuracao.md)
 - [Segurança da versão pública](vektor/docs/seguranca.md)
 
