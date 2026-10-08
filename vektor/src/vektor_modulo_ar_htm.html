@@ -824,13 +824,14 @@
           </div>
 
           <div class="flex items-center gap-3">
-            <button
+            <a
               id="vektorArHomeBackBtn"
-              type="button"
+              href="https://script.google.com/a/macros/gruposbf.com.br/s/AKfycbwHYLgy9Sr9Nv3yiJnV922_7M_wpgRyIHuoXpvvAm4lyfn_bsg9PBgGjeAT6iIo_jGhWg/exec"
+              target="_top"
               class="inline-flex items-center gap-2 rounded-2xl border border-white/15 bg-white/10 px-5 py-3 text-sm font-black text-white backdrop-blur-md transition hover:bg-white/15">
               <span>←</span>
               <span>Voltar ao hub</span>
-            </button>
+            </a>
           </div>
         </div>
       </div>
@@ -1116,13 +1117,14 @@
               <span>Atualizar painel</span>
             </button>
 
-            <button
+            <a
               id="vektorArBackBtn"
-              type="button"
+              href="https://script.google.com/a/macros/gruposbf.com.br/s/AKfycbwHYLgy9Sr9Nv3yiJnV922_7M_wpgRyIHuoXpvvAm4lyfn_bsg9PBgGjeAT6iIo_jGhWg/exec"
+              target="_top"
               class="inline-flex items-center gap-2 rounded-2xl border border-white/15 bg-white/10 px-5 py-3 text-sm font-black text-white backdrop-blur-md transition hover:bg-white/15">
               <span>←</span>
               <span>Voltar ao hub</span>
-            </button>
+            </a>
           </div>
         </div>
       </div>
@@ -1198,9 +1200,9 @@
             </div>
 
             <div class="vektor-ar-kpi">
-              <div class="vektor-ar-kpi-label">Pendentes no marcador</div>
+              <div class="vektor-ar-kpi-label">Não lidos na caixa de entrada</div>
               <div id="vektorArKpiPendentes" class="vektor-ar-kpi-value">—</div>
-              <div class="vektor-ar-kpi-sub">Mensagens não lidas já posicionadas no marcador Prosegur.</div>
+              <div class="vektor-ar-kpi-sub">Mensagens Prosegur não lidas na caixa de entrada do operador.</div>
             </div>
 
             <div class="vektor-ar-kpi">
@@ -3258,4 +3260,78 @@ if (posBackBtn && !posBackBtn.__bindPosBack) {
       })
       .vektorArApiStartProsegurJob();
   };
+
+  window.vektorArIsOperatorView_ = function () {
+    try {
+      return new URLSearchParams(window.location.search).get("view") === "prosegur-operador";
+    } catch (_) {
+      return false;
+    }
+  };
+
+  window.__vektorArOpenExecLocal_ = window.vektorOpenArExec_;
+  window.__vektorArShowHomeLocal_ = window.vektorShowArHome_;
+
+  window.vektorOpenArExec_ = function () {
+    if (window.vektorArIsOperatorView_()) {
+      return window.__vektorArOpenExecLocal_();
+    }
+
+    var url =
+      "https://script.google.com/a/macros/gruposbf.com.br/s/AKfycbw2VYlQCQpdfHuL_AFGujOVD9IDfWEMp7ucglbGW7LIbunPDacwhM5oKlo-s6UttvRq4Q/exec";
+    window.location.assign(url + "?view=prosegur-operador");
+  };
+
+  window.vektorShowArHome_ = function () {
+    if (window.vektorArIsOperatorView_()) {
+      window.open(
+        "https://script.google.com/a/macros/gruposbf.com.br/s/AKfycbwHYLgy9Sr9Nv3yiJnV922_7M_wpgRyIHuoXpvvAm4lyfn_bsg9PBgGjeAT6iIo_jGhWg/exec",
+        "_top"
+      );
+      return;
+    }
+    return window.__vektorArShowHomeLocal_();
+  };
+
+  (function () {
+    function openOperatorViewAfterSession_() {
+      if (!window.vektorArIsOperatorView_()) return false;
+
+      var appRoot = document.getElementById("vektorAppRoot");
+      if (!appRoot || appRoot.classList.contains("hidden")) return false;
+
+      window.vektorShowArModule_();
+      window.__vektorArOpenExecLocal_();
+      return true;
+    }
+
+    function installOperatorViewBootstrap_() {
+      if (!window.vektorArIsOperatorView_()) return;
+
+      var appRoot = document.getElementById("vektorAppRoot");
+      if (!appRoot) {
+        window.setTimeout(installOperatorViewBootstrap_, 50);
+        return;
+      }
+
+      var observer = new MutationObserver(function () {
+        if (openOperatorViewAfterSession_()) observer.disconnect();
+      });
+
+      observer.observe(appRoot, {
+        attributes: true,
+        attributeFilter: ["class"]
+      });
+
+      window.setTimeout(function () {
+        if (openOperatorViewAfterSession_()) observer.disconnect();
+      }, 0);
+    }
+
+    if (document.readyState === "loading") {
+      document.addEventListener("DOMContentLoaded", installOperatorViewBootstrap_, { once: true });
+    } else {
+      window.setTimeout(installOperatorViewBootstrap_, 0);
+    }
+  })();
 </script>
