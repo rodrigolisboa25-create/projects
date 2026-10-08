@@ -153,6 +153,12 @@ def ensure_mapping_schema(connection: Any) -> None:
         )
         """
     )
+    # Mapping compartilhado (mapping_sync): quem alterou e quando (UTC). Vazio = linha de base.
+    existing = {str(row[0]) for row in connection.execute(
+        "select column_name from information_schema.columns where table_name='mapping_rules'").fetchall()}
+    for column in ("changed_at", "changed_by"):
+        if column not in existing:
+            connection.execute(f"alter table mapping_rules add column {column} varchar")
     seeds: dict[str, list[tuple[str, str | None, str | None]]] = {
         "aging": [
             ("0", "1) 0-3 meses", "0"),

@@ -5,6 +5,7 @@ __pycache__/
 data/inbox/**/*
 data/processed/**/*
 data/output/**/*
+data/notificacoes/**/*
 logs/**/*
 reports/*.json
 !data/inbox/.gitkeep

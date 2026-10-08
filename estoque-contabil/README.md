@@ -106,11 +106,28 @@ O fluxo completo, o contrato de contexto, as ferramentas, os limites e a configu
 - Reprocessamento dos joins sem reler a ZMM119 quando uma regra é corrigida.
 - Visão analítica com aging, lifecycle, origem, centros, locais, PMM e composição de custos.
 - Base detalhada com filtros, pendências de joins e exportação XLSX.
+- Filtros combináveis por divisão, centro, local de estoque e season em todos os indicadores da Visão e relatórios.
+- Mapa mental interativo que explora os dados já calculados para a competência e os filtros selecionados.
+- Totais das colunas de quantidade e valor na Base de Estoque, considerando todas as linhas filtradas.
+- Catálogo All Brazil que descobre automaticamente novos anos e meses nas pastas configuradas.
+- Mapping compartilhado entre instalações, com histórico de alterações, exclusões e recálculo local das competências afetadas.
 - Controles, auditoria, histórico de execuções e Health Center.
 - Optimus com n8n/Gemini, memória curta de conversa e ferramentas locais.
 - Relatórios HTML autônomos, PDF e payload para apresentações executivas.
 - Ponte de dados para sincronizar competências entre instalações autorizadas.
 - Backup programado, restauração controlada e instalador versionado.
+
+### 🔎 Visão e relatórios
+
+O usuário pode combinar valores de **Division Description, Centro, Local de estoque e Season**. A seleção atualiza os cards, gráficos, PMM, evolução e comparações com a competência anterior. As etiquetas abaixo do título mostram os filtros ativos. O **Mapa mental** abre uma exploração dos mesmos indicadores, com ramos para valor e giro, aging, divisões, localização, coleções, evolução e composição do custo. Tanto os filtros quanto o mapa usam o resumo da competência carregada; o HTML compartilhável e o PDF continuam representando a competência inteira.
+
+Na matriz **Aging for Season**, a coluna e a linha Total mostram as somas por ano e season; a comparação com o ano anterior aparece ao passar o mouse. Na **Base de Estoque**, a linha `Σ TOTAL` ou `Σ FILTRO` soma quantidades e valores de todas as linhas correspondentes à busca e aos filtros, mesmo quando a grade está paginada.
+
+### 🔄 Cadastros e regras entre instalações
+
+A biblioteca **All Brazil** lê as pastas reais organizadas por ano e mês. Um mês novo aparece no catálogo sem edição de uma lista fixa; os links configurados continuam servindo para abrir pastas conhecidas no Drive.
+
+No **Mapping compartilhado**, cada instalação registra suas alterações em um arquivo próprio. As instalações autorizadas unem as regras pela alteração mais recente, preservam exclusões e recalculam as competências locais quando recebem uma regra que muda o resultado. O painel exibe a situação da sincronização. Essa função depende da ponte de dados configurada em cada implantação.
 
 ## 🛠️ Stack
 
@@ -176,6 +193,7 @@ As competências, Mapping, permissões e relatórios podem ser distribuídos por
 
 ## 📚 Documentação
 
+- [Especificação técnico-documental](Especificacao_Tecnico_Documental_Estoque_Contabil.docx)
 - [Optimus e integração n8n](docs/optimus.md)
 - [Arquitetura final](ARQUITETURA_FINAL.md)
 - [Mapeamento das bases](MAPEAMENTO_DADOS.md)

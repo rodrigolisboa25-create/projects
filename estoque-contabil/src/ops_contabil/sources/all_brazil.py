@@ -73,6 +73,31 @@ def resolve_all_brazil_root(settings: Any) -> Path:
     return _discover_all_brazil_root(str(config.get("local_root", "")))
 
 
+MONTH_FOLDER_PATTERN = re.compile(r"^(?P<month>\d{2})\.")
+
+
+def discover_all_brazil_months(root: Path) -> dict[int, dict[int, Path]]:
+    """Anos e meses que existem de fato no Drive (pastas "AAAA" e "MM. Mês"), sem lista fixa.
+
+    Um mês novo criado no Drive (ex.: 10. Outubro) aparece sozinho. Pastas fora do padrão são ignoradas.
+    """
+    found: dict[int, dict[int, Path]] = {}
+    try:
+        years = [item for item in root.iterdir() if item.is_dir() and item.name.isdigit() and len(item.name) == 4]
+    except OSError:
+        return found
+    for year_folder in years:
+        try:
+            months = [item for item in year_folder.iterdir() if item.is_dir()]
+        except OSError:
+            continue
+        for month_folder in months:
+            match = MONTH_FOLDER_PATTERN.match(month_folder.name)
+            if match and 1 <= int(match.group("month")) <= 12:
+                found.setdefault(int(year_folder.name), {})[int(match.group("month"))] = month_folder
+    return found
+
+
 def resolve_all_brazil_month(settings: Any, as_of: date) -> list[AllBrazilSnapshot]:
     """Retorna todos os snapshots válidos do mês, do mais recente para o mais antigo."""
     root = resolve_all_brazil_root(settings)

@@ -38,7 +38,15 @@ from ..auth import (
     windows_corporate_email,
 )
 from ..extractors.sap_gui import SapGuiCancelled, SapGuiError, SapGuiRobot
-from ..inventory import dashboard_summary, ensure_inventory_schema, export_inventory_xlsx, import_zmm119_xlsx, inventory_columns, list_inventory
+from ..inventory import (
+    dashboard_summary,
+    ensure_inventory_schema,
+    export_inventory_xlsx,
+    import_zmm119_xlsx,
+    inventory_columns,
+    list_inventory,
+    overview_filter_options,
+)
 from ..health_center import connectivity_indicators, governance_status, system_health
 from ..mappings import (
     apply_mapping_rules,
@@ -120,10 +128,17 @@ from ..access_sync import (
     sync_access,
     verification as access_verification,
 )
+from ..mapping_sync import (
+    mapping_sync_status,
+    record_change as record_mapping_change,
+    record_error as record_mapping_error,
+    sync_mapping,
+)
 from ..sources.all_brazil import (
     MONTH_NAMES,
     SNAPSHOT_PATTERN,
     enrich_inventory_from_all_brazil,
+    discover_all_brazil_months,
     list_all_brazil_snapshots,
     query_all_brazil_snapshot,
     resolve_all_brazil,
@@ -446,6 +461,40 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def access_sync_soon() -> None:
         threading.Thread(target=access_sync_once, daemon=True).start()
 
+    mapping_sync_lock = threading.Lock()
+
+    def mapping_sync_once() -> dict[str, object] | None:
+        """Mapping compartilhado: publica as regras desta máquina e aplica as das outras.
+
+        Regras recebidas recalculam as competências locais (sem republicar: cada máquina recalcula ao receber)."""
+        if not bridge_enabled(settings):
+            return None
+        with mapping_sync_lock:
+            try:
+                result = sync_mapping(settings, bridge_root(settings))
+            except BridgeUnavailable as exc:
+                record_mapping_error(settings, str(exc))
+                return None
+            except Exception as exc:  # noqa: BLE001 - registrado e tentado de novo no próximo ciclo
+                record_mapping_error(settings, f"Falha ao sincronizar o Mapping: {exc}")
+                return None
+            if result.get("changed"):
+                with SAP_IMPORT_LOCK:  # mesma trava das cargas: nunca recalcula junto com uma importação
+                    with connect(settings.path("database")) as connection:
+                        ensure_inventory_schema(connection)
+                        periods = [str(row[0]) for row in connection.execute(
+                            "select distinct period from inventory_rows order by 1").fetchall()]
+                    for period in periods:
+                        apply_mapping_rules(settings, period)
+                result["recalculated_periods"] = periods
+                optimus_watch_trigger()
+        return result
+
+    def mapping_sync_soon() -> None:
+        threading.Thread(target=mapping_sync_once, daemon=True).start()
+
+    app.state.mapping_sync_once = mapping_sync_once
+
     def access_check_expired(user: dict[str, object]) -> bool:
         """Usuário comum bloqueado quando a máquina passa do prazo sem verificar a lista."""
         if user.get("role") == "admin" or not bridge_enabled(settings):
@@ -605,6 +654,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if user.get("role") == "admin" and bridge_enabled(settings):
             mark_publisher(settings)
             access_sync_soon()
+        if bridge_enabled(settings):
+            mapping_sync_soon()  # quem entra já vê as regras de Mapping cadastradas nas outras máquinas
 
         def _sync_latest_publication_background() -> None:
             try:
@@ -660,7 +711,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         }
 
     @app.get("/api/inventory/columns", dependencies=[Depends(require_token)])
-    def get_inventory_columns() -> list[dict[str, str]]:
+    def get_inventory_columns() -> list[dict[str, object]]:
         return inventory_columns()
 
     @app.get("/api/inventory/periods", dependencies=[Depends(require_token)])
@@ -936,6 +987,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 bridge_sync_once()
                 bridge_documentation_once()
                 access_sync_once()
+                mapping_sync_once()
             try:
                 run_backup_now()
             except Exception:  # noqa: BLE001 - erro fica registrado no estado do backup
@@ -1440,9 +1492,23 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     @app.get("/api/dashboard/summary", dependencies=[Depends(require_token)])
     def get_dashboard_summary(
-        period: str = Query(default="2026-07", pattern=r"^\d{4}-\d{2}$")
+        period: str = Query(default="2026-07", pattern=r"^\d{4}-\d{2}$"),
+        filters: str = Query(default="{}", max_length=8000),
     ) -> dict[str, object]:
-        return dashboard_summary(settings, period)
+        try:
+            chosen = json.loads(filters or "{}")
+        except json.JSONDecodeError as exc:
+            raise HTTPException(status_code=422, detail="Filtros inválidos") from exc
+        if not isinstance(chosen, dict):
+            raise HTTPException(status_code=422, detail="Filtros devem ser um objeto")
+        return dashboard_summary(settings, period, chosen)
+
+    @app.get("/api/dashboard/filter-options", dependencies=[Depends(require_token)])
+    def get_dashboard_filter_options(
+        period: str = Query(default="2026-07", pattern=r"^\d{4}-\d{2}$"),
+    ) -> dict[str, object]:
+        """Valores de Division, Centro, Local de estoque e Season da competência (filtros da Visão e relatórios)."""
+        return overview_filter_options(settings, period)
 
     @app.get("/api/governance/status", dependencies=[Depends(require_token)])
     def get_governance_status(
@@ -1921,6 +1987,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 raise HTTPException(status_code=404, detail="Recarga da Base de Estoque não encontrada.")
             return dict(job)
 
+    @app.get("/api/mapping-sync/status", dependencies=[Depends(require_token)])
+    def get_mapping_sync_status() -> dict[str, object]:
+        """Situação do Mapping compartilhado pelo Drive (página Mapping)."""
+        return {"enabled": bridge_enabled(settings), **mapping_sync_status(settings)}
+
     @app.get("/api/mappings", dependencies=[Depends(require_token)])
     def mapping_groups() -> list[dict[str, object]]:
         return list_mapping_groups(settings)
@@ -1947,10 +2018,29 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "row_count": sum(int(row[1] or 0) for row in period_rows),
         }
 
-    @app.post("/api/mappings/{group_key}", dependencies=[Depends(require_token)])
-    def create_mapping_row(group_key: str, request: MappingRowRequest) -> dict[str, object]:
+    def mapping_key_of(group_key: str, mapping_id: int) -> str | None:
+        with connect(settings.path("database")) as connection:
+            row = connection.execute(
+                "select key_value from mapping_rules where group_key=? and mapping_id=?", [group_key, mapping_id]).fetchone()
+        return str(row[0]).strip() if row else None
+
+    def share_mapping_change(group_key: str, key_value: str | None, actor: Request | None, *, deleted: bool = False) -> None:
+        """Registra a alteração para as outras máquinas (Mapping compartilhado) e publica logo no Drive."""
+        if not key_value:
+            return
+        by = str(((getattr(getattr(actor, "state", None), "user", None) or {}).get("email")) or "")
         try:
-            result = save_mapping_row(settings, group_key, **request.model_dump())
+            record_mapping_change(settings, group_key, key_value, by=by, deleted=deleted)
+        except Exception:  # noqa: BLE001 - nunca impede a alteração local já salva
+            return
+        mapping_sync_soon()
+
+    @app.post("/api/mappings/{group_key}", dependencies=[Depends(require_token)])
+    def create_mapping_row(group_key: str, request: MappingRowRequest, http_request: Request) -> dict[str, object]:
+        try:
+            with mapping_sync_lock:  # a sincronização nunca roda entre salvar e registrar a alteração
+                result = save_mapping_row(settings, group_key, **request.model_dump())
+                share_mapping_change(group_key, request.key_value.strip(), http_request)
             result["recalculated"] = refresh_mapping_dependents()
             bridge_after_local_change(list(result["recalculated"].get("periods") or []), "Alteração de Mapping")
             return result
@@ -1958,9 +2048,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     @app.put("/api/mappings/{group_key}/{mapping_id}", dependencies=[Depends(require_token)])
-    def update_mapping_row(group_key: str, mapping_id: int, request: MappingRowRequest) -> dict[str, object]:
+    def update_mapping_row(group_key: str, mapping_id: int, request: MappingRowRequest, http_request: Request) -> dict[str, object]:
         try:
-            result = save_mapping_row(settings, group_key, mapping_id=mapping_id, **request.model_dump())
+            with mapping_sync_lock:  # a sincronização nunca roda entre salvar e registrar a alteração
+                previous_key = mapping_key_of(group_key, mapping_id)
+                result = save_mapping_row(settings, group_key, mapping_id=mapping_id, **request.model_dump())
+                new_key = request.key_value.strip()
+                if previous_key and previous_key != new_key:
+                    share_mapping_change(group_key, previous_key, http_request, deleted=True)  # chave renomeada
+                share_mapping_change(group_key, new_key, http_request)
             result["recalculated"] = refresh_mapping_dependents()
             bridge_after_local_change(list(result["recalculated"].get("periods") or []), "Alteração de Mapping")
             return result
@@ -1968,9 +2064,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
 
     @app.delete("/api/mappings/{group_key}/{mapping_id}", dependencies=[Depends(require_token)])
-    def remove_mapping_row(group_key: str, mapping_id: int) -> dict[str, str]:
+    def remove_mapping_row(group_key: str, mapping_id: int, http_request: Request) -> dict[str, object]:
         try:
-            delete_mapping_row(settings, group_key, mapping_id)
+            with mapping_sync_lock:  # a sincronização nunca roda entre excluir e registrar a exclusão
+                removed_key = mapping_key_of(group_key, mapping_id)
+                delete_mapping_row(settings, group_key, mapping_id)
+                share_mapping_change(group_key, removed_key, http_request, deleted=True)
             recalculated = refresh_mapping_dependents()
             bridge_after_local_change(list(recalculated.get("periods") or []), "Alteração de Mapping")
             return {"status": "deleted", "recalculated": recalculated}
@@ -2013,13 +2112,21 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             drive_map = json.loads(drive_map_path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
             drive_map = {"root_url": f"https://drive.google.com/drive/folders/{config['drive_id']}", "years": {}}
+        root_url = drive_map.get("root_url") or f"https://drive.google.com/drive/folders/{config['drive_id']}"
+        # Dinâmico: anos e meses vêm das pastas reais do Drive. O arquivo de links só fornece o
+        # endereço "Abrir no Drive" dos meses já conhecidos (mês novo abre a pasta principal) e
+        # mantém a lista quando o Drive está indisponível nesta máquina.
+        discovered = discover_all_brazil_months(root)
+        links = {
+            int(year_text): {int(month_text): url for month_text, url in (mapped or {}).items()}
+            for year_text, mapped in (drive_map.get("years") or {}).items()
+        }
         years: list[dict[str, object]] = []
-        for year_text, mapped_months in sorted(drive_map.get("years", {}).items(), reverse=True):
-            year = int(year_text)
+        for year in sorted(set(discovered) | set(links), reverse=True):
             months: list[dict[str, object]] = []
-            for month_text, drive_url in sorted(mapped_months.items(), reverse=True):
-                month = int(month_text)
-                folder = all_brazil_month_folder(year, month)
+            for month in sorted(set(discovered.get(year, {})) | set(links.get(year, {})), reverse=True):
+                drive_url = links.get(year, {}).get(month) or root_url
+                folder = discovered.get(year, {}).get(month) or all_brazil_month_folder(year, month)
                 files: list[dict[str, object]] = []
                 try:
                     if not folder.is_dir():
@@ -2058,7 +2165,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 )
             if months:
                 years.append({"year": year, "months": months})
-        return {"root": str(root), "root_url": drive_map.get("root_url"), "years": years}
+        return {"root": str(root), "root_url": root_url, "years": years}
 
     # Importação e enriquecimento compartilhados pela extração automática (robô)
     # e pela carga manual (upload). Devem ser chamados sob SAP_IMPORT_LOCK.
@@ -3878,9 +3985,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             elif kind == "mapping":
                 row = MappingRowRequest(key_value=str(parameters["key_value"]), value_1=parameters.get("value_1"), value_2=parameters.get("value_2"))
                 if parameters.get("mapping_id"):
-                    result = update_mapping_row(str(parameters["group"]), int(parameters["mapping_id"]), row)
+                    result = update_mapping_row(str(parameters["group"]), int(parameters["mapping_id"]), row, actor)
                 else:
-                    result = create_mapping_row(str(parameters["group"]), row)
+                    result = create_mapping_row(str(parameters["group"]), row, actor)
                 optimus_watch_trigger()
             elif kind == "bridge_sync":
                 result = post_bridge_sync()

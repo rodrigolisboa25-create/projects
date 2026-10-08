@@ -64,6 +64,13 @@ NUMERIC_COLUMNS = {
     "average_commercial_cost", "commercial_total_amount", "company_unit_cost", "fiscal_unit_cost",
     "aging_days", "fob_amount", "import_tax_amount", "other_costs_amount", "year",
 }
+# Colunas de quantidade e de valor total da linha: a grade mostra a soma delas acima do cabeçalho,
+# sempre sobre todas as linhas que atendem à busca e aos filtros. Custos unitários, Days e Year não somam.
+SUM_COLUMNS = (
+    "unrestricted_quantity", "blocked_quantity", "total", "icms_st_amount", "ipi_amount",
+    "company_total_amount", "fiscal_total_amount", "commercial_total_amount",
+    "fob_amount", "import_tax_amount", "other_costs_amount",
+)
 DATE_COLUMNS = {"product_offer_end_date"}
 HIDDEN_UI_COLUMNS = {"historical_year_bucket"}
 INVENTORY_COMPANY = "7170"
@@ -460,13 +467,14 @@ def _worksheet_exists(workbook: Any, name: str) -> bool:
         return False
 
 
-def inventory_columns() -> list[dict[str, str]]:
+def inventory_columns() -> list[dict[str, Any]]:
     numeric = NUMERIC_COLUMNS
     return [
         {
             "key": name,
             "label": label,
             "type": "integer" if name == "year" else "date" if name in DATE_COLUMNS else "number" if name in numeric else "text",
+            "sum": name in SUM_COLUMNS,
         }
         for name, label in INVENTORY_COLUMNS
         if name not in HIDDEN_UI_COLUMNS
@@ -537,7 +545,9 @@ def list_inventory(
     select = ",".join(["source_row", *[f'"{name}"' for name in names]])
     with connect(settings.path("database")) as connection:
         ensure_inventory_schema(connection)
-        total = int(connection.execute(f"select count(*) from inventory_rows where {where}", params).fetchone()[0])
+        sums = ",".join(f'coalesce(sum("{name}"),0)' for name in SUM_COLUMNS)
+        aggregate = connection.execute(f"select count(*),{sums} from inventory_rows where {where}", params).fetchone()
+        total = int(aggregate[0])
         rows = connection.execute(
             f'select {select} from inventory_rows where {where} order by "{sort}" {direction} nulls last limit ? offset ?',
             [*params, page_size, (page - 1) * page_size],
@@ -551,6 +561,8 @@ def list_inventory(
         "pages": max(1, math.ceil(total / page_size)),
         "pending_joins": pending_joins,
         "rows": [{key: _serialize(value) for key, value in zip(keys, row, strict=True)} for row in rows],
+        # Soma de todas as linhas filtradas (não só da página), arredondada como a grade exibe.
+        "totals": {name: round(float(value), 2) for name, value in zip(SUM_COLUMNS, aggregate[1:], strict=True)},
     }
 
 
@@ -612,11 +624,59 @@ def _natural_key(text: Any) -> tuple[tuple[int, Any], ...]:
     )
 
 
+# Filtros da página Visão e relatórios (os mesmos agrupadores do PMM analítico e da Dispersão).
+# Os valores são os rótulos exibidos nos gráficos ("Não informado" = campo vazio).
+OVERVIEW_FILTER_COLUMNS: dict[str, tuple[str, str]] = {
+    "division": ("division_description", "Division Description"),
+    "plant": ("plant", "Centro"),
+    "location": ("location_group", "Local de estoque"),
+    "season": ("season", "Season"),
+}
+NO_FILTER: tuple[str, list[Any]] = ("", [])
+
+
+def _label_sql(column: str) -> str:
+    return f"coalesce(nullif(trim(cast(\"{column}\" as varchar)), ''), 'Não informado')"
+
+
+def overview_filter_sql(filters: dict[str, Any] | None) -> tuple[str, list[Any]]:
+    """Cláusula extra (" and ...") com os filtros escolhidos; dimensões e valores desconhecidos são ignorados."""
+    clauses: list[str] = []
+    params: list[Any] = []
+    for key, values in (filters or {}).items():
+        if key not in OVERVIEW_FILTER_COLUMNS or not isinstance(values, (list, tuple)):
+            continue
+        chosen = list(dict.fromkeys(str(value).strip() for value in values if str(value).strip()))[:300]
+        if not chosen:
+            continue
+        clauses.append(f"{_label_sql(OVERVIEW_FILTER_COLUMNS[key][0])} in ({','.join('?' * len(chosen))})")
+        params.extend(chosen)
+    return (" and " + " and ".join(clauses), params) if clauses else NO_FILTER
+
+
+def overview_filter_options(settings: Any, period: str) -> dict[str, Any]:
+    """Valores disponíveis em cada filtro da competência, do maior para o menor valor fiscal."""
+    with connect(settings.path("database")) as connection:
+        ensure_inventory_schema(connection)
+        dimensions = []
+        for key, (column, label) in OVERVIEW_FILTER_COLUMNS.items():
+            rows = connection.execute(
+                f"""select {_label_sql(column)}, count(*), coalesce(sum(fiscal_total_amount),0)
+                    from inventory_rows where period=? group by 1 order by 3 desc""",
+                [period],
+            ).fetchall()
+            dimensions.append({"key": key, "label": label, "values": [
+                {"value": str(row[0]), "rows": int(row[1]), "fiscal_value": float(row[2] or 0)} for row in rows
+            ]})
+    return {"period": period, "dimensions": dimensions}
+
+
 def _fiscal_matrix(
     connection: Any,
     period: str,
     row_col: str,
     col_col: str,
+    flt: tuple[str, list[Any]] = NO_FILTER,
 ) -> dict[str, Any]:
     """Monta uma matriz de valor fiscal para dois agrupadores categóricos."""
     allowed = {
@@ -638,10 +698,10 @@ def _fiscal_matrix(
             coalesce(nullif(trim(cast("{col_col}" as varchar)), ''), 'Não informado') as col_label,
             coalesce(sum(fiscal_total_amount), 0) as fiscal_value
         from inventory_rows
-        where period=?
+        where period=? {flt[0]}
         group by 1, 2
         """,
-        [period],
+        [period, *flt[1]],
     ).fetchall()
 
     row_labels = sorted({str(row[0]) for row in rows}, key=_natural_key)
@@ -662,22 +722,22 @@ def _fiscal_matrix(
     }
 
 
-def _location_bars(connection: Any, period: str, limit: int = 8) -> list[dict[str, Any]]:
+def _location_bars(connection: Any, period: str, limit: int = 8, flt: tuple[str, list[Any]] = NO_FILTER) -> list[dict[str, Any]]:
     """Retorna local de estoque com quantidade livre e valor fiscal."""
     rows = connection.execute(
-        """
+        f"""
         select
             coalesce(nullif(trim(cast(location_group as varchar)), ''), 'Não informado') as label,
             count(*) as rows,
             coalesce(sum(unrestricted_quantity), 0) as quantity,
             coalesce(sum(fiscal_total_amount), 0) as fiscal_value
         from inventory_rows
-        where period=?
+        where period=? {flt[0]}
         group by 1
         order by fiscal_value desc
         limit ?
         """,
-        [period, limit],
+        [period, *flt[1], limit],
     ).fetchall()
     return [
         {
@@ -691,22 +751,22 @@ def _location_bars(connection: Any, period: str, limit: int = 8) -> list[dict[st
 
 
 
-def _division_bars(connection: Any, period: str, limit: int = 12) -> list[dict[str, Any]]:
+def _division_bars(connection: Any, period: str, limit: int = 12, flt: tuple[str, list[Any]] = NO_FILTER) -> list[dict[str, Any]]:
     """Retorna Division Description com quantidade livre e valor fiscal."""
     rows = connection.execute(
-        """
+        f"""
         select
             coalesce(nullif(trim(cast(division_description as varchar)), ''), 'Não informado') as label,
             count(*) as rows,
             coalesce(sum(unrestricted_quantity), 0) as quantity,
             coalesce(sum(fiscal_total_amount), 0) as fiscal_value
         from inventory_rows
-        where period=?
+        where period=? {flt[0]}
         group by 1
         order by fiscal_value desc
         limit ?
         """,
-        [period, limit],
+        [period, *flt[1], limit],
     ).fetchall()
     return [
         {
@@ -719,21 +779,21 @@ def _division_bars(connection: Any, period: str, limit: int = 12) -> list[dict[s
     ]
 
 
-def _compiled_period_trend(connection: Any, period: str, limit: int = 18) -> list[dict[str, Any]]:
-    """Série mensal somente das competências efetivamente compiladas."""
+def _compiled_period_trend(connection: Any, period: str, limit: int = 18, flt: tuple[str, list[Any]] = NO_FILTER) -> list[dict[str, Any]]:
+    """Série mensal somente das competências efetivamente compiladas (com os mesmos filtros da página)."""
     rows = connection.execute(
-        """
+        f"""
         select period,
                count(*) as rows,
                coalesce(sum(unrestricted_quantity), 0) as quantity,
                coalesce(sum(fiscal_total_amount), 0) as fiscal_value
         from inventory_rows
-        where period <= ?
+        where period <= ? {flt[0]}
         group by period
         order by period desc
         limit ?
         """,
-        [period, limit],
+        [period, *flt[1], limit],
     ).fetchall()
     result: list[dict[str, Any]] = []
     for row in reversed(rows):
@@ -751,7 +811,7 @@ def _compiled_period_trend(connection: Any, period: str, limit: int = 18) -> lis
     return result
 
 
-def _pmm_grouped(connection: Any, period: str, column: str) -> list[dict[str, Any]]:
+def _pmm_grouped(connection: Any, period: str, column: str, flt: tuple[str, list[Any]] = NO_FILTER) -> list[dict[str, Any]]:
     """PMM contábil por dimensão, sem média de médias."""
     allowed_columns = {"division_description", "plant", "location_group", "season"}
     if column not in allowed_columns:
@@ -764,7 +824,7 @@ def _pmm_grouped(connection: Any, period: str, column: str) -> list[dict[str, An
                    coalesce(sum(unrestricted_quantity), 0) as quantity,
                    coalesce(sum(fiscal_total_amount), 0) as fiscal_value
               from inventory_rows
-             where period=?
+             where period=? {flt[0]}
              group by 1
         )
         select label, rows, quantity, fiscal_value,
@@ -772,7 +832,7 @@ def _pmm_grouped(connection: Any, period: str, column: str) -> list[dict[str, An
           from grouped
          order by pmm desc, fiscal_value desc
         """,
-        [period],
+        [period, *flt[1]],
     ).fetchall()
     return [
         {
@@ -790,25 +850,26 @@ def _division_variance(
     connection: Any,
     period: str,
     previous_period: str | None,
+    flt: tuple[str, list[Any]] = NO_FILTER,
 ) -> list[dict[str, Any]]:
     """Compara categoria/divisão com a última competência compilada anterior."""
     if not previous_period:
         return []
     rows = connection.execute(
-        """
+        f"""
         with current_period as (
             select coalesce(nullif(trim(cast(division_description as varchar)), ''), 'Não informado') as label,
                    coalesce(sum(unrestricted_quantity), 0) as quantity,
                    coalesce(sum(fiscal_total_amount), 0) as fiscal_value
             from inventory_rows
-            where period=?
+            where period=? {flt[0]}
             group by 1
         ), previous_period as (
             select coalesce(nullif(trim(cast(division_description as varchar)), ''), 'Não informado') as label,
                    coalesce(sum(unrestricted_quantity), 0) as quantity,
                    coalesce(sum(fiscal_total_amount), 0) as fiscal_value
             from inventory_rows
-            where period=?
+            where period=? {flt[0]}
             group by 1
         )
         select coalesce(c.label, p.label) as label,
@@ -820,7 +881,7 @@ def _division_variance(
         full outer join previous_period p on p.label=c.label
         order by abs(coalesce(c.fiscal_value, 0)-coalesce(p.fiscal_value, 0)) desc
         """,
-        [period, previous_period],
+        [period, *flt[1], previous_period, *flt[1]],
     ).fetchall()
     result: list[dict[str, Any]] = []
     for row in rows:
@@ -846,22 +907,25 @@ def _division_variance(
 
 
 
-def dashboard_summary(settings: Any, period: str) -> dict[str, Any]:
+def dashboard_summary(settings: Any, period: str, filters: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Indicadores da página Visão e relatórios; ``filters`` restringe todos eles (ver OVERVIEW_FILTER_COLUMNS)."""
+    flt = overview_filter_sql(filters)
+    where_filter, filter_params = flt
     with connect(settings.path("database")) as connection:
         ensure_inventory_schema(connection)
         core = connection.execute(
-            """select count(*), count(distinct material), coalesce(sum(unrestricted_quantity),0),
+            f"""select count(*), count(distinct material), coalesce(sum(unrestricted_quantity),0),
                       coalesce(sum(fiscal_total_amount),0), count(distinct style_color)
-               from inventory_rows where period=?""",
-            [period],
+               from inventory_rows where period=? {where_filter}""",
+            [period, *filter_params],
         ).fetchone()
 
         def grouped(column: str, limit: int = 8) -> list[dict[str, Any]]:
             rows = connection.execute(
                 f"""select coalesce(nullif(trim(cast("{column}" as varchar)),''),'Não informado'),
                            count(*), coalesce(sum(fiscal_total_amount),0)
-                    from inventory_rows where period=? group by 1 order by 3 desc limit ?""",
-                [period, limit],
+                    from inventory_rows where period=? {where_filter} group by 1 order by 3 desc limit ?""",
+                [period, *filter_params, limit],
             ).fetchall()
             return [
                 {"label": row[0], "rows": int(row[1]), "value": float(row[2])}
@@ -873,10 +937,10 @@ def dashboard_summary(settings: Any, period: str) -> dict[str, Any]:
             [period],
         ).fetchone()
         enriched = connection.execute(
-            """select count(distinct case when division_description is not null then style_color end),
+            f"""select count(distinct case when division_description is not null then style_color end),
                       count(distinct style_color)
-               from inventory_rows where period=? and style_color is not null""",
-            [period],
+               from inventory_rows where period=? and style_color is not null {where_filter}""",
+            [period, *filter_params],
         ).fetchone()
         try:
             measured_coverage = connection.execute(
@@ -887,42 +951,57 @@ def dashboard_summary(settings: Any, period: str) -> dict[str, Any]:
             measured_coverage = None
 
         cost = connection.execute(
-            """select coalesce(sum(fob_amount),0),
+            f"""select coalesce(sum(fob_amount),0),
                       coalesce(sum(import_tax_amount),0),
                       coalesce(sum(other_costs_amount),0)
-               from inventory_rows where period=?""",
-            [period],
+               from inventory_rows where period=? {where_filter}""",
+            [period, *filter_params],
         ).fetchone()
 
         aging = grouped("aging_bucket")
         plants = grouped("plant")
         lifecycle = grouped("lifecycle_description")
         origins = grouped("material_origin")
-        locations = _location_bars(connection, period)
+        locations = _location_bars(connection, period, flt=flt)
         # Centros sem local no Mapping (aba "Planta e local"): explicam a barra "Não informado".
         locations_unmapped = [
             {"plant": str(row[0]), "rows": int(row[1]), "value": float(row[2] or 0)}
             for row in connection.execute(
-                """select coalesce(nullif(trim(cast(plant as varchar)),''),'(sem centro)'),
+                f"""select coalesce(nullif(trim(cast(plant as varchar)),''),'(sem centro)'),
                           count(*), coalesce(sum(fiscal_total_amount),0)
                    from inventory_rows
-                   where period=? and coalesce(nullif(trim(cast(location_group as varchar)),''),'')=''
+                   where period=? and coalesce(nullif(trim(cast(location_group as varchar)),''),'')='' {where_filter}
                    group by 1 order by 3 desc""",
-                [period],
+                [period, *filter_params],
             ).fetchall()
         ]
-        division = _division_bars(connection, period, 12)
+        # Centros (lojas) de cada local de estoque — detalhamento do Mapa mental.
+        location_plants: dict[str, list[dict[str, Any]]] = {}
+        for location_label, plant_label, plant_rows, plant_quantity, plant_value in connection.execute(
+            f"""select coalesce(nullif(trim(cast(location_group as varchar)),''),'Não informado'),
+                       coalesce(nullif(trim(cast(plant as varchar)),''),'(sem centro)'),
+                       count(*), coalesce(sum(unrestricted_quantity),0), coalesce(sum(fiscal_total_amount),0)
+                from inventory_rows where period=? {where_filter}
+                group by 1,2 order by 1, 5 desc""",
+            [period, *filter_params],
+        ).fetchall():
+            location_plants.setdefault(str(location_label), []).append(
+                {"plant": str(plant_label), "rows": int(plant_rows), "quantity": float(plant_quantity or 0), "value": float(plant_value or 0)}
+            )
+        division = _division_bars(connection, period, 12, flt=flt)
         aging_for_season = _fiscal_matrix(
             connection,
             period,
             "historical_year_bucket",
             "season",
+            flt,
         )
         lifecycle_aging = _fiscal_matrix(
             connection,
             period,
             "lifecycle_description",
             "aging_bucket",
+            flt,
         )
         # Risco de obsolescência: composição do valor fiscal de cada Division por faixa de Aging.
         division_aging = _fiscal_matrix(
@@ -930,9 +1009,10 @@ def dashboard_summary(settings: Any, period: str) -> dict[str, Any]:
             period,
             "division_description",
             "aging_bucket",
+            flt,
         )
         top_styles = grouped("style_color", 8)
-        trend = _compiled_period_trend(connection, period)
+        trend = _compiled_period_trend(connection, period, flt=flt)
         pmm_breakdowns = {
             "period": [
                 {
@@ -944,10 +1024,10 @@ def dashboard_summary(settings: Any, period: str) -> dict[str, Any]:
                 }
                 for item in trend
             ],
-            "division": _pmm_grouped(connection, period, "division_description"),
-            "plant": _pmm_grouped(connection, period, "plant"),
-            "location": _pmm_grouped(connection, period, "location_group"),
-            "season": _pmm_grouped(connection, period, "season"),
+            "division": _pmm_grouped(connection, period, "division_description", flt),
+            "plant": _pmm_grouped(connection, period, "plant", flt),
+            "location": _pmm_grouped(connection, period, "location_group", flt),
+            "season": _pmm_grouped(connection, period, "season", flt),
         }
         previous_row = connection.execute(
             "select max(period) from inventory_rows where period < ?",
@@ -957,12 +1037,12 @@ def dashboard_summary(settings: Any, period: str) -> dict[str, Any]:
         previous_core = None
         if previous_period:
             previous_core = connection.execute(
-                """select coalesce(sum(unrestricted_quantity),0),
+                f"""select coalesce(sum(unrestricted_quantity),0),
                           coalesce(sum(fiscal_total_amount),0)
-                   from inventory_rows where period=?""",
-                [previous_period],
+                   from inventory_rows where period=? {where_filter}""",
+                [previous_period, *filter_params],
             ).fetchone()
-        division_variance = _division_variance(connection, period, previous_period)
+        division_variance = _division_variance(connection, period, previous_period, flt)
 
     quantity = float(core[2] or 0)
     fiscal_value = float(core[3] or 0)
@@ -981,8 +1061,14 @@ def dashboard_summary(settings: Any, period: str) -> dict[str, Any]:
         else None
     )
 
+    applied_filters = {
+        key: list(dict.fromkeys(str(value).strip() for value in values if str(value).strip()))
+        for key, values in (filters or {}).items()
+        if key in OVERVIEW_FILTER_COLUMNS and isinstance(values, (list, tuple)) and any(str(value).strip() for value in values)
+    }
     return {
         "period": period,
+        "filters": applied_filters,
         "rows": int(core[0]),
         "materials": int(core[1]),
         "quantity": quantity,
@@ -1005,6 +1091,7 @@ def dashboard_summary(settings: Any, period: str) -> dict[str, Any]:
         "origins": origins,
         "locations": locations,
         "locations_unmapped": locations_unmapped,
+        "location_plants": location_plants,
         "division": division,
         "aging_for_season": aging_for_season,
         "lifecycle_aging": lifecycle_aging,

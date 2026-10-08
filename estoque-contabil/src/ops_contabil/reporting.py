@@ -42,15 +42,18 @@ def _matrix_table(title: str, matrix: dict[str, Any]) -> str:
     values = list(matrix.get("values") or [])
     if not rows or not columns:
         return f'<section><h2>{html.escape(title)}</h2><p>Sem dados.</p></section>'
-    header = "".join(f"<th>{html.escape(str(column))}</th>" for column in columns)
+    header = "".join(f"<th>{html.escape(str(column))}</th>" for column in columns) + "<th>Total</th>"
     body: list[str] = []
+    column_totals = [0.0] * len(columns)
     for row_index, row_label in enumerate(rows):
         row_values = values[row_index] if row_index < len(values) else []
-        cells = "".join(
-            f"<td>{_money(row_values[column_index] if column_index < len(row_values) else 0)}</td>"
-            for column_index in range(len(columns))
-        )
+        numbers = [float(row_values[index] or 0) if index < len(row_values) else 0.0 for index in range(len(columns))]
+        column_totals = [total + number for total, number in zip(column_totals, numbers)]
+        cells = "".join(f"<td>{_money(number)}</td>" for number in numbers) + f"<td><b>{_money(sum(numbers))}</b></td>"
         body.append(f"<tr><th>{html.escape(str(row_label))}</th>{cells}</tr>")
+    # Linha Total: soma por coluna; o total geral é igual ao card Valor fiscal.
+    body.append("<tr><th>Total</th>" + "".join(f"<td><b>{_money(total)}</b></td>" for total in column_totals)
+                + f"<td><b>{_money(sum(column_totals))}</b></td></tr>")
     return (
         f'<section class="matrix-section"><h2>{html.escape(title)}</h2>'
         f'<div class="matrix-wrap"><table class="matrix"><tr><th></th>{header}</tr>'
