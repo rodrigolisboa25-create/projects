@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import asyncio
 import calendar
 import hashlib
 import json
+import logging
 import os
 import re
 import shutil
@@ -12,6 +14,8 @@ import time
 import uuid
 import tempfile
 import httpx
+from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date, datetime
 from pathlib import Path
 
@@ -19,6 +23,7 @@ from fastapi import Depends, FastAPI, HTTPException, Query, Request, Response
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, StreamingResponse
 from starlette.background import BackgroundTask
 from starlette.concurrency import run_in_threadpool
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 from pydantic import BaseModel, Field, field_validator
 
 from ..db import connect
@@ -39,6 +44,7 @@ from ..auth import (
 )
 from ..extractors.sap_gui import SapGuiCancelled, SapGuiError, SapGuiRobot
 from ..inventory import (
+    aging_race,
     dashboard_summary,
     ensure_inventory_schema,
     export_inventory_xlsx,
@@ -55,7 +61,15 @@ from ..mappings import (
     list_mapping_rows,
     save_mapping_row,
 )
-from ..mb59 import enrich_inventory_pass_step, import_mb59_xlsx, mb59_status
+from ..master_base import import_master_base
+from ..mb59 import (
+    enrich_inventory_pass_step,
+    import_mb59_xlsx,
+    mb59_status,
+    pass_step_pending,
+    pass_step_sources,
+    save_pass_step_manual,
+)
 from ..backup import (
     backup_is_due,
     default_backup_folder,
@@ -98,8 +112,14 @@ from ..optimus_watch import (
     inventory_gaps,
     latest_period,
     mapping_gaps,
+    mark_delivered,
     new_events,
+    presentation_offer_event,
+    report_charts,
+    report_insights,
+    report_insights_event,
 )
+from .. import presentations as decks
 from ..periods import delete_compiled_period
 from ..sap_upload import (
     SAP_EXPORT_SEARCH_DAYS,
@@ -128,6 +148,7 @@ from ..access_sync import (
     sync_access,
     verification as access_verification,
 )
+from .. import closing_agenda
 from ..mapping_sync import (
     mapping_sync_status,
     record_change as record_mapping_change,
@@ -172,6 +193,8 @@ class SystemSettingsRequest(BaseModel):
     animations_enabled: bool = True
     chart_animations_enabled: bool = True
     card_animations_enabled: bool = True
+    mindmap_calm: bool = False
+    presentations_enabled: bool = True
     backup_enabled: bool = False
     backup_folder: str = Field(default="", max_length=500)
     backup_frequency: str = Field(default="daily", pattern=r"^(daily|weekly|monthly)$")
@@ -199,6 +222,13 @@ class InterfacePreferencesRequest(BaseModel):
     animations_enabled: bool | None = None
     chart_animations_enabled: bool | None = None
     card_animations_enabled: bool | None = None
+    mindmap_calm: bool | None = None
+    presentations_enabled: bool | None = None
+
+
+class TourSeenRequest(BaseModel):
+    finished: bool = False
+    step: int = Field(default=0, ge=0, le=100)
 
 
 class NotificationPreferencesRequest(BaseModel):
@@ -210,6 +240,70 @@ class NotificationPreferencesRequest(BaseModel):
     bridge: bool | None = None
     backup: bool | None = None
     connectivity: bool | None = None
+
+
+class PresentationRequest(BaseModel):
+    period: str = Field(pattern=r"^\d{4}-\d{2}$")
+    request: str | None = Field(default=None, max_length=2000)  # vazio = o agente decide o conteúdo
+    theme: str | None = Field(default=None, max_length=40)
+
+
+class PresentationReviseRequest(BaseModel):
+    message: str = Field(min_length=2, max_length=2000)
+    slide: int | None = Field(default=None, ge=1, le=99)  # slide aberto no painel ("esse slide")
+
+
+class ClosingRuleRequest(BaseModel):
+    start: str = Field(default="last_business_day", pattern="^(last_day|last_business_day)$")
+    end_business_day: int = Field(default=3, ge=1, le=10)
+    pre_alert_days: int = Field(default=3, ge=0, le=10)
+
+
+class ClosingWindowRequest(BaseModel):
+    start_date: str | None = Field(default=None, max_length=10)
+    end_date: str | None = Field(default=None, max_length=10)
+    notes: str | None = Field(default=None, max_length=500)
+
+
+class ClosingClosedRequest(BaseModel):
+    closed: bool
+
+
+class ClosingTaskRequest(BaseModel):
+    period: str | None = Field(default=None, pattern=r"^\d{4}-\d{2}$")
+    title: str | None = Field(default=None, max_length=160)
+    due_date: str | None = Field(default=None, max_length=10)
+    owner: str | None = Field(default=None, max_length=80)
+    done: bool | None = None
+
+
+class ClosingHolidayRequest(BaseModel):
+    date: str = Field(min_length=10, max_length=10)
+    name: str = Field(default="", max_length=80)
+    enabled: bool = True
+
+
+class PresentationApplyRequest(BaseModel):
+    # Escolha feita num botão do painel (cor, tipo de gráfico, tema...): operações validadas pelo sistema como as do agente.
+    patch: dict[str, object]
+    label: str | None = Field(default=None, max_length=120)
+
+
+class PassStepManualItem(BaseModel):
+    center_material_key: str = Field(min_length=1, max_length=120)
+    product_offer_end_date: str | None = Field(default=None, max_length=10)
+    season: str | None = Field(default=None, max_length=4)
+    year: str | None = Field(default=None, max_length=4)
+
+
+class PassStepManualRequest(BaseModel):
+    period: str = Field(pattern=r"^\d{4}-\d{2}$")
+    items: list[PassStepManualItem] = Field(min_length=1, max_length=500)
+
+
+class PositionImportRequest(BaseModel):
+    period: str = Field(pattern=r"^\d{4}-\d{2}$")
+    path: str = Field(min_length=3, max_length=500)
 
 
 class NotificationActivateRequest(BaseModel):
@@ -281,6 +375,11 @@ AGENT_ACTION_TOOLS = {
     "save_user_access", "disable_user_access", "set_notification_preferences", "set_interface_preferences",
 }
 SELF_SERVICE_TOOLS = {"set_notification_preferences", "set_interface_preferences"}
+# Apresentações do Optimus (montagem/revisão em segundo plano): deck_id -> trabalho atual.
+PRESENTATION_JOBS: dict[str, dict[str, object]] = {}
+PRESENTATION_LOCK = threading.Lock()
+PRESENTATION_UNCHANGED = ("Nada foi alterado nesta apresentação. Pelo ajuste dá para mudar a forma (textos, cores, formato dos "
+                          "números, gráficos e slides); os valores vêm sempre da Base de Estoque e não são editáveis.")
 # Mensagens proativas do Optimus (ex.: extração falhou, mas o SAP salvou a planilha): entregues ao chat.
 OPTIMUS_OFFERS: list[dict[str, object]] = []
 OPTIMUS_OFFERS_LOCK = threading.Lock()
@@ -319,6 +418,41 @@ SAP_STAGE_PROGRESS = {
 }
 SAP_TERMINAL_STATUSES = {"COMPLETED", "FAILED", "ACTION_REQUIRED", "CANCELLED"}
 
+# Resumo proativo da Visão e relatórios: os números vêm do evento (mesmos da página); o agente escolhe o que é
+# principal e escreve num formato fácil de ler no chat.
+REPORT_INSIGHTS_INSTRUCTION = (
+    "[INSTRUCAO_RESUMO_RELATORIOS]\n"
+    "Este evento (report_insights) não é um problema: é o resumo informativo dos principais gráficos da página "
+    "Visão e relatórios da competência, com os mesmos números da tela (charts e kpis). Avalie todos os gráficos e "
+    "escolha você os achados mais importantes para um gestor contábil — por exemplo, as maiores variações "
+    "contra a competência anterior, a concentração do valor (ano/season, divisão, local), o estoque com mais de "
+    "12 meses (Risco de obsolescência) e centros sem local no Mapping. Ignore o que não mudou nem chama atenção. "
+    "Dois tópicos são obrigatórios: **PMM analítico** (PMM da competência, variação e a divisão de maior/menor PMM) e "
+    "**Lifecycle × Aging** (como o valor se distribui pelas faixas de aging — Futures, 0-3, 3-6, 6-9, 9-12, 12-18, "
+    "18-24 meses, 2-5 anos e >5 anos —, destacando as faixas mais pesadas e o peso do Inactive). O sistema anexa "
+    "abaixo da mensagem os gráficos Lifecycle × Aging, PMM analítico por divisão, Division Description e Evolução: "
+    "não desenhe gráficos nem tabelas e não descreva os desenhos. Formato obrigatório, em português do Brasil e em "
+    "Markdown simples:\n"
+    "1) Primeira linha: \"### 📊 Visão e relatórios — <mês por extenso>/<ano>\".\n"
+    "2) Uma frase de abertura com o valor fiscal total e a variação contra a competência anterior (se houver).\n"
+    "3) De 4 a 6 tópicos (\"- \"), um por gráfico, cada um começando com o nome do gráfico em negrito, como na página "
+    "(ex.: **Aging for Season**:), com 1 ou 2 frases curtas: o número e o que ele significa. Cada tópico usa só os "
+    "números daquele gráfico (o total de mais de 12 meses de todas as divisões fica em **Risco de obsolescência**, "
+    "não em Division Description); não ligue locais a centros nem acrescente códigos que não estejam naquele gráfico.\n"
+    "4) Uma linha com um próximo passo sugerido, se houver, e \"Detalhes na página Visão e relatórios.\"\n"
+    "5) Fechamento conforme delivery_preference.choice: se for null (a pessoa ainda não escolheu), termine "
+    "perguntando, numa linha separada e em itálico com asteriscos (*...*), se ela quer receber este resumo sempre aqui "
+    "no chat quando os números da competência mudarem (responder sim ou não). Se for true, termine com \"*Para não "
+    "receber mais este resumo, é só me pedir.*\". Quando ela responder a essa pergunta, ou pedir para parar/voltar a receber, use a "
+    "ferramenta set_report_insights (aceitar = true; recusar = false) e confirme em uma frase.\n"
+    "Valores em reais abreviados (R$ 1,37 bi, R$ 28,3 mi) e percentuais com uma casa decimal, vírgula decimal. "
+    "Deixe claro a que cada número se refere (total da competência, uma divisão, um local, um ano/season): nunca "
+    "coloque um total geral na frase de um item específico sem dizer que é o total. "
+    "Sem tabelas, sem blocos de código e no máximo cerca de 170 palavras. Use somente os números do evento; "
+    "nunca invente nem recalcule valores que não estejam nele.\n"
+    "[/INSTRUCAO_RESUMO_RELATORIOS]\n\n"
+)
+
 
 DEFAULT_SYSTEM_SETTINGS: dict[str, object] = {
     "density": "compact",
@@ -326,6 +460,10 @@ DEFAULT_SYSTEM_SETTINGS: dict[str, object] = {
     "animations_enabled": True,
     "chart_animations_enabled": True,
     "card_animations_enabled": True,
+    # Mapa mental sóbrio (sem animações, brilho nem muitas cores): desmarcado por padrão; o usuário pode marcar.
+    "mindmap_calm": False,
+    # Optimus oferece montar apresentações no chat (Configurações > Interface e experiência).
+    "presentations_enabled": True,
     "backup_enabled": False,
     # Vazio = automático: pasta "backups" do Drive compartilhado desta máquina,
     # ou %LOCALAPPDATA%\OpsContabil\backup quando o Drive não estiver acessível.
@@ -407,9 +545,18 @@ def _installer_metadata(archive: Path) -> dict[str, object]:
     }
 
 
+def allowed_hosts() -> list[str]:
+    """Endereços aceitos no cabeçalho Host. OPS_ALLOWED_HOSTS acrescenta outros (separados por vírgula)."""
+    extra = [item.strip().lower() for item in os.getenv("OPS_ALLOWED_HOSTS", "").split(",") if item.strip()]
+    return ["127.0.0.1", "localhost", *extra]
+
+
 def create_app(settings: Settings | None = None) -> FastAPI:
     settings = settings or load_settings()
     app = FastAPI(title="Estoque Contábil", version="0.2.0")
+    # Só atende pedidos endereçados ao próprio computador (127.0.0.1/localhost): um site
+    # externo que tente se passar pelo servidor local (DNS rebinding) recebe 400.
+    app.add_middleware(TrustedHostMiddleware, allowed_hosts=allowed_hosts())
     ensure_auth_schema(settings)
 
     # ------------------------------------------------------------------
@@ -495,6 +642,24 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app.state.mapping_sync_once = mapping_sync_once
 
+    closing_sync_lock = threading.Lock()
+
+    def closing_sync_once() -> dict[str, object] | None:
+        """Agenda de fechamento compartilhada: publica os registros desta máquina e aplica os mais novos das outras."""
+        if not bridge_enabled(settings):
+            return None
+        with closing_sync_lock:
+            try:
+                return closing_agenda.sync_agenda(settings, bridge_root(settings))
+            except BridgeUnavailable as exc:
+                closing_agenda.record_error(settings, str(exc))
+            except Exception as exc:  # noqa: BLE001 - registrado e tentado de novo no próximo ciclo
+                closing_agenda.record_error(settings, f"Falha ao sincronizar a agenda de fechamento: {exc}")
+        return None
+
+    def closing_sync_soon() -> None:
+        threading.Thread(target=closing_sync_once, daemon=True).start()
+
     def access_check_expired(user: dict[str, object]) -> bool:
         """Usuário comum bloqueado quando a máquina passa do prazo sem verificar a lista."""
         if user.get("role") == "admin" or not bridge_enabled(settings):
@@ -540,7 +705,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             return "health"
         if path.startswith("/api/docs"):
             return "docs"
-        if path.startswith("/api/agent") or path.startswith("/api/optimus"):
+        if path.startswith("/api/closing"):
+            return "closing"
+        if path.startswith("/api/agent") or path.startswith("/api/optimus") or path.startswith("/api/presentations"):
             return "agent"
         return None
 
@@ -579,6 +746,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             or (path.startswith("/api/reports/") and request.method != "GET")
             or (path.startswith("/api/mappings") and request.method != "GET")
             or path.startswith("/api/installer")
+            or path.startswith("/api/inventory/master-base")
             or (path.startswith("/api/settings") and path not in {"/api/settings/environment"})
         )
         if admin_only and user["role"] != "admin":
@@ -656,6 +824,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             access_sync_soon()
         if bridge_enabled(settings):
             mapping_sync_soon()  # quem entra já vê as regras de Mapping cadastradas nas outras máquinas
+        closing_sync_soon()  # e as datas da Agenda de fechamento definidas pela equipe
 
         def _sync_latest_publication_background() -> None:
             try:
@@ -758,9 +927,52 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(status_code=422, detail="Filtros de coluna inválidos") from exc
         if not isinstance(column_filters, dict):
             raise HTTPException(status_code=422, detail="Filtros de coluna devem ser um objeto")
-        return list_inventory(
+        result = list_inventory(
             settings, period, page, page_size, q, sort, direction, column_filters, pending_joins
         )
+        # Auditoria do PASSO A PASSO (sem coluna nova): origem de Product Offer End Dt, Season e Year das linhas da página.
+        result["pass_step_sources"] = {
+            str(row): sources
+            for row, sources in pass_step_sources(settings, period, [int(item["source_row"]) for item in result["rows"]]).items()
+        }
+        return result
+
+    @app.post("/api/inventory/master-base", dependencies=[Depends(require_token)])
+    def post_master_base(request: PositionImportRequest, http_request: Request) -> dict[str, object]:
+        """Carrega a Posição de Estoque oficial de um mês (.xlsb, aba Base Orig. ou BASE - CKMR) como base mestre.
+
+        Não vira competência nem aparece na Base de Estoque/relatórios: serve só como "mês anterior" do
+        PASSO A PASSO do mês seguinte e fica registrada como ponto de atenção em Controles e auditoria."""
+        path = Path(request.path).expanduser()
+        if not path.is_file() or path.suffix.lower() != ".xlsb":
+            raise HTTPException(status_code=422, detail="Informe o caminho de uma Posição de Estoque .xlsb existente.")
+        with SAP_IMPORT_LOCK:  # mesma trava das cargas
+            try:
+                result = import_master_base(settings, request.period, path, http_request.state.user["email"])
+            except (ValueError, OSError) as exc:
+                raise HTTPException(status_code=422, detail=str(exc)) from exc
+        bridge_after_local_change([request.period], "Base mestre (Posição de Estoque oficial)", http_request.state.user["email"])
+        return result
+
+    @app.get("/api/inventory/pass-step/pending", dependencies=[Depends(require_token)])
+    def get_pass_step_pending(period: str = Query(pattern=r"^\d{4}-\d{2}$")) -> dict[str, object]:
+        """CE & MAT com Product Offer End Dt, Season ou Year não localizados nas três fontes."""
+        return pass_step_pending(settings, period)
+
+    @app.post("/api/inventory/pass-step/manual", dependencies=[Depends(require_token)])
+    def post_pass_step_manual(request: PassStepManualRequest, http_request: Request) -> dict[str, object]:
+        """Preenchimento manual (último recurso do PASSO A PASSO): grava, aplica nas linhas vazias e recalcula
+        Days, AGING, Season/Coleção e "<2022" da competência."""
+        email = http_request.state.user["email"]
+        with SAP_IMPORT_LOCK:  # não grava junto com uma carga ou reprocessamento
+            try:
+                result = save_pass_step_manual(settings, request.period, [item.model_dump() for item in request.items], email)
+            except ValueError as exc:
+                raise HTTPException(status_code=422, detail=str(exc)) from exc
+            apply_mapping_rules(settings, request.period)
+        bridge_after_local_change([request.period], "Preenchimento manual do PASSO A PASSO", email)
+        optimus_watch_trigger()
+        return {**result, "pending": pass_step_pending(settings, request.period, limit=0)["keys"]}
 
     @app.get("/api/inventory/export", dependencies=[Depends(require_token)])
     def export_inventory(
@@ -778,7 +990,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if not isinstance(column_filters, dict):
             raise HTTPException(status_code=422, detail="Filtros de coluna devem ser um objeto")
 
-        temp_dir = Path(os.getenv("TEMP") or tempfile.gettempdir()) / "OpsContabil" / "exports"
+        # Fora da pasta TEMP: nesta rede a TEMP é esvaziada sozinha durante o uso e cortava o arquivo.
+        temp_dir = settings.path("processed").parent / "exports"
         temp_dir.mkdir(parents=True, exist_ok=True)
         target = temp_dir / f"Base_Estoque_{period}_{uuid.uuid4().hex[:8]}.xlsx"
         try:
@@ -988,6 +1201,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 bridge_documentation_once()
                 access_sync_once()
                 mapping_sync_once()
+                closing_sync_once()
             try:
                 run_backup_now()
             except Exception:  # noqa: BLE001 - erro fica registrado no estado do backup
@@ -1436,60 +1650,6 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         return FileResponse(path, filename=path.name, media_type="text/html; charset=utf-8")
 
-    def executive_presentation_payload(period: str) -> dict[str, object]:
-        summary = dashboard_summary(settings, period)
-        return {
-            "artifact": "executive_presentation",
-            "period": period,
-            "title": f"Posição Contábil do Estoque — {period}",
-            "source": "Base de Estoque compilada no Ops Contábil",
-            "kpis": {
-                "fiscal_value": summary["fiscal_value"],
-                "quantity": summary["quantity"],
-                "materials": summary["materials"],
-                "pmm": summary["pmm"],
-                "all_brazil_coverage": summary["all_brazil_coverage"],
-            },
-            "comparison": {
-                "previous_period": summary["previous_period"],
-                "pmm": summary["pmm_comparison"],
-                "division_variance": summary["division_variance"],
-            },
-            "visuals": {
-                "monthly_trend": summary["trend"],
-                "division": summary["division"],
-                "locations": summary["locations"],
-                "origins": summary["origins"],
-                "lifecycle_aging": summary["lifecycle_aging"],
-                "aging_for_season": summary["aging_for_season"],
-                "division_aging": summary["division_aging"],
-                "pmm_breakdowns": summary["pmm_breakdowns"],
-                "cost_composition": summary["cost_composition"],
-            },
-            "slide_outline": [
-                "Capa e competência",
-                "Resumo executivo e KPIs",
-                "Evolução mensal da posição de estoque",
-                "PMM analítico por período, divisão, centro, local e season",
-                "Composição do custo fiscal",
-                "Mix e variação por categoria",
-                "Aging, lifecycle e season",
-                "Concentração por local, centro e origem",
-                "Controles, fontes e próximos pontos de atenção",
-            ],
-            "n8n_handoff": {
-                "ready": True,
-                "recommended_nodes": ["Google Slides", "Google Drive", "PDF"],
-                "instruction": "Usar somente os dados deste payload; não estimar indicadores ausentes.",
-            },
-        }
-
-    @app.get("/api/reports/presentation/context", dependencies=[Depends(require_token)])
-    def presentation_context(
-        period: str = Query(pattern=r"^\d{4}-\d{2}$"),
-    ) -> dict[str, object]:
-        return executive_presentation_payload(period)
-
     @app.get("/api/dashboard/summary", dependencies=[Depends(require_token)])
     def get_dashboard_summary(
         period: str = Query(default="2026-07", pattern=r"^\d{4}-\d{2}$"),
@@ -1502,6 +1662,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if not isinstance(chosen, dict):
             raise HTTPException(status_code=422, detail="Filtros devem ser um objeto")
         return dashboard_summary(settings, period, chosen)
+
+    @app.get("/api/dashboard/aging-race", dependencies=[Depends(require_token)])
+    def get_aging_race(
+        period: str = Query(pattern=r"^\d{4}-\d{2}$"),
+        filters: str = Query(default="{}", max_length=8000),
+    ) -> dict[str, object]:
+        """Evolução do Aging por Material — série histórica mês a mês (Visão e relatórios; fora do HTML e do PDF)."""
+        try:
+            chosen = json.loads(filters or "{}")
+        except json.JSONDecodeError as exc:
+            raise HTTPException(status_code=422, detail="Filtros inválidos") from exc
+        if not isinstance(chosen, dict):
+            raise HTTPException(status_code=422, detail="Filtros devem ser um objeto")
+        return aging_race(settings, period, chosen)
 
     @app.get("/api/dashboard/filter-options", dependencies=[Depends(require_token)])
     def get_dashboard_filter_options(
@@ -1574,7 +1748,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     # Interface e experiência: disponível a qualquer perfil (o perfil Usuário vê em
     # Configurações apenas esta seção e Notificações). Não expõe dados de administração.
-    INTERFACE_KEYS = ("density", "default_page_size", "animations_enabled", "chart_animations_enabled", "card_animations_enabled")
+    INTERFACE_KEYS = ("density", "default_page_size", "animations_enabled", "chart_animations_enabled", "card_animations_enabled", "mindmap_calm",
+                      "presentations_enabled")
 
     @app.get("/api/preferences/interface", dependencies=[Depends(require_token)])
     def get_interface_preferences() -> dict[str, object]:
@@ -1591,6 +1766,32 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     [key, json.dumps(value, ensure_ascii=False)],
                 )
         return get_interface_preferences()
+
+    # Tour guiado: abre sozinho uma única vez por usuário (no primeiro acesso, depois da
+    # tela de carregamento); depois fica em Configurações para rever quando quiser.
+    TOUR_VERSION = 1
+
+    @app.get("/api/tour", dependencies=[Depends(require_token)])
+    def get_tour(request: Request) -> dict[str, object]:
+        record = _state_setting("tour_state").get(str(request.state.user["email"]).lower())
+        record = record if isinstance(record, dict) else {}
+        return {"version": TOUR_VERSION, "seen": bool(record), "seen_at": record.get("seen_at"),
+                "finished": bool(record.get("finished")), "replays": int(record.get("replays") or 0)}
+
+    @app.post("/api/tour/seen", dependencies=[Depends(require_token)])
+    def mark_tour_seen(payload: TourSeenRequest, request: Request) -> dict[str, object]:
+        email = str(request.state.user["email"]).lower()
+        state_value = _state_setting("tour_state")
+        previous = state_value.get(email) if isinstance(state_value.get(email), dict) else {}
+        state_value[email] = {
+            "seen_at": previous.get("seen_at") or datetime.now().isoformat(timespec="seconds"),
+            "version": TOUR_VERSION,
+            "finished": bool(previous.get("finished")) or payload.finished,
+            "last_step": payload.step,
+            "replays": int(previous.get("replays") or 0) + (1 if previous and payload.step == 0 and not payload.finished else 0),
+        }
+        _save_state_setting("tour_state", state_value)
+        return get_tour(request)
 
     # Caixa de notificações (sino): histórico do que já foi enviado nesta máquina.
     @app.get("/api/notifications", dependencies=[Depends(require_token)])
@@ -1986,6 +2187,64 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             if job is None:
                 raise HTTPException(status_code=404, detail="Recarga da Base de Estoque não encontrada.")
             return dict(job)
+
+    # ------------------------------------------------------------------ Agenda de fechamento
+    def _closing_call(function, *args):
+        try:
+            result = function(*args)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc) or "Data inválida.") from exc
+        closing_sync_soon()
+        return result
+
+    @app.get("/api/closing/overview", dependencies=[Depends(require_token)])
+    def get_closing_overview(year: int | None = Query(default=None, ge=2020, le=2100),
+                             month: int | None = Query(default=None, ge=1, le=12)) -> dict[str, object]:
+        today = date.today()
+        return closing_agenda.overview(settings, year or today.year, month or today.month)
+
+    @app.get("/api/closing/status", dependencies=[Depends(require_token)])
+    def get_closing_status() -> dict[str, object]:
+        return closing_agenda.status(settings)
+
+    @app.put("/api/closing/rule", dependencies=[Depends(require_token)])
+    def put_closing_rule(payload: ClosingRuleRequest, request: Request) -> dict[str, object]:
+        return _closing_call(closing_agenda.save_rule, settings, payload.model_dump(), str(request.state.user["email"]))
+
+    @app.put("/api/closing/windows/{period}", dependencies=[Depends(require_token)])
+    def put_closing_window(period: str, payload: ClosingWindowRequest, request: Request) -> dict[str, object]:
+        if not re.fullmatch(r"\d{4}-\d{2}", period):
+            raise HTTPException(status_code=400, detail="Competência inválida.")
+        return _closing_call(closing_agenda.save_window, settings, period, payload.model_dump(), str(request.state.user["email"]))
+
+    @app.post("/api/closing/windows/{period}/closed", dependencies=[Depends(require_token)])
+    def post_closing_closed(period: str, payload: ClosingClosedRequest, request: Request) -> dict[str, object]:
+        if not re.fullmatch(r"\d{4}-\d{2}", period):
+            raise HTTPException(status_code=400, detail="Competência inválida.")
+        return _closing_call(closing_agenda.set_closed, settings, period, payload.closed, str(request.state.user["email"]))
+
+    @app.post("/api/closing/tasks", dependencies=[Depends(require_token)])
+    def post_closing_task(payload: ClosingTaskRequest, request: Request) -> dict[str, object]:
+        return _closing_call(closing_agenda.save_task, settings, payload.model_dump(exclude_none=True), str(request.state.user["email"]))
+
+    @app.put("/api/closing/tasks/{task_id}", dependencies=[Depends(require_token)])
+    def put_closing_task(task_id: str, payload: ClosingTaskRequest, request: Request) -> dict[str, object]:
+        if not re.fullmatch(r"[0-9a-f]{12}", task_id):
+            raise HTTPException(status_code=404, detail="Tarefa não encontrada.")
+        return _closing_call(closing_agenda.save_task, settings, payload.model_dump(exclude_none=True),
+                             str(request.state.user["email"]), task_id)
+
+    @app.delete("/api/closing/tasks/{task_id}", dependencies=[Depends(require_token)])
+    def delete_closing_task(task_id: str, request: Request) -> dict[str, object]:
+        if not re.fullmatch(r"[0-9a-f]{12}", task_id):
+            raise HTTPException(status_code=404, detail="Tarefa não encontrada.")
+        _closing_call(closing_agenda.delete_task, settings, task_id, str(request.state.user["email"]))
+        return {"deleted": task_id}
+
+    @app.put("/api/closing/holidays", dependencies=[Depends(require_token)])
+    def put_closing_holiday(payload: ClosingHolidayRequest, request: Request) -> dict[str, object]:
+        _closing_call(closing_agenda.save_holiday, settings, payload.date, payload.name, payload.enabled, str(request.state.user["email"]))
+        return {"ok": True}
 
     @app.get("/api/mapping-sync/status", dependencies=[Depends(require_token)])
     def get_mapping_sync_status() -> dict[str, object]:
@@ -2431,10 +2690,13 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def queue_optimus_event(
         event: dict[str, object], *, parameters: dict[str, object] | None = None, summary: str | None = None,
         notified: bool = False, key: str | None = None, system: bool = False, first: bool = False,
+        low_priority: bool = False, fingerprint: str | None = None,
     ) -> dict[str, object]:
         """Fila de eventos proativos: o agente escreve a mensagem quando o chat de um administrador busca.
 
         ``system``: aviso do próprio sistema (agente sem conexão), entregue sem passar pelo n8n.
+        ``low_priority``: informativo (resumo da Visão e relatórios) — só sai com a fila vazia, sem decisão
+        pendente e com intervalo maior desde o último aviso; nunca passa na frente dos demais.
         """
         now = time.time()
         item = {
@@ -2447,6 +2709,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "summary": summary,
             "notified": notified,
             "system": system,
+            "low_priority": low_priority,
+            "fingerprint": fingerprint,  # eventos memorizados só na entrega (mark_delivered)
             "status": "queued",
         }
         with OPTIMUS_OFFERS_LOCK:
@@ -2462,7 +2726,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # (o chat do Optimus é carregado em segundo plano e consulta /api/optimus/proactive a cada 15 s).
     # "outage": o agente está sem conexão (n8n inacessível, em geral por VPN desligada).
     optimus_watch = {"last_admin_poll": 0.0, "admin": None, "next_run": 0.0, "event": True,
-                     "next_connectivity": 0.0, "outage": None, "last_delivery": {}, "min_gap": 60.0}
+                     "next_connectivity": 0.0, "outage": None, "last_delivery": {}, "min_gap": 60.0,
+                     "low_priority_gap": 180.0}
     app.state.optimus_watch = optimus_watch
     # Ciclo completo a cada 5 min (além dos gatilhos imediatos: carga concluída, Mapping salvo...);
     # VPN/n8n a cada 2 min. Contra poluição: cada fato só é avisado uma vez (impressão digital)
@@ -2472,6 +2737,32 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     def optimus_watch_trigger() -> None:
         optimus_watch["event"] = True
+
+    # Escolha de cada administrador sobre o resumo da Visão e relatórios no chat (respondida ao próprio Optimus):
+    # None = ainda não escolheu (o resumo pergunta), True = receber sempre, False = não receber.
+    REPORT_PREFERENCE_KEY = "optimus_report_insights"
+
+    def _report_preferences() -> dict[str, bool]:
+        with connect(settings.path("database")) as connection:
+            row = connection.execute("select setting_value from system_settings where setting_key=?", [REPORT_PREFERENCE_KEY]).fetchone()
+        try:
+            data = json.loads(row[0]) if row else {}
+        except (TypeError, ValueError):
+            data = {}
+        return {str(key): bool(value) for key, value in (data or {}).items()}
+
+    def report_preference(email: str) -> bool | None:
+        return _report_preferences().get(email.strip().lower())
+
+    def set_report_preference(email: str, enabled: bool) -> None:
+        data = _report_preferences()
+        data[email.strip().lower()] = enabled
+        with connect(settings.path("database")) as connection:
+            connection.execute(
+                """insert into system_settings(setting_key,setting_value,updated_at) values (?,?,current_timestamp)
+                   on conflict(setting_key) do update set setting_value=excluded.setting_value, updated_at=excluded.updated_at""",
+                [REPORT_PREFERENCE_KEY, json.dumps(data, ensure_ascii=False)],
+            )
 
     def connectivity_check() -> dict[str, object] | None:
         """VPN e n8n a cada 2 minutos. Sem n8n o agente não consegue escrever: o próprio sistema avisa
@@ -2504,15 +2795,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     # avisos de queda ainda não entregues já não valem: a conexão voltou
                     if item.get("status") == "queued" and (item.get("key") in CONNECTIVITY_KEYS or item.get("key") == "connectivity_lost"):
                         item["status"] = "superseded"
-                waiting = sum(1 for item in OPTIMUS_OFFERS if item.get("status") == "queued" and not item.get("system"))
-            since = datetime.fromisoformat(str(outage["since"]))
-            queue_optimus_event(
-                {"type": "connectivity_restored", "topic": "Health Center VPN / rede e n8n / Optimus",
-                 "offline_since": outage["since"], "restored_at": now.isoformat(timespec="seconds"),
-                 "minutes_offline": max(1, round((now - since).total_seconds() / 60)),
-                 "cause": outage["indicator"], "queued_warnings": waiting},
-                key="connectivity_restored", first=True,
-            )
+            # Sem mensagem de "conexão restabelecida" no chat: é o próprio usuário que reconecta a VPN.
+            # Os avisos que ficaram na fila durante a queda seguem para o chat normalmente.
+            logging.getLogger("uvicorn.error").info("Optimus: conexão restabelecida (fora desde %s)", outage["since"])
         # VPN fora com o n8n acessível: o agente escreve normalmente (health:network).
         # Durante a queda só a memória é atualizada; o aviso do sistema já foi dado.
         offline = optimus_watch.get("outage") is not None
@@ -2537,11 +2822,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         except Exception:  # noqa: BLE001 - o Health Center indisponível não impede as demais verificações
             health = None
         fresh = new_events(settings, collect_events(settings, period, health, jobs=jobs))
+        queued: list[dict[str, object]] = []
         for item in fresh:
             if item["key"] in CONNECTIVITY_KEYS and optimus_watch.get("outage") is not None:
                 continue  # agente sem conexão: o aviso do sistema já cobre a VPN
-            queue_optimus_event(item["event"], parameters=item.get("parameters"), summary=item.get("summary"), key=item["key"])
-        return fresh
+            if item.get("ack_on_delivery"):
+                # Memorizado só na entrega: enquanto estiver na fila (ou sendo escrito), não entra de novo.
+                with OPTIMUS_OFFERS_LOCK:
+                    waiting = any(offer.get("key") == item["key"] and offer.get("fingerprint") == item["fingerprint"]
+                                  and offer.get("status") in {"queued", "in_progress"} for offer in OPTIMUS_OFFERS)
+                if waiting:
+                    continue
+            queue_optimus_event(item["event"], parameters=item.get("parameters"), summary=item.get("summary"), key=item["key"],
+                                low_priority=bool(item.get("low_priority")),
+                                fingerprint=item["fingerprint"] if item.get("ack_on_delivery") else None)
+            queued.append(item)
+        return queued  # só o que entrou de fato na fila agora
 
     app.state.optimus_watch_once = optimus_watch_once
 
@@ -2585,24 +2881,47 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         now = time.time()
         offline = optimus_watch.get("outage") is not None
         deliveries: dict[str, float] = optimus_watch["last_delivery"]  # type: ignore[assignment]
-        spaced = now - deliveries.get(session_id, 0.0) >= float(optimus_watch["min_gap"])  # type: ignore[arg-type]
+        since_last = now - deliveries.get(session_id, 0.0)
+        spaced = since_last >= float(optimus_watch["min_gap"])  # type: ignore[arg-type]
         with SAP_CONFIRMATION_LOCK:
             has_pending = session_id in SAP_CONFIRMATIONS
+        report_choice = report_preference(str(user.get("email") or ""))
+        declined: list[dict[str, object]] = []
         with OPTIMUS_OFFERS_LOCK:
+            if report_choice is False:  # o administrador respondeu ao Optimus que não quer o resumo no chat
+                for candidate in OPTIMUS_OFFERS:
+                    if (candidate.get("low_priority") and candidate.get("status") == "queued"
+                            and (candidate.get("event") or {}).get("type") == "report_insights"):  # type: ignore[union-attr]
+                        candidate["status"] = "declined"
+                        declined.append(candidate)
+            live = [
+                candidate for candidate in OPTIMUS_OFFERS
+                if candidate.get("status") in {"queued", "in_progress"}
+                and now - float(candidate["created_ts"]) < OPTIMUS_OFFER_TTL_SECONDS
+            ]
+            # Informativo (resumo dos relatórios) só sai quando nenhum outro aviso está na fila ou sendo escrito,
+            # sem decisão pendente no chat e com intervalo maior desde o último aviso: nunca sobrepõe os demais.
+            others_waiting = any(not candidate.get("low_priority") for candidate in live)
+            low_priority_ok = (not others_waiting and not has_pending
+                               and since_last >= float(optimus_watch["low_priority_gap"]))  # type: ignore[arg-type]
             item = next(
                 (
-                    candidate for candidate in OPTIMUS_OFFERS
+                    candidate for candidate in live
                     if candidate.get("status") == "queued"
-                    and now - float(candidate["created_ts"]) < OPTIMUS_OFFER_TTL_SECONDS
                     and not (candidate.get("parameters") and has_pending)  # uma decisão pendente por vez
+                    and (not candidate.get("low_priority") or low_priority_ok)
                     # sem conexão só o aviso do sistema sai; os do agente esperam a conexão voltar
                     and (candidate.get("system") or (not offline and (spaced or candidate.get("notified"))))
                 ),
                 None,
             )
-            if item is None:
-                return {"messages": [], "offline": offline}
-            item["status"] = "in_progress"
+            if item is not None:
+                item["status"] = "in_progress"
+        for candidate in declined:  # recusado: não volta a ser detectado até os números mudarem
+            if candidate.get("fingerprint"):
+                mark_delivered(settings, str(candidate["key"]), str(candidate["fingerprint"]))
+        if item is None:
+            return {"messages": [], "offline": offline}
         if item.get("system"):
             # Agente sem conexão: o aviso é o próprio indicador do Health Center, sem texto inventado.
             facts = dict((item["event"] or {}).get("indicator") or {})  # type: ignore[union-attr]
@@ -2617,6 +2936,26 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "id": item["offer_id"], "kind": "system", "title": "Aviso do sistema · Health Center",
                 "text": text, "created_at": item["created_at"], "notify": False,
             }], "offline": offline}
+        if (item.get("event") or {}).get("type") == "presentation_offer":  # type: ignore[union-attr]
+            # Oferta de apresentação: pergunta fixa com botões (Sim, gerar / Não, obrigado), sem chamar o agente.
+            offer_period = str((item["event"] or {}).get("period") or period or default_period())  # type: ignore[union-attr]
+            offer_text = (f"Quer que eu monte uma apresentação da competência {decks.period_label(offer_period)} "
+                          "com os principais gráficos e números da Visão e relatórios?")
+            with OPTIMUS_OFFERS_LOCK:
+                item["status"] = "delivered"
+                item["text"] = offer_text  # para quando o usuário responder digitando (Responder a este aviso)
+            deliveries[session_id] = time.time()
+            # O agente fica sabendo da oferta: um "sim" digitado logo depois vira a montagem da apresentação.
+            optimus_watch.setdefault("presentation_offers", {})[session_id] = {"period": offer_period, "at": time.time()}  # type: ignore[union-attr]
+            logging.getLogger("uvicorn.error").info("Optimus: oferta de apresentação %s entregue à sessão %s", offer_period, session_id)
+            if item.get("fingerprint"):
+                mark_delivered(settings, str(item["key"]), str(item["fingerprint"]))
+            return {"messages": [{
+                "id": item["offer_id"], "kind": "presentation_offer", "period": offer_period,
+                "text": offer_text,
+                # Notificação do Windows quando a pessoa não está olhando o chat (como os demais avisos do Optimus).
+                "created_at": item["created_at"], "notify": True, "notify_title": "Optimus: apresentação da competência",
+            }], "offline": False}
         confirmation_id = None
         if item.get("parameters"):
             confirmation_id = str(uuid.uuid4())
@@ -2631,6 +2970,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     "proactive_offer_id": item["offer_id"],
                 }
         event = dict(item["event"])  # type: ignore[arg-type]
+        if item.get("low_priority"):
+            # O agente pergunta se a pessoa quer receber sempre o resumo enquanto ela ainda não escolheu.
+            event["delivery_preference"] = {"choice": report_choice}
         try:
             answer = await _optimus_chat(
                 OptimusChatRequest(
@@ -2658,12 +3000,253 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             item["status"] = "delivered"
             item["text"] = text  # guardado para quando o usuário responder a este aviso
         deliveries[session_id] = time.time()
+        if item.get("fingerprint"):
+            mark_delivered(settings, str(item["key"]), str(item["fingerprint"]))
+            optimus_watch["event"] = True  # resumo entregue: o vigia já confere a oferta de apresentação
         return {"messages": [{
             "id": item["offer_id"],
             "text": text,
             "created_at": item["created_at"],
             "notify": not item.get("notified"),
+            "notify_title": "Optimus: resumo da Visão e relatórios" if item.get("low_priority") else "Optimus: aviso",
+            # Gráficos do resumo: montados pelo sistema com os números do evento e desenhados pelo chat.
+            "charts": report_charts(event) if event.get("type") == "report_insights" else [],
         }], "offline": False}
+
+    @app.post("/api/optimus/report-insights/preview", dependencies=[Depends(require_token)])
+    async def optimus_report_preview(
+        request: Request, period: str | None = Query(default=None, pattern=r"^\d{4}-\d{2}$"),
+    ) -> dict[str, object]:
+        """Prévia (administradores) do resumo da Visão e relatórios escrito pelo agente, numa sessão descartável:
+        não usa nem altera a fila de avisos do chat."""
+        user = getattr(request.state, "user", None) or {}
+        if str(user.get("role", "")) != "admin":
+            raise HTTPException(status_code=403, detail="Prévia exclusiva de administradores.")
+        target = period or latest_period(settings)
+        item = report_insights_event(settings, target) if target else None
+        if item is None:
+            raise HTTPException(status_code=404, detail="Nenhuma competência com Base de Estoque para resumir.")
+        event = {**item["event"], "delivery_preference": {"choice": report_preference(str(user.get("email") or ""))}}
+        answer = await _optimus_chat(
+            OptimusChatRequest(message="[evento proativo] Visão e relatórios principais gráficos",
+                               session_id=f"previa-resumo-{uuid.uuid4().hex[:12]}", period=target),
+            request,
+            proactive_event=event,
+        )
+        return {"period": target, "text": _n8n_text(answer.get("response")).strip(), "charts": report_charts(event)}
+
+    # ------------------------------------------------------------------ apresentações (html-ppt)
+    # O agente monta o roteiro (spec JSON); o sistema desenha os slides com os números reais e guarda versões.
+
+    def _deck_from_agent(deck_id: str, period: str, facts: dict[str, object], request_text: str | None,
+                         current: dict[str, object] | None, user_email: str,
+                         progress: Callable[..., None], open_slide: int | None = None) -> tuple[dict[str, object], object]:
+        """O gateway do n8n corta respostas em ~20 s: o agente trabalha em respostas curtas (ver presentations.py).
+
+        Revisão: uma chamada que devolve só as operações. Nova: estrutura (1 chamada) + textos em lotes paralelos;
+        lote que não volta a tempo é completado pelo sistema com os fatos (a apresentação nunca fica pela metade)."""
+        n8n_url = os.getenv("N8N_CHAT_URL", "").strip()
+        if not n8n_url:
+            raise RuntimeError("Optimus sem endpoint n8n nesta máquina.")
+
+        def ask(prompt: str, tag: str, attempts: int = 2) -> dict[str, object]:
+            last_error: Exception | None = None
+            for attempt in range(attempts):
+                message = prompt if attempt == 0 or not isinstance(last_error, ValueError) else (
+                    "Sua resposta anterior não veio no formato pedido. Devolva SOMENTE o JSON entre [[DECK]] e [[/DECK]].\n" + prompt)
+                try:  # sessão nova a cada chamada: a memória do agente não acumula pedidos anteriores (mais rápido)
+                    response = asyncio.run(_post_to_optimus_n8n(
+                        n8n_url, session_id=f"apresentacao-{deck_id}-{tag}-{uuid.uuid4().hex[:4]}", chat_input=message,
+                        user_email=user_email, period=period))
+                except HTTPException as exc:  # 504 do gateway: tenta mais uma vez em instantes
+                    last_error = RuntimeError(str(exc.detail))
+                    if "HTTP 403" in str(exc.detail):  # fora da VPN: repetir não adianta
+                        break
+                    time.sleep(2)
+                    continue
+                try:
+                    return decks.parse_agent_spec(_n8n_text(response))
+                except (ValueError, json.JSONDecodeError) as exc:
+                    last_error = ValueError(str(exc))
+            raise RuntimeError(str(last_error or "resposta inválida"))
+
+        if current is not None:
+            patch = ask(decks.patch_prompt(facts, current, request_text or "", open_slide), "revisao")
+            spec, choices = _apply_presentation_patch(current, patch, facts)
+            # Faltou uma escolha (cor, tipo de gráfico...): o agente pergunta e o painel mostra os botões.
+            choices = decks.ask_choices(patch.get("ask"), current) or choices
+            note = str(patch.get("note") or "").strip()[:400] or None
+            return spec, {"note": note, "choices": choices}
+
+        spec = decks.outline_to_spec(ask(decks.outline_prompt(facts, request_text), "estrutura"))
+        progress(progress=50, message="O Optimus está escrevendo os textos dos slides…")
+        pending = [(number, slide) for number, slide in enumerate(spec["slides"], 1)
+                   if slide.get("layout") in decks.DETAIL_FIELDS and slide.get("layout") not in ("agenda", "closing")
+                   and not any(slide.get(name) for name in decks.DETAIL_FIELDS[slide["layout"]])]
+        chunks = [pending[i:i + decks.DETAIL_CHUNK] for i in range(0, len(pending), decks.DETAIL_CHUNK)]
+        missing = 0
+        if chunks:
+            with ThreadPoolExecutor(max_workers=min(4, len(chunks))) as pool:
+                jobs = {pool.submit(ask, decks.details_prompt(facts, chunk, str(spec.get("title") or ""), request_text),
+                                    f"textos{index}", 1): chunk for index, chunk in enumerate(chunks)}
+                for job in as_completed(jobs):
+                    try:
+                        decks.merge_details(spec, job.result())
+                    except Exception:  # noqa: BLE001 - o sistema completa esses slides
+                        missing += len(jobs[job])
+        decks.auto_texts(spec, facts)
+        spec = decks.normalize_spec(spec, facts)
+        decks.number_kickers(spec)
+        note = (f"{missing} slide(s) ficaram com textos do sistema (o Optimus não respondeu a tempo); a estrutura e os "
+                "títulos são do Optimus.") if missing else None
+        return spec, note
+
+    def _apply_presentation_patch(current: dict[str, object], patch: dict[str, object],
+                                  facts: dict[str, object]) -> tuple[dict[str, object], dict[str, object] | None]:
+        """Aplica operações (do agente ou de um botão) e devolve botões de cor se alguma cor não foi reconhecida."""
+        rejected = [item for op in (patch.get("ops") or []) if isinstance(op, dict) for item in decks.rejected_colors(op)]
+        spec = decks.apply_patch(current, patch)
+        decks.auto_texts(spec, facts)  # slide incluído sem texto: completa com os fatos
+        spec = decks.normalize_spec(spec, facts)
+        decks.number_kickers(spec)
+        return spec, decks.color_choices(rejected)
+
+    def _presentation_job(deck_id: str, period: str, request_text: str | None, user_email: str,
+                          revise: bool, theme: str | None, direct_patch: dict[str, object] | None = None,
+                          open_slide: int | None = None) -> None:
+        def update(**fields: object) -> None:
+            with PRESENTATION_LOCK:
+                PRESENTATION_JOBS.setdefault(deck_id, {}).update(fields, updated_at=datetime.now().isoformat(timespec="seconds"))
+
+        try:
+            update(status="RUNNING", progress=10, message="Reunindo os números da competência…")
+            facts = report_insights(settings, period)
+            current = decks.load_version(settings, deck_id)[1] if revise else None
+            if current is not None:  # versão salva com as regras de hoje: só o pedido conta como mudança
+                current = decks.normalize_spec(current, facts)
+                decks.number_kickers(current)
+            update(progress=30, message="O Optimus está montando o roteiro…" if not revise else "O Optimus está aplicando a sua sugestão…")
+            source, warning = "agent", None
+            try:
+                if direct_patch is not None:  # botão do painel: aplica direto, sem chamar o agente
+                    spec, picked = _apply_presentation_patch(current, direct_patch, facts)
+                    warning, source = {"note": None, "choices": picked}, decks.load_meta(settings, deck_id).get("source", "agent")
+                else:
+                    spec, warning = _deck_from_agent(deck_id, period, facts, request_text, current, user_email, update, open_slide)
+            except Exception as exc:  # noqa: BLE001 - o sistema completa sem o agente
+                detail = getattr(exc, "detail", None) or f"{exc.__class__.__name__}: {exc}"
+                update(agent_error=str(detail)[:500])
+                # 403/502: o gateway nega acesso fora da VPN (ou o n8n caiu); 504: demorou mais que o gateway aceita.
+                offline = any(code in str(detail) for code in ("HTTP 403", "HTTP 401", "conexão", "sem endpoint"))
+                reason = ("sem conexão com o Optimus (VPN desconectada ou n8n indisponível)" if offline
+                          else "o Optimus não respondeu a tempo")
+                if revise:
+                    raise RuntimeError(f"Não foi possível aplicar a sugestão: {reason}. A versão atual foi mantida; "
+                                       "tente de novo em instantes.") from exc
+                spec, source = decks.default_spec(facts), "system"
+                spec = decks.normalize_spec(spec, facts)
+                decks.number_kickers(spec)
+                warning = f"{reason[0].upper()}{reason[1:]}; o sistema montou o roteiro padrão com os mesmos números."
+            if theme in decks.THEMES and not revise:
+                spec["theme"] = theme
+            note, changes, choices = None, [], None
+            if revise:  # na revisão o 2º retorno traz o recado do agente e, se faltar escolha, os botões
+                info, warning = warning or {}, None
+                note, choices = info.get("note"), info.get("choices")
+                changes = decks.describe_changes(current, spec)
+                if not changes:  # nada mudou: não cria versão nem diz "aplicada"
+                    meta = decks.load_meta(settings, deck_id)
+                    update(status="COMPLETED", progress=100, version=int(meta["version"]), source=meta.get("source"),
+                           warning=None, unchanged=True, changes=[], note=note, choices=choices, title=current["title"],
+                           slides=len(current["slides"]),
+                           message=choices["title"] if choices else (note + " " if note else "") + PRESENTATION_UNCHANGED)
+                    return
+            update(progress=80, message="Desenhando os slides e gráficos…")
+            html_text = decks.render_html(spec, facts)
+            version = decks.save_version(settings, deck_id, spec, html_text,
+                                         {"period": period, "created_by": user_email, "source": source,
+                                          "request": request_text or ""})
+            update(status="COMPLETED", progress=100, version=version, source=source, warning=warning,
+                   unchanged=False, changes=changes, note=note, choices=choices, title=spec["title"], slides=len(spec["slides"]),
+                   message=warning or f"Apresentação pronta: {len(spec['slides'])} slides (versão {version}).")
+        except Exception as exc:  # noqa: BLE001 - erro visível no chat/modal
+            update(status="FAILED", progress=100, message=str(exc))
+
+    def start_presentation(period: str, request_text: str | None, user_email: str, *, deck_id: str | None = None,
+                           theme: str | None = None, direct_patch: dict[str, object] | None = None,
+                           open_slide: int | None = None) -> dict[str, object]:
+        revise = deck_id is not None
+        deck_id = deck_id or decks.new_deck_id()
+        with PRESENTATION_LOCK:
+            running = PRESENTATION_JOBS.get(deck_id, {})
+            if running.get("status") in {"QUEUED", "RUNNING"}:
+                return {"deck_id": deck_id, **running}
+            PRESENTATION_JOBS[deck_id] = {"deck_id": deck_id, "period": period, "status": "QUEUED", "progress": 2,
+                                          "message": "Na fila…", "revise": revise}
+        threading.Thread(target=_presentation_job, args=(deck_id, period, request_text, user_email, revise, theme, direct_patch, open_slide),
+                         daemon=True, name=f"apresentacao-{deck_id}").start()
+        return {"deck_id": deck_id, **PRESENTATION_JOBS[deck_id]}
+
+    def presentation_status(deck_id: str) -> dict[str, object]:
+        try:
+            meta = decks.load_meta(settings, deck_id)
+        except (FileNotFoundError, ValueError):
+            meta = {}
+        with PRESENTATION_LOCK:
+            job = dict(PRESENTATION_JOBS.get(deck_id) or {})
+        if not meta and not job:
+            raise HTTPException(status_code=404, detail="Apresentação não encontrada.")
+        return {"deck_id": deck_id, **meta, "job": job}
+
+    @app.post("/api/presentations", dependencies=[Depends(require_token)])
+    def post_presentation(payload: PresentationRequest, request: Request) -> dict[str, object]:
+        """Monta uma apresentação (o agente decide o conteúdo, ou segue o pedido do usuário)."""
+        return start_presentation(payload.period, (payload.request or "").strip() or None,
+                                  str(request.state.user["email"]), theme=payload.theme)
+
+    @app.get("/api/presentations/{deck_id}", dependencies=[Depends(require_token)])
+    def get_presentation(deck_id: str) -> dict[str, object]:
+        return presentation_status(deck_id)
+
+    @app.post("/api/presentations/{deck_id}/revise", dependencies=[Depends(require_token)])
+    def post_presentation_revise(deck_id: str, payload: PresentationReviseRequest, request: Request) -> dict[str, object]:
+        meta = presentation_status(deck_id)
+        if not meta.get("version"):
+            raise HTTPException(status_code=409, detail="A apresentação ainda não tem uma versão pronta para ajustar.")
+        return start_presentation(str(meta["period"]), payload.message.strip(), str(request.state.user["email"]), deck_id=deck_id,
+                                  open_slide=payload.slide)
+
+    @app.post("/api/presentations/{deck_id}/apply", dependencies=[Depends(require_token)])
+    def post_presentation_apply(deck_id: str, payload: PresentationApplyRequest, request: Request) -> dict[str, object]:
+        """Escolha feita num botão do painel: aplica a operação direto (validada como as do agente)."""
+        meta = presentation_status(deck_id)
+        if not meta.get("version"):
+            raise HTTPException(status_code=409, detail="A apresentação ainda não tem uma versão pronta para ajustar.")
+        return start_presentation(str(meta["period"]), (payload.label or "Escolha no painel").strip(),
+                                  str(request.state.user["email"]), deck_id=deck_id, direct_patch=payload.patch)
+
+    @app.get("/api/presentations/{deck_id}/view", dependencies=[Depends(require_token)])
+    def view_presentation(deck_id: str, v: int | None = Query(default=None, ge=1)) -> HTMLResponse:
+        try:
+            _version, _spec, html_text = decks.load_version(settings, deck_id, v)
+        except (FileNotFoundError, ValueError) as exc:
+            raise HTTPException(status_code=404, detail="Apresentação não encontrada.") from exc
+        return HTMLResponse(html_text, headers={"Cache-Control": "no-store"})
+
+    @app.get("/api/presentations/{deck_id}/download", dependencies=[Depends(require_token)])
+    def download_presentation(deck_id: str, format: str = Query(default="html", pattern="^(html|zip)$"),
+                              v: int | None = Query(default=None, ge=1)) -> Response:
+        try:
+            meta = decks.load_meta(settings, deck_id)
+            _version, spec, html_text = decks.load_version(settings, deck_id, v)
+        except (FileNotFoundError, ValueError) as exc:
+            raise HTTPException(status_code=404, detail="Apresentação não encontrada.") from exc
+        name = decks.file_name(spec, str(meta.get("period") or ""))
+        if format == "zip":
+            return Response(decks.zip_bytes(html_text, name), media_type="application/zip",
+                            headers={"Content-Disposition": f'attachment; filename="{name}.zip"'})
+        return Response(html_text.encode("utf-8"), media_type="text/html; charset=utf-8",
+                        headers={"Content-Disposition": f'attachment; filename="{name}.html"'})
 
     @app.post("/api/sap/run", dependencies=[Depends(require_token)])
     def start_sap(request: SapRunRequest) -> dict[str, object]:
@@ -2979,8 +3562,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             ),
             "report_artifacts_policy": (
                 "Quando o usuário pedir o PDF da Visão e relatórios, use report_pdf. "
-                "Quando pedir apresentação executiva, slides ou deck, use executive_presentation. "
-                "O payload retornado é a única fonte dos artefatos; não estime métricas ausentes."
+                "Quando pedir uma apresentação, slides ou deck, use create_presentation com o pedido do usuário em request "
+                "(vazio se ele deixar o conteúdo a seu critério): o sistema monta a apresentação animada, mostra em tela "
+                "cheia e permite ajustes; não descreva slides no chat. Não use Google Slides. "
+                "O resultado das ferramentas é a única fonte dos artefatos; não estime métricas ausentes."
             ),
             "style": "6 primeiros caracteres de Estilo-Cor.",
             "fiscal_unit_cost": "Vlr Tot Fisc / Utilização livre, com proteção contra divisão por zero.",
@@ -3231,7 +3816,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "runs": "Consulta execuções do pipeline da competência.",
                 "sap_status": "Consulta a execução SAP atual.",
                 "report_pdf": "Gera o PDF da página Visão e relatórios para a competência e devolve um link protegido de download.",
-                "executive_presentation": "Prepara KPIs, comparativos, séries e roteiro executivo para o fluxo n8n criar uma apresentação exportável no Google Slides sem inventar dados.",
+                "create_presentation": (
+                    "Inicia a montagem de uma apresentação animada (HTML) da competência: {\"type\":\"create_presentation\","
+                    "\"request\":\"o que o usuário quer na apresentação (vazio = você decide)\"}. O sistema pede o roteiro a você "
+                    "numa etapa própria, desenha os slides com os números reais e abre em tela cheia no chat, com ajustes e "
+                    "download em HTML ou ZIP. Depois de chamar, diga em uma frase que a apresentação está sendo montada."
+                ),
                 "run_sap": (
                         "Cria ou revisa uma solicitação de extração ZMM119/MB59. "
                         "O backend aplica defaults determinísticos da competência: "
@@ -3266,6 +3856,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "disable_user_access": "Somente administradores. Prepara a desativação de um acesso (não exclui): {\"type\":\"disable_user_access\",\"email\":\"...\"}. Executa só após confirm_sap.",
                 "set_notification_preferences": "Prepara as preferências de notificação deste computador: enabled, sound, sap, uploads, optimus, bridge, backup, connectivity (true/false). Executa só após confirm_sap.",
                 "set_interface_preferences": "Prepara Interface e experiência deste computador: density (compact|comfortable), default_page_size, animations_enabled, chart_animations_enabled, card_animations_enabled. Executa só após confirm_sap.",
+                "set_report_insights": (
+                    "Grava, na hora e sem confirm_sap, se o usuário quer receber no chat o resumo proativo dos principais "
+                    "gráficos da Visão e relatórios: {\"type\":\"set_report_insights\",\"enabled\":true|false}. Use quando "
+                    "ele responder à pergunta feita no resumo (aceitar = true; recusar = false) ou pedir para parar/voltar "
+                    "a receber. A escolha atual está em report_insights_preference (null = ainda não escolheu)."
+                ),
                 "not_available_to_optimus": "Excluir competência, excluir usuário, restaurar backup, trocar a pasta do Drive e o instalador são feitos só pelas páginas, por um administrador; oriente o caminho em Configurações quando pedirem.",
                 "confirm_sap": "Confirma semanticamente a pending_sap_confirmation atual (extração SAP, importação de planilha ou qualquer ação preparada pelas ferramentas acima) usando o confirmation_id fornecido no contexto. Só use quando a mensagem mais recente do usuário confirmar a execução.",
                 "cancel_sap": "Cancela semanticamente a pending_sap_confirmation atual usando o confirmation_id fornecido no contexto. Só use quando a mensagem mais recente do usuário cancelar ou desistir da execução.",
@@ -3438,15 +4034,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "message": "PDF validado e pronto. Apresente o link de download ao usuário.",
             }
 
-        if action_type == "executive_presentation":
+        if action_type in {"create_presentation", "executive_presentation"}:
+            started = start_presentation(action_period, str(action.get("request") or "").strip()[:2000] or None,
+                                         str(user.get("email") or ""))
+            (optimus_watch.get("presentation_offers") or {}).pop(session_id, None)  # type: ignore[union-attr]  # oferta atendida
             return {
-                "type": "executive_presentation",
+                "type": "create_presentation",
                 "ok": True,
-                "result": executive_presentation_payload(action_period),
-                "message": (
-                    "Payload executivo preparado para criar uma apresentação exportável no Google Slides. "
-                    "Use somente estes dados e devolva o link do artefato publicado pelo fluxo."
-                ),
+                "status": "STARTED",
+                "deck_id": started["deck_id"],
+                "message": ("A apresentação está sendo montada pelo sistema; o chat mostra o andamento e abre em tela "
+                            "cheia quando ficar pronta. Diga isso ao usuário em uma frase, sem descrever slides."),
             }
 
         if action_type == "cancel_action":
@@ -3828,6 +4426,19 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if action_type == "mapping_gaps":
             return {"type": "mapping_gaps", "ok": True, "result": mapping_gaps(settings, action_period)}
 
+        if action_type == "set_report_insights":
+            # Resposta direta do próprio usuário à pergunta do resumo: grava na hora (preferência pessoal e reversível).
+            enabled = action.get("enabled")
+            if not isinstance(enabled, bool):
+                return {"type": action_type, "ok": False, "status": "INVALID_PARAMETERS",
+                        "error": "Informe enabled como true (receber sempre) ou false (não receber)."}
+            set_report_preference(str(user.get("email") or ""), enabled)
+            return {"type": action_type, "ok": True, "status": "SAVED", "enabled": enabled,
+                    "message": ("O resumo da Visão e relatórios continuará chegando no chat sempre que os números da "
+                                "competência mudarem.") if enabled else
+                               ("O resumo da Visão e relatórios não será mais enviado no chat; os demais avisos continuam. "
+                                "Para voltar a receber, basta pedir ao Optimus.")}
+
         if action_type in AGENT_ACTION_TOOLS and str(user.get("role", "")) != "admin" and action_type not in SELF_SERVICE_TOOLS:
             return {"type": action_type, "ok": False, "status": "FORBIDDEN",
                     "error": "Esta ação é exclusiva de administradores."}
@@ -4197,6 +4808,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
         try:
             context = build_agent_context(period)
+            # Escolha sobre o resumo da Visão e relatórios no chat (null = ainda não escolheu; ver set_report_insights).
+            context["report_insights_preference"] = report_preference(str(user.get("email") or ""))
+            offered = (optimus_watch.get("presentation_offers") or {}).get(payload.session_id)  # type: ignore[union-attr]
+            try:
+                context["closing_agenda"] = {key: value for key, value in closing_agenda.status(settings).items()
+                                             if key in ("period", "label", "start", "end", "phase", "days_to_start", "days_to_end",
+                                                        "business_day_index", "business_days_total", "rule_text", "closed", "notes")}
+            except Exception:  # noqa: BLE001 - agenda indisponível não impede a conversa
+                pass
+            if offered and time.time() - float(offered["at"]) < 1800:
+                context["recent_presentation_offer"] = {
+                    "period": offered["period"], "minutes_ago": round((time.time() - float(offered["at"])) / 60),
+                    "rule": ("O sistema acabou de perguntar no chat se o usuário quer uma apresentação desta competência. "
+                             "Se a mensagem dele aceitar (ex.: sim, pode gerar), chame create_presentation com request vazio "
+                             "ou com o que ele pedir; se recusar, confirme em uma frase."),
+                }
             if replying_to:
                 context["replying_to_warning"] = replying_to
             with SAP_CONFIRMATION_LOCK:
@@ -4234,6 +4861,23 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             f"{render_sections(manual_sections)}\n"
             "[/MANUAL_DO_SISTEMA]\n\n"
         ) if manual_sections else ""
+        # Dúvida sobre o sistema: junto com o manual, os trechos mais relevantes da
+        # Documentação técnica (especificação), com seção e página para citar.
+        doc_matches: list[dict[str, Any]] = []
+        if manual_sections and not proactive_event:
+            try:
+                doc_matches = documentation_matches(settings, payload.message, limit=2)
+            except Exception:  # noqa: BLE001 - a documentação nunca impede a conversa
+                doc_matches = []
+        if doc_matches:
+            manual_block += (
+                "[DOCUMENTACAO_TECNICA]\n"
+                "Trechos da Especificação Técnico-Documental (página Documentação) ligados à pergunta. Use-os para "
+                "detalhes técnicos e indique a seção e a página para o usuário saber mais; para outros assuntos, use "
+                "a ferramenta documentation_search.\n"
+                + "\n".join(f"- {item['section']} (p. {item['page']}): " + " … ".join(item["snippets"]) for item in doc_matches)
+                + "\n[/DOCUMENTACAO_TECNICA]\n\n"
+            )
 
         if proactive_event:
             # Evento detectado pelo sistema (não é mensagem do usuário): o agente escreve o aviso.
@@ -4250,12 +4894,17 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "health_center, inventory_gaps, mapping_gaps) antes de responder. Se pending_sap_confirmation tiver "
                 "origin \"optimus_proactive\", explique a ação preparada e peça confirmação explícita (sim ou não). "
                 "Se a correção depender de um valor que só o usuário sabe (por exemplo, o local de um centro no "
-                "Mapping), pergunte esse valor; não execute nada sem confirmação. Em connectivity_restored, o sistema "
+                "Mapping), pergunte esse valor; não execute nada sem confirmação. Em closing_agenda (Agenda de fechamento), "
+                "diga em uma frase a fase (pre_aviso = faltam X dias para começar, inicio, ultimo_dia ou atrasado), a janela "
+                "(datas e dia útil atual) e liste o que ainda falta no checklist (pending_checklist), indicando a página "
+                "Agenda de fechamento; sem checklist pendente, diga que o sistema está pronto para o fechamento. Em connectivity_restored, o sistema "
                 "já avisou a queda (notificação do Windows e aviso do Health Center no chat): diga que a conexão voltou, "
                 "por quanto tempo ficou fora e a causa, o que ficou parado nesse tempo (Optimus e extrações SAP) e, se "
                 "queued_warnings for maior que zero, que os avisos que aguardavam vêm em seguida.\n"
                 "[/INSTRUCAO_EVENTO_PROATIVO]\n\n"
             )
+            if proactive_event.get("type") == "report_insights":
+                message_block += REPORT_INSIGHTS_INSTRUCTION
         else:
             message_block = (
                 "[PERGUNTA_USUARIO]\n"
@@ -4281,11 +4930,15 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "Quando origin for \"optimus_proactive\", foi você mesmo que ofereceu essa ação no chat a partir de um "
             "evento proativo (proactive_event): um \"sim\" confirma a oferta e um \"não\" a cancela. "
             "Quando replying_to_warning estiver preenchido no contexto, o usuário clicou em \"Responder\" naquele aviso: "
-            "interprete a mensagem como resposta a ESSE aviso (event e message), não aos outros.\n"
+            "interprete a mensagem como resposta a ESSE aviso (event e message), não aos outros. "
+            "Se replying_to_warning.event.type for \"presentation_offer\", é a resposta à oferta de apresentação (não há "
+            "pendência a confirmar): se o usuário aceitar, chame create_presentation com request vazio, ou com o que ele "
+            "pedir para a apresentação; se recusar, apenas confirme em uma frase.\n"
             "[/REGRA_SAP_CONVERSACIONAL]"
         )
 
         user_email = str(user.get("email", ""))
+        created_deck: str | None = None  # apresentação iniciada nesta conversa (o chat acompanha e abre em tela cheia)
 
         for _ in range(4):
             n8n_response = await _post_to_optimus_n8n(
@@ -4310,6 +4963,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     "session_id": payload.session_id,
                     "period": period,
                     "response": n8n_response,
+                    **({"presentation": {"deck_id": created_deck}} if created_deck else {}),
                 }
 
             try:
@@ -4329,6 +4983,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                     "ok": False,
                     "error": str(exc),
                 }
+            if isinstance(tool_result, dict) and tool_result.get("deck_id"):
+                created_deck = str(tool_result["deck_id"])
 
             current_input = (
                 "[RESULTADO_FERRAMENTA_LOCAL]\n"

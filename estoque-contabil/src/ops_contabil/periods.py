@@ -17,6 +17,7 @@ DIRECT_PERIOD_TABLES = (
     "mb59_rows",
     "mb59_imports",
     "all_brazil_imports",
+    "pass_step_sources",
 )
 RUN_CHILD_TABLES = ("source_files", "control_results", "accounting_insights")
 

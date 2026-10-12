@@ -15,6 +15,7 @@ import yaml
 
 from .db import connect
 from .inventory import INVENTORY_COLUMNS, HIDDEN_UI_COLUMNS, ensure_inventory_schema
+from .master_base import master_base_status
 from .mb59 import ensure_mb59_schema
 from .sources.all_brazil import MONTH_NAMES, resolve_all_brazil_root
 
@@ -389,15 +390,6 @@ def system_health(
         drive_ok, drive_detail = False, str(exc)
     indicators.append(_indicator("drive", "Google Drive", "healthy" if drive_ok else "warning", "Sincronizado" if drive_ok else "Não localizado", "Fonte mensal All Brazil", drive_detail, "Abra o Google Drive para computador e confirme que @All Brazil Materials está disponível. Relatórios já compilados continuam acessíveis."))
 
-    slides_template = next(settings.root.glob("TEMPLATE*Apresenta*Executiva.gslides"), None)
-    slides_ready = bool(slides_template and n8n_ok)
-    slides_detail = (
-        f"Atalho do template localizado ({slides_template.name}) e orquestrador acessível. A credencial Google é validada somente ao gerar a apresentação."
-        if slides_ready
-        else "Template local e/ou orquestrador de apresentações não estão disponíveis."
-    )
-    indicators.append(_indicator("slides", "Google Slides", "warning" if slides_ready else "critical", "Verificação parcial" if slides_ready else "Configuração incompleta", "Template, rota e limite da verificação", slides_detail, "Gere uma apresentação pelo Optimus para validar a credencial Google, o template e a pasta de destino de ponta a ponta."))
-
     try:
         with connect(settings.path("database")) as connection:
             probe = connection.execute("select 1").fetchone()[0]
@@ -440,11 +432,20 @@ def system_health(
     }
 
 
+def _next_period(period: str) -> str:
+    year, month = map(int, period.split("-"))
+    return f"{year + month // 12}-{month % 12 + 1:02d}"
+
+
 def governance_status(settings: Any, period: str) -> dict[str, Any]:
     with connect(settings.path("database")) as connection:
         sources = _period_source_status(connection, period)
+        try:
+            mapping_rules = int(connection.execute("select count(*) from mapping_rules").fetchone()[0])
+        except Exception:  # noqa: BLE001 - tabela ainda não criada
+            mapping_rules = 0
 
-    schema_document = yaml.safe_load((settings.root / "config" / "schemas.yaml").read_text(encoding="utf-8")) or {}
+    schema_document =yaml.safe_load((settings.root / "config" / "schemas.yaml").read_text(encoding="utf-8")) or {}
     schemas = schema_document.get("schemas") or {}
     mb59_columns = len((schemas.get("mb59_base") or {}).get("columns") or {})
     ab_columns = len((schemas.get("all_brazil_data") or {}).get("columns") or {})
@@ -486,6 +487,30 @@ def governance_status(settings: Any, period: str) -> dict[str, Any]:
             "detail": f"Snapshot {snapshot_date or 'ausente'}; deve ser do mês e não posterior a {as_of.isoformat()}.",
         },
     ]
+    # Ponto de atenção: posição oficial carregada só como base mestre (não é competência nem aparece nos relatórios).
+    for master in master_base_status(settings):
+        try:
+            loaded_at = datetime.fromisoformat(master["imported_at"]).strftime("%d/%m/%Y %H:%M")
+        except ValueError:
+            loaded_at = master["imported_at"][:16]
+        brl = f"{master['fiscal_total']:,.2f}".replace(",", "_").replace(".", ",").replace("_", ".")
+        rows_text = f"{master['rows']:,}".replace(",", ".")
+        controls.insert(0, {
+            "title": f"Ponto de atenção: base mestre de {master['period']}",
+            "level": "warning",
+            "wide": True,  # ocupa a linha inteira do quadro de controles
+            "badge": "Em uso" if master["in_use"] else "Substituída",
+            "detail": (
+                f"A Posição de Estoque oficial de {master['period']} ({master['file_name']}, aba {master['source_sheet']}, "
+                f"{rows_text} linhas, Vlr Tot Fisc R$ {brl}) foi carregada em {loaded_at}"
+                f"{' por ' + master['imported_by'] if master['imported_by'] else ''} como base mestre. "
+                "Ela não é uma competência e não aparece na Base de estoque nem nos relatórios: serve só como "
+                f"posição do mês anterior no PASSO A PASSO de {_next_period(master['period'])} "
+                "(Season, Year e Product Offer End Dt por CE & MAT; origem \"Mês anterior · base mestre\")."
+                + ("" if master["in_use"] else
+                   f" Uma carga posterior da posição de {master['period']} no sistema já a substituiu.")
+            ),
+        })
     source = None
     if ab:
         stored_file_name = Path(str(ab[1])).name
@@ -512,10 +537,52 @@ def governance_status(settings: Any, period: str) -> dict[str, Any]:
         "period": period,
         "controls": controls,
         "source": source,
+        # Como cada base se liga à Posição de Estoque: exatamente os campos usados nos joins
+        # (inventory.import_zmm119_xlsx, sources.all_brazil, mb59.enrich_inventory_pass_step e mappings.apply_mapping_rules).
         "structures": [
-            {"title": "Posição de Estoque", "detail": "Base compilada · ZMM119 A:R + campos derivados", "badge": f"{visible_inventory} visíveis"},
-            {"title": "MB59_BASE GR", "detail": "BASE · resolução por nomes e aliases", "badge": f"{mb59_columns} campos"},
-            {"title": "All Brazil", "detail": "Data · resolução por nomes e aliases", "badge": f"{ab_columns} campos"},
+            {"title": "Posição de Estoque (ZMM119)", "detail": "Base da competência: as outras bases se ligam a ela pelas chaves abaixo.",
+             "badge": f"{visible_inventory} colunas", "steps": [
+                 "Origem: ZMM119 do SAP lida pela posição das colunas A:R — Empresa, Centro, Material, Texto breve material, UM básica, NCM, "
+                 "Utilização livre, Bloqueado, Custo Médio Empresa, Custo Fiscal, Total, Vlr ICMS ST, Vlr IPI, Tipo, Vlr Tot Emp, Vlr Tot Fisc, "
+                 "Custo Médio Comercial e Vlr Total CC.",
+                 "Filtro: só as linhas da Empresa 7170.",
+                 "Chaves criadas para os joins: CE & MAT = Centro + Material (por exemplo, 1081 + 397690-018-10.5 = 1081397690-018-10.5); "
+                 "Estilo-Cor = 10 primeiros caracteres do Material (397690-018); Estilo = 6 primeiros.",
+             ]},
+            {"title": "All Brazil → Division, Origem e Lifecycle", "detail": f"Aba Data do cadastro mestre · {ab_columns} colunas reconhecidas por nome.",
+             "badge": f"{float(ab[4] or 0):.1f}% cobertura".replace(".", ",") if ab else "Sem carga", "level": "healthy" if ab else "warning", "steps": [
+                 "Arquivo: o ALL_BRAZIL_DD_MM mais recente da pasta do mês, com data menor ou igual à data-base (nunca um arquivo anterior do mesmo mês).",
+                 "Chave 1: Material da Base de Estoque (maiúsculas, sem espaços) = Material Nbr do All Brazil.",
+                 "Chave 2, só se o Material completo não existir no All Brazil: Estilo-Cor (10 primeiros caracteres do Material) = Material Nbr.",
+                 "Centro: nunca participa da chave.",
+                 "Campos trazidos: Division Description → Division Description; Material Origin Des. → Material Origin Des.; "
+                 "Lifecycle Descrip. → Lifecycle Descrip.; Lifecycle (depois substituído pela regra do Mapping).",
+                 "Conflito: Material Nbr repetido com valores diferentes deixa vazio só o campo divergente (ver Consistência All Brazil).",
+             ]},
+            {"title": "MB59 (PASSO A PASSO) → Season, Year e Product Offer End Dt", "detail": f"Aba BASE da MB59_BASE GR · {mb59_columns} colunas reconhecidas por nome.",
+             "badge": "CE & MAT", "level": "healthy" if sources.get("mb59") else "warning", "steps": [
+                 "Chave: CE & MAT = Centro + Material, montada igual nas duas bases. Se o mesmo CE & MAT aparece mais de uma vez na MB59, "
+                 "vale o lançamento mais recente (Data de lançamento).",
+                 "Ordem de busca, campo a campo: 1º MB59 da competência por CE & MAT → 2º Base de Estoque do mês anterior por CE & MAT "
+                 "(ou a base mestre daquele mês, quando houver uma mais nova que a carga do sistema) → "
+                 "3º All Brazil pelo Material (ou Estilo-Cor), sem Centro: Collection Code → Season, Collection Year → Year, "
+                 "Product Offer End Dt → Product Offer End Dt.",
+                 "Sem valor nas três fontes: o campo fica vazio e a linha aparece em \"Somente pendências de joins\" na Base de estoque.",
+             ]},
+            {"title": "Mapping → Local, STATUS OPERAÇÃO, Lifecycle e AGING", "detail": "Regras editáveis da página Mapping, compartilhadas entre as máquinas.",
+             "badge": f"{mapping_rules} regras", "steps": [
+                 "Planta e local: Centro da Base = Planta → Local (coluna Local atual).",
+                 "Status da operação: Centro = Planta → STATUS OPERAÇÃO.",
+                 "Lifecycle: Lifecycle Descrip. = Lifecycle Descrip. da regra (sem diferenciar maiúsculas) → Lifecycle.",
+                 "Faixas de aging: Days = data-base − Product Offer End Dt; AGING = faixa com o maior \"Dias iniciais\" menor ou igual a Days; "
+                 "Days negativo → 0) Futures.",
+             ]},
+            {"title": "Campos calculados (sem join)", "detail": "Fórmulas aplicadas depois dos joins, linha a linha.", "badge": "Fórmulas", "steps": [
+                 "Season/Coleção: Season + Year (por exemplo, FA2026).",
+                 "Tudo que for antes de 2022 deixar <2022: o próprio Year, ou <2022 quando o Year é menor que 2022.",
+                 "CE UNIT e Custo Fiscal UNIT.: Vlr Tot Emp ÷ Utilização livre e Vlr Tot Fisc ÷ Utilização livre.",
+                 "FOB, II e Outros Custos: 50%, 35% e 15% do Vlr Tot Fisc.",
+             ]},
         ],
         "operational": [
             {"title": "Extração SAP", "detail": "Execução exclusiva de administradores; relatórios compilados permanecem disponíveis aos usuários.", "badge": "Controlada", "level": "healthy"},

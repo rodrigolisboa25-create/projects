@@ -34,7 +34,7 @@ ops-contabil = "ops_contabil.cli:app"
 where = ["src"]
 
 [tool.setuptools.package-data]
-ops_contabil = ["web/templates/*.html", "extractors/*.vbs", "knowledge/*.md", "knowledge/documentacao/*", "assets/*.png", "assets/*.ico", "assets/*.svg"]
+ops_contabil = ["web/templates/*.html", "extractors/*.vbs", "knowledge/*.md", "knowledge/documentacao/*", "assets/*.png", "assets/*.ico", "assets/*.svg", "presentation_assets/*", "presentation_assets/fx/*", "presentation_assets/themes/*"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]

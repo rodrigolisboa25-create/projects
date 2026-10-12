@@ -68,14 +68,16 @@ def test_save_dialog_presses_generate_instead_of_enter(tmp_path: Path) -> None:
     button = Button()
     window = SimpleNamespace()
     robot = SapGuiRobot()
-    robot._try_find = lambda control_id: {
+    # Como no SAP real: depois de Gerar, o diálogo "Gravar file" fecha (o robô confirma isso antes de seguir).
+    robot._try_find = lambda control_id: None if button.pressed else {
         "wnd[1]": window,
         "wnd[1]/tbar[0]/btn[0]": button,
     }.get(control_id)
-    robot._find_by_technical_name = lambda _root, name, _types: {
+    robot._find_by_technical_name = lambda _root, name, _types: None if button.pressed else {
         "DY_PATH": path_control,
         "DY_FILENAME": file_control,
     }.get(name)
+    robot._click_native_dialog_ok = lambda _titles: False  # sem janela nativa do Windows no teste
 
     output = tmp_path / "ZMM119_2026-09.xlsx"
     assert robot._save_dialog(output) is True

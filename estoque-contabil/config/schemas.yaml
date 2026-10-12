@@ -223,7 +223,7 @@ schemas:
 
   zmm119_base_orig:
     workbook_patterns: ["Posição de Estoque*.xlsb", "Posicao de Estoque*.xlsb"]
-    sheet_aliases: ["Base Orig.", "Base Orig", "BASE ORIG."]
+    sheet_aliases: ["Base Orig.", "Base Orig", "BASE ORIG.", "BASE - CKMR"]
     header_search_rows: 30
     columns:
       center_material_key:

@@ -11,6 +11,7 @@ evento pode sugerir uma ação, que só é executada depois da confirmação do 
 
 from __future__ import annotations
 
+import hashlib
 import json
 from calendar import monthrange
 from datetime import date
@@ -214,17 +215,14 @@ def health_events(health: dict[str, Any] | None, documentation=None) -> list[dic
 
 def documentation_matches(settings: Any, query: str, limit: int = 3) -> list[dict[str, Any]]:
     """Trechos da Documentação técnica (página, seção e texto) sobre o assunto."""
-    from .documentation import search_document
+    from .documentation import rank_document
 
+    # Perguntas em linguagem natural ("como restauro um backup?"): busca por relevância,
+    # sem exigir todas as palavras (a busca da página Documentação continua exata).
     try:
-        result = search_document(settings, query)
+        return rank_document(settings, query, limit=limit)
     except Exception:  # noqa: BLE001 - documentação indisponível nesta máquina
         return []
-    return [
-        {"page": page["page"], "section": page.get("section"),
-         "snippets": [snippet.get("text") for snippet in page.get("snippets") or []][:2]}
-        for page in (result.get("pages") or [])[:limit]
-    ]
 
 
 # ----------------------------------------------------- outros eventos de negócio
@@ -407,7 +405,286 @@ def documentation_event(settings: Any) -> dict[str, Any] | None:
     }
 
 
+# ------------------------------------------------------- resumo da Visão e relatórios
+
+OVER_12_BUCKETS = ("5)", "6)", "7)", "8)")  # faixas de aging com mais de 12 meses (Risco de obsolescência)
+
+
+def _pct(part: float, whole: float) -> float:
+    return round(100 * part / whole, 1) if whole else 0.0
+
+
+def _variation(current: float, previous: float | None) -> float | None:
+    return round(100 * (current - previous) / previous, 1) if previous else None
+
+
+def report_insights(settings: Any, period: str) -> dict[str, Any]:
+    """Fatos dos principais gráficos da Visão e relatórios, com os MESMOS números da página (dashboard_summary, sem filtros).
+
+    O agente escolhe o que é mais relevante e escreve a mensagem; aqui só há números calculados."""
+    from .inventory import dashboard_summary
+
+    s = dashboard_summary(settings, period)
+    total = float(s["fiscal_value"])
+    previous = s.get("previous_period")
+    trend = s.get("trend") or []
+    before = next((item for item in reversed(trend) if item["period"] == previous), None)
+
+    def matrix_totals(matrix: dict[str, Any]) -> tuple[list[tuple[str, float]], list[tuple[str, float]]]:
+        rows = [(label, sum(values)) for label, values in zip(matrix["rows"], matrix["values"])]
+        columns = [(label, sum(row[i] for row in matrix["values"])) for i, label in enumerate(matrix["columns"])]
+        return rows, columns
+
+    # Aging for Season: ano × season
+    years, seasons = matrix_totals(s["aging_for_season"])
+    cells = sorted(
+        ((year, season, value) for year, row in zip(s["aging_for_season"]["rows"], s["aging_for_season"]["values"])
+         for season, value in zip(s["aging_for_season"]["columns"], row) if value),
+        key=lambda cell: -cell[2],
+    )[:5]
+
+    # Lifecycle × Aging e Risco de obsolescência (estoque já recebido = sem Futures)
+    def over_12(matrix: dict[str, Any]) -> list[dict[str, Any]]:
+        items = []
+        for label, values in zip(matrix["rows"], matrix["values"]):
+            by_bucket = dict(zip(matrix["columns"], values))
+            value = sum(values)
+            futures = sum(v for bucket, v in by_bucket.items() if bucket.startswith("0)"))
+            old = sum(v for bucket, v in by_bucket.items() if bucket.startswith(OVER_12_BUCKETS))
+            items.append({"label": label, "value": round(value, 2), "share_pct": _pct(value, total),
+                          "futures_pct": _pct(futures, value), "over_12_months_value": round(old, 2),
+                          "over_12_months_pct_of_received": _pct(old, value - futures)})
+        return sorted(items, key=lambda item: -item["value"])
+
+    divisions = over_12(s["division_aging"])
+    variance = {item["label"]: item for item in s.get("division_variance") or []}
+    for item in divisions:
+        change = variance.get(item["label"])
+        item["variation_pct_vs_previous"] = round(change["variation_pct"], 1) if change and change["variation_pct"] is not None else None
+        item["variation_value_vs_previous"] = round(change["difference"], 2) if change else None
+    received = sum(item["value"] * (1 - item["futures_pct"] / 100) for item in divisions)
+    over_12_total = sum(item["over_12_months_value"] for item in divisions)
+    cost = s["cost_composition"]
+    cost_total = sum(cost.values())
+    # Lifecycle × Aging por faixa (as mesmas faixas e a mesma separação Active/Inactive do gráfico da página).
+    lifecycle_matrix = s["lifecycle_aging"]
+    aging_buckets = []
+    for index, bucket in enumerate(lifecycle_matrix["columns"]):
+        by_lifecycle = {label: round(row[index], 2) for label, row in zip(lifecycle_matrix["rows"], lifecycle_matrix["values"])}
+        value = sum(by_lifecycle.values())
+        aging_buckets.append({"bucket": bucket, "value": round(value, 2), "share_pct": _pct(value, total), "by_lifecycle": by_lifecycle})
+    pmm_previous = s["pmm_comparison"]["previous"] or None
+    return {
+        "period": period,
+        "previous_period": previous,
+        "kpis": {
+            "fiscal_value": round(total, 2),
+            "free_quantity": round(float(s["quantity"]), 0),
+            "materials": s["materials"],
+            "pmm": round(float(s["pmm"]), 2),
+            "all_brazil_coverage_pct": s["all_brazil_coverage"],
+            "variation_pct_vs_previous": None if before is None else {
+                "fiscal_value": _variation(total, before["fiscal_value"]),
+                "free_quantity": _variation(float(s["quantity"]), before["quantity"]),
+                "pmm": None if s["pmm_comparison"]["variation_pct"] is None else round(s["pmm_comparison"]["variation_pct"], 1),
+            },
+        },
+        "charts": {
+            "Aging for Season": {
+                "by_year": [{"year": label, "value": round(value, 2), "share_pct": _pct(value, total)} for label, value in years],
+                "by_season": [{"season": label, "value": round(value, 2), "share_pct": _pct(value, total)} for label, value in seasons],
+                "largest_cells": [{"year": y, "season": c, "value": round(v, 2), "share_pct": _pct(v, total)} for y, c, v in cells],
+                "all_cells": [
+                    {"year": year, "season": season, "value": round(value, 2)}
+                    for year, row in zip(s["aging_for_season"]["rows"], s["aging_for_season"]["values"])
+                    for season, value in zip(s["aging_for_season"]["columns"], row) if value
+                ],
+            },
+            "Lifecycle × Aging": {"by_aging_bucket": aging_buckets, "by_lifecycle": over_12(s["lifecycle_aging"])},
+            "PMM analítico": {
+                "pmm": round(float(s["pmm"]), 2),
+                "previous_pmm": None if pmm_previous is None else round(float(pmm_previous), 2),
+                "variation_pct_vs_previous": None if s["pmm_comparison"]["variation_pct"] is None
+                else round(s["pmm_comparison"]["variation_pct"], 1),
+                "by_division": [{"division": item["label"], "pmm": round(item["pmm"], 2), "free_quantity": round(item["quantity"], 0)}
+                                for item in s["pmm_breakdowns"]["division"]],
+                "by_period": [{"period": item["period"], "pmm": round(item["pmm"], 2)} for item in trend[-6:]],
+            },
+            "Division Description": [
+                {"division": item["label"], "value": item["value"], "share_pct": item["share_pct"],
+                 "variation_pct_vs_previous": item["variation_pct_vs_previous"],
+                 "variation_value_vs_previous": item["variation_value_vs_previous"]}
+                for item in divisions
+            ],
+            "Risco de obsolescência": {
+                "by_division": [
+                    {"division": item["label"], "over_12_months_value": item["over_12_months_value"],
+                     "over_12_months_pct_of_received": item["over_12_months_pct_of_received"], "futures_pct": item["futures_pct"]}
+                    for item in divisions
+                ],
+                "all_divisions_total": {"over_12_months_value": round(over_12_total, 2),
+                                        "over_12_months_pct_of_received": _pct(over_12_total, received)},
+            },
+            "Local de estoque": [{"location": item["label"], "value": round(item["value"], 2), "share_pct": _pct(item["value"], total)}
+                                 for item in s["locations"][:6]],
+            "Centros sem local no Mapping": [{"plant": item["plant"], "value": round(item["value"], 2)} for item in s["locations_unmapped"][:5]],
+            "Valor por centro": [{"plant": item["label"], "value": round(item["value"], 2), "share_pct": _pct(item["value"], total)}
+                                 for item in s["plants"][:5]],
+            "Origem do material": [{"origin": item["label"], "value": round(item["value"], 2), "share_pct": _pct(item["value"], total)}
+                                   for item in s["origins"]],
+            "Evolução da posição de estoque": [{"period": item["period"], "fiscal_value": round(item["fiscal_value"], 2),
+                                                "free_quantity": round(item["quantity"], 0)} for item in trend[-6:]],
+            "Composição do custo fiscal": {"fob_pct": _pct(cost["fob"], cost_total), "ii_pct": _pct(cost["ii"], cost_total),
+                                           "others_pct": _pct(cost["others"], cost_total),
+                                           "fob_value": round(cost["fob"], 2), "ii_value": round(cost["ii"], 2),
+                                           "others_value": round(cost["others"], 2)},
+        },
+    }
+
+
+REPORT_FORMAT_VERSION = 2  # 2: gráficos Lifecycle × Aging, PMM, Division Description e Evolução anexados
+MONTHS_SHORT = ("jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez")
+CHART_COLORS = {"Active": "#1F4E79", "Inactive": "#F58634"}
+
+
+def _brl_short(value: float) -> str:
+    amount = abs(value)
+    for limit, suffix, digits in ((1e9, "bi", 2), (1e6, "mi", 1), (1e3, "mil", 1)):
+        if amount >= limit:
+            text = f"{value / limit:,.{digits}f}"
+            return "R$ " + text.replace(",", "_").replace(".", ",").replace("_", ".") + f" {suffix}"
+    return "R$ " + f"{value:,.2f}".replace(",", "_").replace(".", ",").replace("_", ".")
+
+
+def _pct_text(value: float | None, signed: bool = False) -> str:
+    if value is None:
+        return "—"
+    text = f"{value:+.1f}" if signed else f"{value:.1f}"
+    return text.replace(".", ",") + "%"
+
+
+def _period_short(period: str) -> str:
+    year, month = period.split("-")
+    return f"{MONTHS_SHORT[int(month) - 1]}/{year[2:]}"
+
+
+def report_charts(facts: dict[str, Any]) -> list[dict[str, Any]]:
+    """Gráficos anexados ao resumo no chat, montados pelo sistema com os números do evento (o agente não desenha)."""
+    charts = facts["charts"]
+    previous = facts.get("previous_period")
+    versus = f" vs {_period_short(previous)}" if previous else ""
+    aging = charts["Lifecycle × Aging"]["by_aging_bucket"]
+    lifecycles = sorted({name for item in aging for name in item["by_lifecycle"]}, key=lambda name: (name != "Active", name))
+    pmm = charts["PMM analítico"]
+    result = [
+        {
+            "type": "stacked",
+            "title": "Lifecycle × Aging",
+            "subtitle": "Valor fiscal por faixa de aging",
+            "legend": [{"label": name, "color": CHART_COLORS.get(name, "#7A8CA3")} for name in lifecycles],
+            "items": [
+                {"label": item["bucket"].split(") ", 1)[-1], "value": item["value"],
+                 "segments": [item["by_lifecycle"].get(name, 0.0) for name in lifecycles],
+                 "display": f"{_brl_short(item['value'])} · {_pct_text(item['share_pct'])}"}
+                for item in aging
+            ],
+        },
+        {
+            "type": "bars",
+            "title": "PMM analítico por divisão",
+            "subtitle": f"PMM da competência {_brl_short(pmm['pmm'])}"
+                        + (f" ({_pct_text(pmm['variation_pct_vs_previous'], True)}{versus})" if pmm["variation_pct_vs_previous"] is not None else ""),
+            "items": [{"label": item["division"], "value": item["pmm"], "display": _brl_short(item["pmm"])} for item in pmm["by_division"]],
+        },
+        {
+            "type": "bars",
+            "title": "Division Description",
+            "subtitle": f"Valor fiscal e variação{versus}" if previous else "Valor fiscal",
+            "items": [
+                {"label": item["division"], "value": item["value"],
+                 "display": f"{_brl_short(item['value'])} · {_pct_text(item['variation_pct_vs_previous'], True)}"
+                 if item["variation_pct_vs_previous"] is not None else _brl_short(item["value"])}
+                for item in charts["Division Description"]
+            ],
+        },
+        {
+            "type": "columns",
+            "title": "Evolução da posição de estoque",
+            "subtitle": "Valor fiscal e PMM por competência",
+            "items": [
+                {"label": _period_short(item["period"]), "value": item["fiscal_value"], "display": _brl_short(item["fiscal_value"]),
+                 "note": f"PMM {_brl_short(next((p['pmm'] for p in pmm['by_period'] if p['period'] == item['period']), 0))}"}
+                for item in charts["Evolução da posição de estoque"]
+            ],
+        },
+    ]
+    return [chart for chart in result if chart["items"]]
+
+
+def report_insights_event(settings: Any, period: str) -> dict[str, Any] | None:
+    """Resumo dos principais gráficos da Visão e relatórios: enviado uma vez por competência e de novo
+    só quando os números dela mudam (nova carga, reprocessamento, Mapping, preenchimento manual).
+
+    Prioridade baixa (``low_priority``): nunca passa na frente de outro aviso nem de uma decisão pendente."""
+    facts = report_insights(settings, period)
+    if not facts["kpis"]["fiscal_value"]:
+        return None
+    charts = facts["charts"]
+    signature = {
+        "format": REPORT_FORMAT_VERSION,  # formato novo do resumo (ex.: gráficos) reenvia a competência uma vez
+        "total": round(facts["kpis"]["fiscal_value"] / 1000),
+        "divisions": [(item["division"], round(item["value"] / 1000)) for item in charts["Division Description"]],
+        "years": [(item["year"], round(item["value"] / 1000)) for item in charts["Aging for Season"]["by_year"]],
+        "locations": [(item["location"], round(item["value"] / 1000)) for item in charts["Local de estoque"]],
+    }
+    return {
+        "key": f"report_insights:{period}",
+        "fingerprint": json.dumps(signature, ensure_ascii=False),
+        "low_priority": True,
+        "ack_on_delivery": True,  # só conta como enviado quando chega ao chat (ver mark_delivered)
+        "event": {"type": "report_insights", "topic": "Visão e relatórios principais gráficos", **facts},
+        "parameters": None,
+        "summary": None,
+    }
+
+
+def presentation_offer_event(settings: Any, period: str) -> dict[str, Any] | None:
+    """Depois do resumo da Visão e relatórios (entregue ou recusado), o chat oferece montar uma apresentação —
+    uma vez por competência, com botões "Sim, gerar" / "Não, obrigado". Desligado em Configurações > Interface e
+    experiência > Geração de apresentações, a oferta não é feita."""
+    with connect(settings.path("database")) as connection:
+        rows = dict(connection.execute(
+            "select setting_key, setting_value from system_settings where setting_key in (?, ?)",
+            [WATCH_SEEN_KEY, "presentations_enabled"],
+        ).fetchall())
+    try:
+        enabled = json.loads(rows.get("presentations_enabled") or "true") is not False
+        seen = json.loads(rows.get(WATCH_SEEN_KEY) or "{}")
+    except (TypeError, ValueError):
+        enabled, seen = True, {}
+    if not enabled or f"report_insights:{period}" not in seen:
+        return None
+    # Uma oferta a cada atualização da base: acompanha a versão do resumo entregue (números novos = resumo novo).
+    report_version = hashlib.sha1(str(seen[f"report_insights:{period}"]).encode("utf-8")).hexdigest()[:12]
+    return {
+        "key": f"presentation_offer:{period}",
+        "fingerprint": f"5|{period}|{report_version}",  # "5": versão da oferta (mudar reenvia a pergunta uma vez)
+        "low_priority": True,
+        "ack_on_delivery": True,
+        "event": {"type": "presentation_offer", "topic": "Apresentação da competência", "period": period},
+        "parameters": None,
+        "summary": None,
+    }
+
+
 # --------------------------------------------------------------- controle de repetição
+
+
+def _closing_agenda_event(settings: Any) -> dict[str, Any] | None:
+    """Agenda de fechamento: pré-aviso (dias definidos na regra), início, último dia e atraso da janela."""
+    from .closing_agenda import agenda_event
+
+    return agenda_event(settings)
 
 
 def collect_events(
@@ -422,10 +699,13 @@ def collect_events(
         lambda: mapping_event(settings, period),
         lambda: inventory_gap_event(settings, period),
         lambda: closing_event(settings),
+        lambda: _closing_agenda_event(settings),
         lambda: all_brazil_quality_event(settings, period),
         lambda: variation_event(settings, period),
         lambda: latest_period_event(settings, period),
         lambda: documentation_event(settings),
+        lambda: report_insights_event(settings, period),
+        lambda: presentation_offer_event(settings, period),
     )
     for check in checks:
         try:
@@ -444,6 +724,8 @@ def new_events(settings: Any, events: list[dict[str, Any]], scope: tuple[str, ..
 
     Eventos informativos (silent_first) só avisam quando mudam: na primeira verificação viram a referência.
     Com scope (ex.: CONNECTIVITY_KEYS), a verificação é parcial: só essas chaves são atualizadas.
+    Eventos ack_on_delivery (resumo dos relatórios) só são memorizados quando chegam ao chat (mark_delivered):
+    se o servidor reiniciar com o aviso ainda na fila, ele volta a ser detectado e enviado.
     """
     with connect(settings.path("database")) as connection:
         row = connection.execute("select setting_value from system_settings where setting_key=?", [WATCH_SEEN_KEY]).fetchone()
@@ -455,7 +737,9 @@ def new_events(settings: Any, events: list[dict[str, Any]], scope: tuple[str, ..
             event for event in events
             if seen.get(event["key"]) != event["fingerprint"] and not (event.get("silent_first") and event["key"] not in seen)
         ]
-        current = {event["key"]: event["fingerprint"] for event in events}
+        current = {event["key"]: event["fingerprint"] for event in events if not event.get("ack_on_delivery")}
+        current.update({event["key"]: seen[event["key"]] for event in events
+                        if event.get("ack_on_delivery") and event["key"] in seen})
         if scope:
             current = {**{key: value for key, value in seen.items() if key not in scope}, **current}
         connection.execute(
@@ -464,3 +748,19 @@ def new_events(settings: Any, events: list[dict[str, Any]], scope: tuple[str, ..
             [WATCH_SEEN_KEY, json.dumps(current, ensure_ascii=False)],
         )
     return fresh
+
+
+def mark_delivered(settings: Any, key: str, fingerprint: str) -> None:
+    """Memoriza um evento ack_on_delivery depois que ele chegou ao chat (ou foi recusado pelo usuário)."""
+    with connect(settings.path("database")) as connection:
+        row = connection.execute("select setting_value from system_settings where setting_key=?", [WATCH_SEEN_KEY]).fetchone()
+        try:
+            seen = json.loads(row[0]) if row else {}
+        except (TypeError, ValueError):
+            seen = {}
+        seen[key] = fingerprint
+        connection.execute(
+            """insert into system_settings(setting_key,setting_value,updated_at) values (?,?,current_timestamp)
+               on conflict(setting_key) do update set setting_value=excluded.setting_value, updated_at=excluded.updated_at""",
+            [WATCH_SEEN_KEY, json.dumps(seen, ensure_ascii=False)],
+        )

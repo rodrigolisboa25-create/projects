@@ -31,6 +31,10 @@ SYSTEM_QUESTION_PATTERNS = (
     "sistema", "health center", "passo a passo", "de onde vem", "quais bases", "qual base",
     "como outro", "como os usuarios", "como o usuario", "como a base", "o que acontece", "significa",
     "o que preciso", "preciso preencher", "o que fazer", "o que faco",
+    # Outras formas comuns de dúvida sobre o uso (o manual só entra se alguma seção combinar).
+    " como ", " quando ", "da para", "da pra", "e possivel", "consigo", "por que", "porque", "diferenca",
+    "nao abre", "nao funciona", "nao carrega", "deu erro", "erro ", "segur", "invas", "avisos", "aquele icone",
+    "aquele botao", "o que e aquele", "o que e aquela",
 )
 
 STOPWORDS = {

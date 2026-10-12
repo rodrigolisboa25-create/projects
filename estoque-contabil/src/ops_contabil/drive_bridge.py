@@ -28,9 +28,14 @@ from typing import Any
 
 from .db import connect
 from .inventory import ensure_inventory_schema
-from .mb59 import ensure_mb59_schema
+from .master_base import ensure_master_base_schema
+from .mb59 import ensure_mb59_schema, ensure_pass_step_manual_schema, ensure_pass_step_sources_schema
 
-BRIDGE_TABLES = ("inventory_rows", "inventory_imports", "mb59_rows", "mb59_imports", "all_brazil_imports")
+# pass_step_sources: auditoria da origem do PASSO A PASSO (versões antigas ignoram o arquivo).
+BRIDGE_TABLES = (
+    "inventory_rows", "inventory_imports", "mb59_rows", "mb59_imports", "all_brazil_imports", "pass_step_sources",
+    "master_base_rows", "master_base_imports", "pass_step_manual",
+)
 FRESHNESS_TABLES = ("inventory_imports", "mb59_imports", "all_brazil_imports")
 ROOT_SETTING = "bridge_root"
 STATE_SETTING = "bridge_state"
@@ -253,6 +258,9 @@ def set_root(settings: Any, new_path: str | None, *, leave_redirect: bool = True
 def _ensure_tables(connection: Any) -> None:
     ensure_inventory_schema(connection)
     ensure_mb59_schema(connection)
+    ensure_pass_step_sources_schema(connection)
+    ensure_pass_step_manual_schema(connection)
+    ensure_master_base_schema(connection)
     connection.execute(
         """create table if not exists all_brazil_imports (
             period varchar primary key, snapshot_date date, source_path varchar, source_sha256 varchar,

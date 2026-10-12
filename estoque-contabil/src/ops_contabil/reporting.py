@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import html
 import os
+import re
 import subprocess
 import tempfile
 import threading
@@ -136,7 +137,7 @@ header{{display:flex;justify-content:space-between;align-items:end;border-bottom
 .summary-table{{width:100%;border-collapse:collapse;font-size:9px}}.summary-table th,.summary-table td{{border-bottom:1px solid #bed0c2;padding:5px;text-align:right}}.summary-table th:first-child,.summary-table td:first-child{{text-align:left}}.summary-table th{{background:#f7fff1}}
 footer{{margin-top:9px;color:#526259;font-size:9px;display:flex;justify-content:space-between}}
 </style></head><body><header><div><h1>Estoque Contábil · Posição contábil do estoque - Fisia</h1><p>Visão executiva da competência {html.escape(period)}</p></div><div class="seal">Relatório contábil</div></header>
-<div class="kpis"><div class="kpi"><small>💰 Valor fiscal</small><b>{_money(summary.get('fiscal_value'))}</b></div><div class="kpi"><small>📦 Utilização livre</small><b>{_number(summary.get('quantity'))}</b></div><div class="kpi"><small>🧾 Materiais</small><b>{_number(summary.get('materials'))}</b></div><div class="kpi"><small>📊 Média PMM</small><b>{_money(summary.get('pmm'))}</b></div><div class="kpi"><small>🌎 Cobertura All Brazil</small><b>{float(summary.get('all_brazil_coverage') or 0):.2f}%</b></div></div>
+<div class="kpis"><div class="kpi"><small>💰 Valor fiscal</small><b>{_money(summary.get('fiscal_value'))}</b></div><div class="kpi"><small>📦 Utilização livre</small><b>{_number(summary.get('quantity'))}</b></div><div class="kpi"><small>🧾 Materiais</small><b>{_number(summary.get('materials'))}</b></div><div class="kpi"><small>📊 Média PMM</small><b>{_money(summary.get('pmm'))}</b></div><div class="kpi"><small>⏳ Acima de 12 meses</small><b>{_money((summary.get('over_12_months') or {}).get('value'))}</b></div></div>
 <div class="grid">{_matrix_table('Lifecycle × Aging', summary.get('lifecycle_aging') or {})}{_matrix_table('Aging for Season', summary.get('aging_for_season') or {})}{_bars('Division Description', summary.get('division') or [])}{_location_bars(summary.get('locations') or [])}{_bars('Valor por centro', summary.get('plants') or [])}{_bars('Origem do material', summary.get('origins') or [])}{_trend_table(summary.get('trend') or [])}{_variance_table(summary.get('division_variance') or [])}{_pmm_bars((summary.get('pmm_breakdowns') or {}).get('period') or [])}{_cost_table(summary.get('cost_composition') or {})}{_scatter_table((summary.get('pmm_breakdowns') or {}).get('period') or [])}</div>
 <footer><span>Gerado em {generated}</span><span>Estoque Contábil · Op. Contábeis</span></footer></body></html>'''
 
@@ -273,6 +274,23 @@ def render_dashboard_report(settings: Any, period: str, user_email: str) -> tupl
                 process.kill()
 
 
+def _with_presentation(settings: Any, period: str, user_email: str | None, content: str) -> str:
+    """Relatório HTML: se já existe apresentação da competência, ela entra embutida antes da Visão e relatórios.
+
+    Só no HTML (Share Link); o PDF do relatório não leva a apresentação."""
+    from . import presentations
+
+    try:
+        found = presentations.latest_deck(settings, period, user_email)
+    except Exception:  # noqa: BLE001 - sem apresentação legível: relatório segue sem ela
+        found = None
+    if not found:
+        return content
+    section = presentations.report_section(*found)
+    match = re.search(r"<body[^>]*>", content, re.I)
+    return content[:match.end()] + section + content[match.end():] if match else section + content
+
+
 def generate_report_html(settings: Any, period: str, publish: bool = False, user_email: str | None = None) -> Path:
     """Gera um relatório HTML autônomo, sem links para o servidor local."""
     summary = dashboard_summary(settings, period)
@@ -289,6 +307,7 @@ def generate_report_html(settings: Any, period: str, publish: bool = False, user
                 content = None
     if content is None:
         content = report_html(summary, period)
+    content = _with_presentation(settings, period, user_email, content)
     output.write_text(content, encoding="utf-8")
     if not output.is_file() or output.stat().st_size < 1000:
         raise RuntimeError("Não foi possível concluir o relatório HTML.")

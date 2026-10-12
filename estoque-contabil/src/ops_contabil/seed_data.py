@@ -20,6 +20,8 @@ PREFERENCE_KEYS = {
     "animations_enabled",
     "chart_animations_enabled",
     "card_animations_enabled",
+    "mindmap_calm",
+    "presentations_enabled",
     "backup_enabled",
     "backup_folder",
     "backup_frequency",

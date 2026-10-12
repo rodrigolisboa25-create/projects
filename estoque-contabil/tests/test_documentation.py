@@ -167,7 +167,9 @@ def test_user_profile_gets_only_interface_and_notifications_in_settings(tmp_path
 
     # Interface e experiência: lê e grava só os campos de interface.
     prefs = user.get("/api/preferences/interface").json()
-    assert set(prefs) == {"density", "default_page_size", "animations_enabled", "chart_animations_enabled", "card_animations_enabled"}
+    assert set(prefs) == {"density", "default_page_size", "animations_enabled", "chart_animations_enabled", "card_animations_enabled", "mindmap_calm", "presentations_enabled"}
+    assert prefs["mindmap_calm"] is False  # mapa mental sóbrio vem desmarcado por padrão
+    assert prefs["presentations_enabled"] is True  # o Optimus oferece apresentações por padrão
     saved = user.put("/api/preferences/interface", json={"density": "comfortable", "card_animations_enabled": False},
                      headers={"X-CSRF-Token": csrf})
     assert saved.status_code == 200 and saved.json()["density"] == "comfortable" and saved.json()["card_animations_enabled"] is False

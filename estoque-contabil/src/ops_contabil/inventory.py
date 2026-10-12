@@ -199,7 +199,6 @@ def ensure_inventory_schema(connection: Any) -> None:
         """
     )
 
-
 def _as_rows(value: Any) -> list[list[Any]]:
     if value is None:
         return []
@@ -584,32 +583,24 @@ def export_inventory_xlsx(
     )
     select = ",".join(["source_row", *[f'"{name}"' for name in names]])
 
-    workbook = Workbook(write_only=True)
-    worksheet = workbook.create_sheet("Base de Estoque")
-    worksheet.freeze_panes = "A2"
-    worksheet.append(["#", *[label for _, label in visible_columns]])
-    row_count = 0
-    try:
-        with connect(settings.path("database")) as connection:
-            ensure_inventory_schema(connection)
-            cursor = connection.execute(
-                f'select {select} from inventory_rows where {where} order by "{sort}" {direction} nulls last',
-                params,
-            )
+    # XLSX gravado em fluxo (xlsx_stream): ~500 mil linhas em segundos, sem temporários do openpyxl.
+    from .xlsx_stream import write_xlsx
+
+    with connect(settings.path("database")) as connection:
+        ensure_inventory_schema(connection)
+        cursor = connection.execute(
+            f'select {select} from inventory_rows where {where} order by "{sort}" {direction} nulls last',
+            params,
+        )
+
+        def rows():
             while True:
                 chunk = cursor.fetchmany(5000)
                 if not chunk:
-                    break
-                for row in chunk:
-                    worksheet.append(list(row))
-                    row_count += 1
-        destination.parent.mkdir(parents=True, exist_ok=True)
-        workbook.save(destination)
-    finally:
-        try:
-            workbook.close()
-        except Exception:
-            pass
+                    return
+                yield from chunk
+
+        row_count = write_xlsx(destination, "Base de Estoque", ["#", *[label for _, label in visible_columns]], rows())
     return {"path": str(destination), "rows": row_count, "period": period}
 
 
@@ -907,6 +898,72 @@ def _division_variance(
 
 
 
+def aging_race(settings: Any, period: str, filters: dict[str, Any] | None = None, top: int = 12, months: int = 36) -> dict[str, Any]:
+    """Evolução do Aging por Material (Visão e relatórios): série histórica mês a mês, na posição da competência.
+
+    Para cada material (Texto breve material) entre os ``top`` de maior valor fiscal já em aging (Product Offer End Dt
+    até a data-base), em cada fim de mês da série: valor fiscal acumulado das linhas cujo Product Offer End Dt já tinha
+    passado e tempo médio em estoque nesse mês (dias desde o Product Offer End Dt, ponderado pela quantidade livre).
+    A série vai do mês mais antigo desses materiais (no máximo ``months`` meses antes) até a data-base."""
+    year_number, month_number = map(int, period.split("-"))
+    as_of = date(year_number, month_number, 1) + timedelta(days=32)
+    as_of = as_of.replace(day=1) - timedelta(days=1)
+    where_filter, filter_params = overview_filter_sql(filters)
+    with connect(settings.path("database")) as connection:
+        ensure_inventory_schema(connection)
+        rows = connection.execute(
+            f"""
+            with base as (
+                select coalesce(nullif(trim(material_description), ''), 'Sem descrição') as name,
+                       product_offer_end_date as start, fiscal_total_amount as value, unrestricted_quantity as quantity
+                  from inventory_rows
+                 where period=? and product_offer_end_date is not null and product_offer_end_date <= ? {where_filter}
+            ), chosen as (
+                select name from base group by name order by sum(coalesce(value, 0)) desc limit ?
+            )
+            select name, start, coalesce(sum(value), 0), coalesce(sum(quantity), 0)
+              from base where name in (select name from chosen)
+             group by name, start order by name, start
+            """,
+            [period, as_of, *filter_params, top],
+        ).fetchall()
+    if not rows:
+        return {"period": period, "as_of": as_of.isoformat(), "months": [], "materials": [], "top": top}
+
+    def month_end(year: int, month: int) -> date:
+        return (date(year, month, 1) + timedelta(days=32)).replace(day=1) - timedelta(days=1)
+
+    first = min(row[1] for row in rows)
+    lower = date(as_of.year - (months // 12), as_of.month, 1)
+    start = max(date(first.year, first.month, 1), lower)
+    ends: list[date] = []
+    cursor = start
+    while cursor <= as_of:
+        ends.append(min(month_end(cursor.year, cursor.month), as_of))
+        cursor = (cursor + timedelta(days=32)).replace(day=1)
+    batches: dict[str, list[tuple[date, float, float]]] = {}
+    for name, offer_end, value, quantity in rows:
+        batches.setdefault(str(name), []).append((offer_end, float(value), float(quantity)))
+    materials = []
+    for name, items in batches.items():
+        series = []
+        for end in ends:
+            started = [item for item in items if item[0] <= end]
+            value = sum(item[1] for item in started)
+            quantity = sum(item[2] for item in started if item[2] > 0)
+            days = sum((end - item[0]).days * item[2] for item in started if item[2] > 0) / quantity if quantity else None
+            series.append({"value": round(value, 2), "quantity": round(sum(item[2] for item in started), 0),
+                           "days": None if days is None else round(days, 1)})
+        materials.append({"name": name, "series": series})
+    return {
+        "period": period,
+        "as_of": as_of.isoformat(),
+        "months": [f"{end.year}-{end.month:02d}" for end in ends],
+        "top": top,
+        "materials": materials,
+    }
+
+
 def dashboard_summary(settings: Any, period: str, filters: dict[str, Any] | None = None) -> dict[str, Any]:
     """Indicadores da página Visão e relatórios; ``filters`` restringe todos eles (ver OVERVIEW_FILTER_COLUMNS)."""
     flt = overview_filter_sql(filters)
@@ -1044,6 +1101,21 @@ def dashboard_summary(settings: Any, period: str, filters: dict[str, Any] | None
             ).fetchone()
         division_variance = _division_variance(connection, period, previous_period, flt)
 
+        # Card "Estoque acima de 12 meses": recebido com mais de 12 meses (faixas 5 a 8) e % do recebido (sem Futures).
+        def over_12(target: str) -> tuple[float, float]:
+            row = connection.execute(
+                f"""select coalesce(sum(case when left(cast(aging_bucket as varchar), 2) in ('5)','6)','7)','8)')
+                                        then fiscal_total_amount else 0 end), 0),
+                          coalesce(sum(case when left(coalesce(cast(aging_bucket as varchar), ''), 2) <> '0)'
+                                        then fiscal_total_amount else 0 end), 0)
+                   from inventory_rows where period=? {where_filter}""",
+                [target, *filter_params],
+            ).fetchone()
+            return float(row[0] or 0), float(row[1] or 0)
+
+        over_12_current = over_12(period)
+        over_12_previous = over_12(previous_period) if previous_period else None
+
     quantity = float(core[2] or 0)
     fiscal_value = float(core[3] or 0)
     coverage = (
@@ -1081,6 +1153,13 @@ def dashboard_summary(settings: Any, period: str, filters: dict[str, Any] | None
             "current": pmm,
             "previous": previous_pmm,
             "variation_pct": pmm_variation_pct,
+        },
+        "over_12_months": {
+            "value": over_12_current[0],
+            "pct_of_received": (100 * over_12_current[0] / over_12_current[1]) if over_12_current[1] else 0.0,
+            "previous_value": over_12_previous[0] if over_12_previous else None,
+            "variation_pct": ((over_12_current[0] - over_12_previous[0]) / over_12_previous[0] * 100)
+            if over_12_previous and over_12_previous[0] else None,
         },
         "trend": trend,
         "pmm_breakdowns": pmm_breakdowns,

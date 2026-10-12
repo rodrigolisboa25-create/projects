@@ -131,6 +131,7 @@ def test_pass_step_uses_mb59_then_previous_then_all_brazil(tmp_path: Path, monke
         "mb59": 1,
         "previous_inventory": 1,
         "all_brazil": 1,
+        "manual": 0,  # preenchimento manual (Base de estoque > Não localizados): nenhum neste cenário
         "not_found": 1,
     }
 

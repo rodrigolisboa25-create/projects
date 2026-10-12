@@ -12,6 +12,7 @@ from openpyxl import load_workbook
 from .audit import sha256
 from .db import connect
 from .ingestion.schema_resolver import load_contracts, resolve_headers
+from .master_base import master_base_in_use
 from .sources.all_brazil import pass_step_lookup_from_all_brazil
 
 
@@ -175,6 +176,171 @@ def import_mb59_xlsx(settings: Any, period: str, path: Path) -> dict[str, Any]:
         workbook.close()
 
 
+def ensure_pass_step_sources_schema(connection: Any) -> None:
+    """Tabela de auditoria do PASSO A PASSO: origem de Product Offer End Dt, Season e Year por linha.
+
+    Fica fora de inventory_rows (a Base de Estoque não ganha colunas); liga pela competência + source_row."""
+    connection.execute(
+        """create table if not exists pass_step_sources (
+               period varchar not null,
+               source_row bigint not null,
+               product_offer_end_date varchar,
+               season varchar,
+               year varchar
+           )"""
+    )
+
+
+def pass_step_sources(settings: Any, period: str, source_rows: list[int]) -> dict[int, dict[str, str | None]]:
+    """Origem dos campos PASSO A PASSO das linhas pedidas (para o balão da grade)."""
+    if not source_rows:
+        return {}
+    with connect(settings.path("database")) as connection:
+        ensure_pass_step_sources_schema(connection)
+        rows = connection.execute(
+            f"""select source_row, product_offer_end_date, season, year from pass_step_sources
+                where period=? and source_row in ({','.join('?' * len(source_rows))})""",
+            [period, *source_rows],
+        ).fetchall()
+    return {int(r[0]): {"product_offer_end_date": r[1], "season": r[2], "year": r[3]} for r in rows}
+
+
+PASS_STEP_FIELDS = ("product_offer_end_date", "season", "year")
+SEASONS = ("FA", "HO", "SP", "SU")
+
+
+def ensure_pass_step_manual_schema(connection: Any) -> None:
+    """Preenchimento manual do PASSO A PASSO (último recurso): só vale quando MB59, mês anterior e All Brazil
+    não trouxeram o valor. Fica por competência + CE & MAT + campo, com quem preencheu e quando."""
+    connection.execute(
+        """create table if not exists pass_step_manual (
+               period varchar not null,
+               center_material_key varchar not null,
+               field varchar not null,
+               value varchar not null,
+               filled_by varchar,
+               filled_at timestamp not null default current_timestamp
+           )"""
+    )
+
+
+def _manual_label(filled_by: str | None, filled_at: Any) -> str:
+    when = filled_at.strftime("%d/%m/%Y") if hasattr(filled_at, "strftime") else str(filled_at or "")[:10]
+    who = (filled_by or "").split("@")[0]
+    return f"Manual ({', '.join(item for item in (who, when) if item)})"
+
+
+def _manual_value(field: str, value: Any) -> Any:
+    """Valida e converte um valor digitado. Levanta ValueError com a mensagem para o usuário."""
+    text = str(value or "").strip()
+    if not text:
+        return None
+    if field == "season":
+        text = text.upper()
+        if text not in SEASONS:
+            raise ValueError(f"Season inválida: {text}. Use {', '.join(SEASONS)}.")
+        return text
+    if field == "year":
+        if not text.isdigit() or not 2000 <= int(text) <= 2100:
+            raise ValueError(f"Year inválido: {text}. Informe o ano com 4 dígitos (2000 a 2100).")
+        return int(text)
+    try:
+        return date.fromisoformat(text)
+    except ValueError as exc:
+        raise ValueError(f"Product Offer End Dt inválida: {text}.") from exc
+
+
+def pass_step_pending(settings: Any, period: str, limit: int = 500) -> dict[str, Any]:
+    """CE & MAT da competência com Product Offer End Dt, Season ou Year ainda vazios (Não localizado)."""
+    with connect(settings.path("database")) as connection:
+        rows = connection.execute(
+            """select center_material_key, any_value(material), any_value(plant), any_value(material_description),
+                      count(*), sum(coalesce(fiscal_total_amount,0)),
+                      any_value(product_offer_end_date), any_value(season), any_value(cast(year as integer)),
+                      bool_or(product_offer_end_date is null), bool_or(season is null), bool_or(year is null)
+                 from inventory_rows
+                where period=? and (product_offer_end_date is null or season is null or year is null)
+                group by center_material_key
+                order by 6 desc""",
+            [period],
+        ).fetchall()
+    items = [
+        {
+            "center_material_key": r[0], "material": r[1], "plant": r[2], "description": r[3],
+            "rows": int(r[4]), "fiscal_value": float(r[5] or 0),
+            "product_offer_end_date": None if r[9] else (r[6].isoformat() if r[6] else None),
+            "season": None if r[10] else r[7],
+            "year": None if r[11] else r[8],
+            "missing": [field for field, missing in zip(PASS_STEP_FIELDS, r[9:12]) if missing],
+        }
+        for r in rows
+    ]
+    return {"period": period, "keys": len(items), "rows": sum(item["rows"] for item in items), "items": items[:limit]}
+
+
+def save_pass_step_manual(settings: Any, period: str, items: list[dict[str, Any]], filled_by: str) -> dict[str, Any]:
+    """Grava o preenchimento manual e aplica na hora nas linhas que continuam vazias (fonte = Manual)."""
+    entries: list[tuple[str, str, Any]] = []
+    for item in items:
+        key = str(item.get("center_material_key") or "").strip()
+        if not key:
+            raise ValueError("Linha sem CE & MAT.")
+        for field in PASS_STEP_FIELDS:
+            value = _manual_value(field, item.get(field))
+            if value is not None:
+                entries.append((key, field, value))
+    if not entries:
+        raise ValueError("Preencha ao menos um campo.")
+    applied = 0
+    with connect(settings.path("database")) as connection:
+        ensure_pass_step_manual_schema(connection)
+        ensure_pass_step_sources_schema(connection)
+        connection.execute("begin")
+        try:
+            for key, field, value in entries:
+                connection.execute(
+                    "delete from pass_step_manual where period=? and center_material_key=? and field=?", [period, key, field]
+                )
+                connection.execute(
+                    "insert into pass_step_manual(period, center_material_key, field, value, filled_by) values (?,?,?,?,?)",
+                    [period, key, field, str(value), filled_by],
+                )
+                filled_at = connection.execute(
+                    "select filled_at from pass_step_manual where period=? and center_material_key=? and field=?",
+                    [period, key, field],
+                ).fetchone()[0]
+                targets = [r[0] for r in connection.execute(
+                    f"select source_row from inventory_rows where period=? and center_material_key=? and {field} is null",
+                    [period, key],
+                ).fetchall()]
+                if not targets:
+                    continue
+                connection.execute(
+                    f"update inventory_rows set {field}=? where period=? and center_material_key=? and {field} is null",
+                    [value, period, key],
+                )
+                label = _manual_label(filled_by, filled_at)
+                marks = ",".join("?" * len(targets))
+                existing = {r[0] for r in connection.execute(
+                    f"select source_row from pass_step_sources where period=? and source_row in ({marks})", [period, *targets]
+                ).fetchall()}
+                if existing:
+                    connection.execute(
+                        f"update pass_step_sources set {field}=? where period=? and source_row in ({','.join('?' * len(existing))})",
+                        [label, period, *existing],
+                    )
+                for source_row in set(targets) - existing:
+                    connection.execute(
+                        f"insert into pass_step_sources(period, source_row, {field}) values (?,?,?)", [period, source_row, label]
+                    )
+                applied += len(targets)
+            connection.execute("commit")
+        except Exception:
+            connection.execute("rollback")
+            raise
+    return {"period": period, "values": len(entries), "cells_filled": applied}
+
+
 def _previous_period(period: str) -> str:
     year_number, month_number = map(int, period.split("-"))
     first_day = date(year_number, month_number, 1)
@@ -254,9 +420,12 @@ def enrich_inventory_pass_step(
             if row[0] not in (None, "")
         }
 
+        # Passo 2: posição do mês anterior. Se houver base mestre (posição oficial carregada só para isso)
+        # mais nova que a carga daquele mês no sistema, ela é a posição do mês anterior.
+        previous_from_master = master_base_in_use(connection, previous_period)
         previous_rows = connection.execute(
-            """select center_material_key, product_offer_end_date, season, year
-               from inventory_rows where period=?""",
+            f"""select center_material_key, product_offer_end_date, season, year
+               from {'master_base_rows' if previous_from_master else 'inventory_rows'} where period=?""",
             [previous_period],
         ).fetchall()
         previous_lookup = {
@@ -268,6 +437,14 @@ def enrich_inventory_pass_step(
             for row in previous_rows
             if row[0] not in (None, "")
         }
+
+        # 4º (último recurso): preenchimento manual feito na Base de estoque para o que as três fontes não trouxeram.
+        ensure_pass_step_manual_schema(connection)
+        manual_lookup: dict[str, dict[str, tuple[Any, str]]] = {}
+        for key, field, value, filled_by, filled_at in connection.execute(
+            "select center_material_key, field, value, filled_by, filled_at from pass_step_manual where period=?", [period]
+        ).fetchall():
+            manual_lookup.setdefault(str(key), {})[field] = (_manual_value(field, value), _manual_label(filled_by, filled_at))
 
     material_keys = {
         str(row[2]).strip()
@@ -290,13 +467,20 @@ def enrich_inventory_pass_step(
     all_brazil_lookup = all_brazil["lookup"]
 
     field_sources = {
-        "product_offer_end_date": {"mb59": 0, "previous_inventory": 0, "all_brazil": 0, "not_found": 0},
-        "season": {"mb59": 0, "previous_inventory": 0, "all_brazil": 0, "not_found": 0},
-        "year": {"mb59": 0, "previous_inventory": 0, "all_brazil": 0, "not_found": 0},
+        field: {"mb59": 0, "previous_inventory": 0, "all_brazil": 0, "manual": 0, "not_found": 0}
+        for field in PASS_STEP_FIELDS
     }
     updates: list[dict[str, Any]] = []
 
-    def choose(field: str, center_material_key: str, material_key: str) -> Any:
+    # Origem gravada na Base de Estoque para auditoria (colunas "Origem ...").
+    source_labels = {
+        "mb59": "MB59",
+        "previous_inventory": f"Mês anterior ({previous_period}{' · base mestre' if previous_from_master else ''})",
+        "all_brazil": "All Brazil",
+        "not_found": "Não localizado",
+    }
+
+    def choose(field: str, center_material_key: str, material_key: str) -> tuple[Any, str]:
         candidates = (
             ("mb59", mb_lookup.get(center_material_key, {}).get(field)),
             ("previous_inventory", previous_lookup.get(center_material_key, {}).get(field)),
@@ -305,9 +489,13 @@ def enrich_inventory_pass_step(
         for source, value in candidates:
             if value not in (None, ""):
                 field_sources[field][source] += 1
-                return value
+                return value, source_labels[source]
+        manual = manual_lookup.get(center_material_key, {}).get(field)
+        if manual is not None:
+            field_sources[field]["manual"] += 1
+            return manual
         field_sources[field]["not_found"] += 1
-        return None
+        return None, source_labels["not_found"]
 
     total_current_rows = max(1, len(current_rows))
     if progress_callback is not None:
@@ -320,15 +508,18 @@ def enrich_inventory_pass_step(
             )
         center_key = "" if center_material_key is None else str(center_material_key)
         material_only_key = "" if material_key is None else str(material_key).strip().upper()
-        offer_end = choose("product_offer_end_date", center_key, material_only_key)
-        season = choose("season", center_key, material_only_key)
-        year_value = choose("year", center_key, material_only_key)
+        offer_end, offer_source = choose("product_offer_end_date", center_key, material_only_key)
+        season, season_source = choose("season", center_key, material_only_key)
+        year_value, year_source = choose("year", center_key, material_only_key)
         year_number = int(year_value) if year_value is not None else None
         updates.append({
             "source_row": int(source_row),
             "product_offer_end_date": offer_end,
             "season": None if season is None else str(season).strip(),
             "year": year_number,
+            "product_offer_end_date_source": offer_source,
+            "season_source": season_source,
+            "year_source": year_source,
         })
 
     if progress_callback is not None:
@@ -347,6 +538,14 @@ def enrich_inventory_pass_step(
                    where inventory.period=? and inventory.source_row=step.source_row""",
                 [period],
             )
+            # Auditoria (sem coluna nova na Base de Estoque): de onde veio cada valor do PASSO A PASSO.
+            ensure_pass_step_sources_schema(connection)
+            connection.execute("delete from pass_step_sources where period=?", [period])
+            connection.execute(
+                """insert into pass_step_sources(period, source_row, product_offer_end_date, season, year)
+                   select ?, source_row, product_offer_end_date_source, season_source, year_source from pass_step_batch""",
+                [period],
+            )
             connection.execute("commit")
         except Exception:
             connection.execute("rollback")
@@ -363,6 +562,7 @@ def enrich_inventory_pass_step(
         "rows": rows,
         "mb59_ce_mat_matches": sum(1 for row in current_rows if str(row[1]) in mb_lookup),
         "previous_ce_mat_matches": sum(1 for row in current_rows if str(row[1]) in previous_lookup),
+        "previous_from_master_base": previous_from_master,
         "all_brazil_material_matches": sum(1 for row in current_rows if str(row[2]).strip() in all_brazil_lookup),
         "all_brazil_snapshot": all_brazil.get("snapshot"),
         "all_brazil_snapshots_available": all_brazil.get("snapshots_available", 0),
@@ -375,7 +575,7 @@ def enrich_inventory_pass_step(
         },
         "message": (
             "PASSO A PASSO aplicado com prioridade MB59 por CE & MAT, "
-            f"posição {previous_period} por CE & MAT e All Brazil por Material. "
+            f"posição {previous_period}{' (base mestre)' if previous_from_master else ''} por CE & MAT e All Brazil por Material. "
             "Campos sem correspondência foram marcados como Não localizado."
         ),
     }

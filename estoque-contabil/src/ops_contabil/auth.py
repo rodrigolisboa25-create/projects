@@ -25,6 +25,7 @@ BOOTSTRAP_ADMINS = (
 PAGE_CATALOG = (
     ("overview", "Visão e relatórios"),
     ("inventory", "Base de estoque"),
+    ("closing", "Agenda de fechamento"),
     ("sap", "Extrações SAP"),
     ("all-brazil", "Bases All Brazil"),
     ("mapping", "Mapping"),

@@ -431,6 +431,43 @@
       .composer-wrap{padding:9px}
       .send{min-width:74px}
     }
+    /* Apresentações: botões de escolha e cartão da apresentação montada */
+    .choice-row{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+    .choice-btn{height:36px;padding:0 16px;border-radius:999px;border:1px solid #0B2545;background:#0B2545;color:#fff;font:700 13px/1 inherit;cursor:pointer;transition:background .15s,opacity .15s}
+    .choice-btn:hover:not(:disabled){background:#13315C}
+    .choice-btn.ghost{background:#fff;color:#0B2545;border-color:#9fb3cf}
+    .choice-btn.ghost:hover:not(:disabled){background:#eef3f9}
+    .choice-btn:disabled{opacity:.45;cursor:default}
+    .choice-btn.chosen{opacity:1;box-shadow:0 0 0 2px #F58634}
+    .deck-card{display:flex;align-items:center;gap:14px;margin-top:12px;padding:12px 14px;border:1px solid #d9e3ef;border-radius:12px;background:#f7fafd}
+    .deck-card-info{flex:1;min-width:0}
+    .deck-card-info b{display:block;font-size:13.5px;color:#0B2545;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .deck-card-info small{display:block;margin-top:2px;font-size:12px;color:#4a5b70}
+    .deck-card-bar{height:4px;margin-top:8px;border-radius:2px;background:#e3eaf3;overflow:hidden}
+    .deck-card-bar i{display:block;height:100%;width:0;background:#F58634;transition:width .5s}
+    .deck-card:not(.running) .deck-card-bar{display:none}
+    /* Gráficos do resumo da Visão e relatórios (anexados pelo sistema à mensagem do Optimus) */
+    .report-charts{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:12px;margin:12px 0 4px}
+    .report-chart{border:1px solid #d9e3ef;border-radius:12px;background:#f7fafd;padding:12px 14px 10px;min-width:0}
+    .report-chart header{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 10px;margin-bottom:9px}
+    .report-chart header b{font-size:13px;color:#0B2545}
+    .report-chart header small{font-size:11.5px;color:#4a5b70}
+    .report-legend{display:inline-flex;align-items:center;gap:4px;margin-left:auto;font-size:11px;color:#4a5b70}
+    .report-legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-left:6px}
+    .report-chart.is-bars .report-chart-body{display:grid;grid-template-columns:minmax(70px,96px) minmax(0,1fr) auto;align-items:center;gap:7px 8px;font-size:12px}
+    .report-chart.is-bars .report-row{display:contents}
+    .report-label{color:#33475f;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .report-track{display:flex;height:12px;border-radius:6px;background:#e6edf5;overflow:hidden}
+    .report-track i{display:block;height:100%;background:#1F4E79}
+    .report-chart.is-bars .report-track i:only-child{background:linear-gradient(90deg,#1F4E79,#3d78b3)}
+    .report-value{font-variant-numeric:tabular-nums;color:#0B2545;font-weight:700;white-space:nowrap;font-size:11.5px}
+    .report-chart.is-columns .report-chart-body{display:flex;align-items:flex-end;gap:10px;height:170px}
+    .report-chart.is-columns .report-row{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;height:100%;min-width:0;font-size:11px}
+    .report-chart.is-columns .report-track{flex-direction:column-reverse;width:70%;max-width:46px;height:100px;border-radius:6px 6px 0 0;background:transparent;overflow:visible;justify-content:flex-start}
+    .report-chart.is-columns .report-track i{width:100%;border-radius:6px 6px 0 0;background:linear-gradient(180deg,#f7a35c,#f58634)}
+    .report-chart.is-columns .report-value{font-size:10.5px;margin-bottom:3px}
+    .report-chart.is-columns .report-label{margin-top:4px;font-weight:700}
+    .report-note{color:#4a5b70;font-size:10px;white-space:nowrap}
   </style>
 </head>
 
@@ -548,7 +585,7 @@
 
     function appendInlineMarkdown(container,text){
       const source=String(text??'');
-      const tokenPattern=/(\[[^\]]+\]\((?:https?:\/\/[^\s)]+|\/api\/reports\/pdf\/download\?period=\d{4}-\d{2})\)|https?:\/\/[^\s<>"']+|\/api\/reports\/pdf\/download\?period=\d{4}-\d{2}|`[^`]+`|\*\*[^*]+\*\*|\*[^*]+\*)/gi;
+      const tokenPattern=/(\[[^\]]+\]\((?:https?:\/\/[^\s)]+|\/api\/reports\/pdf\/download\?period=\d{4}-\d{2})\)|https?:\/\/[^\s<>"']+|\/api\/reports\/pdf\/download\?period=\d{4}-\d{2}|`[^`]+`|\*\*[^*]+\*\*|\*[^*]+\*|(?<![\w])_[^_\n]+_(?![\w]))/gi;
       let cursor=0;
       let match;
 
@@ -792,6 +829,10 @@
         if(meta.offerId)item.offerId=String(meta.offerId);
         if(meta.title)item.title=String(meta.title);
         if(meta.replyTo){item.replyTo=String(meta.replyTo);item.replyPreview=String(meta.replyPreview||'')}
+        if(Array.isArray(meta.charts)&&meta.charts.length)item.charts=meta.charts.slice(0,6);  // gráficos do resumo voltam ao recarregar
+        // Botões da apresentação (oferta/escolha) e cartão da apresentação montada voltam ao recarregar.
+        if(Array.isArray(meta.actions)&&meta.actions.length){item.actions=meta.actions;item.uid=String(meta.uid||'');item.period=String(meta.period||'');if(meta.chosen)item.chosen=String(meta.chosen)}
+        if(meta.deckId)item.deckId=String(meta.deckId);
         messages.push(item);
         localStorage.setItem(historyKey,JSON.stringify({updated_at:Date.now(),messages:messages.slice(-HISTORY_MAX)}));
       }catch{}
@@ -813,6 +854,112 @@
     }
     document.getElementById('reply-cancel').addEventListener('click',()=>setReplyTo(null));
 
+    // ---------------- Apresentações: oferta com botões, escolha do conteúdo e cartão da apresentação montada.
+    let pendingDeck=null;  // "Quero escolher o conteúdo": a próxima mensagem digitada vira o pedido da apresentação
+    function renderChoiceButtons(bubble,meta){
+      const row=document.createElement('div');row.className='choice-row';
+      meta.actions.forEach(action=>{
+        const button=document.createElement('button');button.type='button';button.className='choice-btn'+(action.ghost?' ghost':'');
+        button.textContent=String(action.label||'');button.dataset.action=String(action.id||'');
+        if(meta.chosen){button.disabled=true;if(meta.chosen===action.id)button.classList.add('chosen')}
+        button.addEventListener('click',()=>{
+          if(row.dataset.done)return;row.dataset.done='1';
+          row.querySelectorAll('button').forEach(b=>{b.disabled=true});button.classList.add('chosen');
+          rememberChoice(String(meta.uid||''),String(action.id));
+          handleDeckAction(String(action.id),String(meta.period||getCurrentPeriod()),String(action.label||''));
+        });
+        row.appendChild(button);
+      });
+      bubble.appendChild(row);
+    }
+    function rememberChoice(uid,choice){
+      if(!uid||!historyKey)return;
+      try{const saved=JSON.parse(localStorage.getItem(historyKey)||'null');if(!saved)return;
+        (saved.messages||[]).forEach(item=>{if(item.uid===uid)item.chosen=choice});localStorage.setItem(historyKey,JSON.stringify(saved))}catch{}
+    }
+    const newUid=()=>Math.random().toString(36).slice(2)+Date.now().toString(36);
+    function handleDeckAction(actionId,period,label){
+      addMessage('user',label);
+      if(actionId==='deck-no'){addMessage('assistant','Combinado. Quando quiser uma apresentação, é só me pedir aqui no chat.');return}
+      if(actionId==='deck-yes'){addMessage('assistant','Ótimo! Como você prefere montar a apresentação?',true,{uid:newUid(),period,actions:[
+        {id:'deck-auto',label:'Você decide o conteúdo'},{id:'deck-custom',label:'Quero escolher o conteúdo',ghost:true}]});return}
+      if(actionId==='deck-auto'){startDeck(period,null);return}
+      if(actionId==='deck-custom'){pendingDeck={period};input.placeholder='Descreva o que deve ter na apresentação…';
+        addMessage('assistant','Me diga o que deve ter na apresentação: público, temas, gráficos, quantidade de slides ou tom. Eu monto a partir disso.');input.focus()}
+    }
+    async function startDeck(period,request){
+      try{
+        const response=await fetch('/api/presentations',{method:'POST',credentials:'same-origin',
+          headers:{'Content-Type':'application/json','X-CSRF-Token':csrfToken},body:JSON.stringify({period,request})});
+        const body=await response.json().catch(()=>({}));
+        if(!response.ok)throw new Error(body.detail||'Não foi possível iniciar a apresentação.');
+        addMessage('assistant','Estou montando a apresentação. Ela abre em tela cheia assim que ficar pronta, e lá você pode pedir ajustes e baixar em HTML ou ZIP.',true,{deckId:body.deck_id});
+        openDeck(body.deck_id);
+      }catch(error){showError(error.message)}
+    }
+    function openDeck(deckId){try{const top=window.top||window;if(typeof top.openPresentationModal==='function')top.openPresentationModal(deckId)}catch{}}
+    function renderDeckCard(bubble,deckId,live){
+      const card=document.createElement('div');card.className='deck-card';
+      card.innerHTML='<div class="deck-card-info"><b>Apresentação</b><small>Verificando…</small><div class="deck-card-bar"><i></i></div></div>';
+      const open=document.createElement('button');open.type='button';open.className='choice-btn';open.textContent='Abrir apresentação';
+      open.addEventListener('click',()=>openDeck(deckId));card.appendChild(open);bubble.appendChild(card);
+      const info=card.querySelector('small'),title=card.querySelector('b'),bar=card.querySelector('.deck-card-bar i');
+      const poll=async()=>{
+        try{const response=await fetch('/api/presentations/'+encodeURIComponent(deckId),{credentials:'same-origin'});
+          if(!response.ok){info.textContent='Apresentação não encontrada nesta máquina.';open.disabled=true;return}
+          const d=await response.json(),job=d.job||{},running=['QUEUED','RUNNING'].includes(job.status);
+          title.textContent=d.title||'Apresentação';bar.style.width=(running?job.progress||5:100)+'%';card.classList.toggle('running',running);
+          info.textContent=running?(job.message||'Montando…'):job.status==='FAILED'&&!d.version?(job.message||'Falhou.'):`${d.slides} slides · versão ${d.version}`;
+          if(running&&live)setTimeout(poll,2000);
+        }catch{info.textContent='Sem conexão com o sistema local.'}
+      };
+      poll();
+    }
+    function renderReportCharts(container,charts){
+      const box=document.createElement('div');
+      box.className='report-charts';
+      charts.forEach(chart=>{
+        const items=Array.isArray(chart.items)?chart.items:[];
+        if(!items.length)return;
+        const card=document.createElement('section');
+        card.className='report-chart '+(chart.type==='columns'?'is-columns':'is-bars');
+        const head=document.createElement('header');
+        const title=document.createElement('b');title.textContent=String(chart.title||'');head.appendChild(title);
+        if(chart.subtitle){const sub=document.createElement('small');sub.textContent=String(chart.subtitle);head.appendChild(sub)}
+        if(Array.isArray(chart.legend)&&chart.legend.length){
+          const legend=document.createElement('span');legend.className='report-legend';
+          chart.legend.forEach(entry=>{const key=document.createElement('i');key.style.background=String(entry.color||'#7A8CA3');legend.appendChild(key);legend.appendChild(document.createTextNode(String(entry.label||'')))});
+          head.appendChild(legend);
+        }
+        card.appendChild(head);
+        const max=Math.max(...items.map(item=>Math.abs(Number(item.value)||0)),1);
+        const body=document.createElement('div');body.className='report-chart-body';
+        items.forEach(item=>{
+          const row=document.createElement('div');row.className='report-row';
+          const label=document.createElement('span');label.className='report-label';label.textContent=String(item.label||'');
+          const track=document.createElement('span');track.className='report-track';
+          const share=Math.max(0,(Math.abs(Number(item.value)||0)/max)*100);
+          if(Array.isArray(item.segments)&&chart.legend){
+            const total=item.segments.reduce((sum,value)=>sum+Math.max(0,Number(value)||0),0)||1;
+            item.segments.forEach((value,index)=>{const segment=document.createElement('i');segment.style[chart.type==='columns'?'height':'width']=`${share*Math.max(0,Number(value)||0)/total}%`;segment.style.background=String(chart.legend[index]?.color||'#7A8CA3');segment.title=`${chart.legend[index]?.label||''}`;track.appendChild(segment)});
+          }else{
+            const bar=document.createElement('i');bar.style[chart.type==='columns'?'height':'width']=`${share}%`;track.appendChild(bar);
+          }
+          const value=document.createElement('span');value.className='report-value';value.textContent=String(item.display||'');
+          if(chart.type==='columns'){
+            row.appendChild(value);row.appendChild(track);row.appendChild(label);
+            if(item.note){const note=document.createElement('small');note.className='report-note';note.textContent=String(item.note);row.appendChild(note)}
+          }else{
+            row.appendChild(label);row.appendChild(track);row.appendChild(value);
+          }
+          body.appendChild(row);
+        });
+        card.appendChild(body);
+        box.appendChild(card);
+      });
+      if(box.childElementCount)container.appendChild(box);
+    }
+
     function addMessage(role,text,persist=true,meta={}){
       if(persist)saveHistory(role,text,meta);
       // Mensagem nova do Optimus: o menu do sistema conta como não lida se a pessoa não estiver olhando o chat.
@@ -829,6 +976,9 @@
 
       if(role==='assistant'){
         renderAssistantMarkdown(bubble,text);
+        if(Array.isArray(meta.charts)&&meta.charts.length)renderReportCharts(bubble,meta.charts);
+        if(Array.isArray(meta.actions)&&meta.actions.length)renderChoiceButtons(bubble,meta);
+        if(meta.deckId)renderDeckCard(bubble,String(meta.deckId),persist);
         if(meta.offerId){
           const reply=document.createElement('button');
           reply.type='button';
@@ -1042,6 +1192,19 @@
       }
     }
 
+    // Uma mensagem proativa entregue pelo servidor: mostra no chat e, se a pessoa não estiver olhando, notifica o Windows.
+    function handleProactiveItem(item){
+      finishGreeting?.();
+      if(item.kind==='system'){addMessage('system',String(item.text||''),true,{title:item.title});return}
+      if(item.kind==='presentation_offer'){
+        addMessage('assistant',String(item.text||''),true,{uid:newUid(),period:item.period,actions:[
+          {id:'deck-yes',label:'Sim, gerar'},{id:'deck-no',label:'Não, obrigado',ghost:true}]});
+      }else{
+        addMessage('assistant',String(item.text||''),true,{offerId:item.id,charts:item.charts});
+      }
+      if(item.notify)notifyIfAway(item.text,item.notify_title||'Optimus: aviso');
+    }
+
     let proactiveBusy=false,offlineShown=false;
     async function pollProactive(){
       if(proactiveBusy||isProcessing)return;
@@ -1050,12 +1213,7 @@
         const response=await fetch('/api/optimus/proactive?session_id='+encodeURIComponent(sessionId),{credentials:'same-origin'});
         if(!response.ok)return;
         const data=await response.json();
-        (data.messages||[]).forEach(item=>{
-          finishGreeting?.();
-          if(item.kind==='system'){addMessage('system',String(item.text||''),true,{title:item.title});return}
-          addMessage('assistant',String(item.text||''),true,{offerId:item.id});
-          if(item.notify)notifyIfAway(item.text,'Optimus: aviso');
-        });
+        (data.messages||[]).forEach(handleProactiveItem);
         // Agente sem conexão (VPN/n8n): o status do chat mostra até a conexão voltar.
         if(data.offline===true&&!isProcessing){offlineShown=true;setStatus('Sem conexão (VPN / n8n)','error')}
         else if(data.offline===false&&offlineShown&&!isProcessing){offlineShown=false;setStatus('Online','online')}
@@ -1154,7 +1312,10 @@
         }
 
         const answer=extractAnswer(body.response);
-        addMessage('assistant',answer);
+        // Pedido de apresentação feito na conversa: o agente iniciou a montagem (cartão + tela cheia).
+        const deckId=body.presentation?.deck_id;
+        addMessage('assistant',answer,true,deckId?{deckId}:{});
+        if(deckId)openDeck(deckId);
         setStatus('Online','online');
         notifyIfAway(answer);
       }catch(error){
@@ -1197,6 +1358,11 @@
       input.value='';
       input.style.height='44px';
 
+      if(pendingDeck){  // resposta a "Quero escolher o conteúdo": vira o pedido da apresentação
+        const deck=pendingDeck;pendingDeck=null;input.placeholder='Pergunte algo ao Optimus...';
+        await startDeck(deck.period,message);
+        return;
+      }
       await sendMessage(message,reply);
     });
 

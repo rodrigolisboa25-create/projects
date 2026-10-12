@@ -208,6 +208,60 @@ def search_document(settings: Any, query: str) -> dict[str, Any]:
     return {"query": query, "terms": terms, "total_matches": total, "pages": results}
 
 
+QUESTION_STOPWORDS = {
+    "como", "qual", "quais", "onde", "quando", "porque", "por", "que", "para", "pra", "com", "sem", "uma", "uns",
+    "umas", "dos", "das", "nos", "nas", "pelo", "pela", "sobre", "isso", "esse", "essa", "este", "esta", "aquele",
+    "aquela", "faco", "faz", "fazer", "posso", "pode", "consigo", "existe", "existem", "sistema", "estoque",
+    "contabil", "voce", "meu", "minha", "seu", "sua", "tem", "ter", "sao", "ser", "foi", "vai", "vou", "ainda",
+    "tambem", "mais", "muito", "dar", "da", "do", "de", "um", "o", "a", "os", "as", "e", "no", "na", "se", "eu",
+    "quero", "preciso", "saber", "explica", "explique", "significa", "funciona", "acontece",
+}
+
+
+def _question_terms(query: str) -> list[str]:
+    """Termos relevantes de uma pergunta em linguagem natural (radicais de até 6 letras)."""
+    terms: list[str] = []
+    for word in re.findall(r"[a-z0-9]+", _fold(query or "")):
+        if len(word) < 3 or word in QUESTION_STOPWORDS:
+            continue
+        stem = word[:6] if len(word) > 6 else word
+        if stem not in terms:
+            terms.append(stem)
+    return terms[:10]
+
+
+def rank_document(settings: Any, query: str, limit: int = 3) -> list[dict[str, Any]]:
+    """Páginas mais relevantes para uma pergunta (para o Optimus): ordena pelo número de
+    termos distintos encontrados, com peso extra quando o termo aparece no título da seção."""
+    document = current_document(settings)
+    terms = _question_terms(query)
+    if document is None or not terms:
+        return []
+    outline = sorted(document.index.get("outline") or [], key=lambda item: item["page"])
+    needed = 1 if len(terms) == 1 else 2
+    scored = []
+    for number, text in enumerate(document.index.get("page_text") or [], start=1):
+        folded = _fold(text)
+        positions = {term: [m.start() for m in re.finditer(re.escape(term), folded)] for term in terms}
+        found = [term for term in terms if positions[term]]
+        if len(found) < needed:
+            continue
+        sections = [item["title"] for item in outline if item["page"] == number] or \
+                   [next((item["title"] for item in reversed(outline) if item["page"] <= number), "")]
+        heading = _fold(" ".join(sections))
+        in_heading = sum(1 for term in found if term in heading)
+        count = sum(min(len(positions[term]), 8) for term in found)
+        score = len(found) * 10 + in_heading * 6 + count
+        anchor = max(found, key=lambda term: (len(positions[term]) > 0, len(term)))
+        snippets = [_snippet(text, folded, positions[anchor][0], len(anchor), found)["text"]]
+        if len(positions[anchor]) > 1 and positions[anchor][1] - positions[anchor][0] > SNIPPET_RADIUS * 2:
+            snippets.append(_snippet(text, folded, positions[anchor][1], len(anchor), found)["text"])
+        heading_hit = next((title for title in sections if any(term in _fold(title) for term in found)), sections[-1])
+        scored.append((score, number, {"page": number, "section": heading_hit, "snippets": snippets}))
+    scored.sort(key=lambda item: (-item[0], item[1]))
+    return [item[2] for item in scored[:limit]]
+
+
 # ---------------------------------------------------------- ponte do Drive
 
 

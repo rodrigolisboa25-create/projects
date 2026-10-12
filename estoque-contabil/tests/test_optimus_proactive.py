@@ -235,11 +235,10 @@ def test_vpn_down_the_system_warns_and_the_agent_explains_when_it_returns(proact
     monkeypatch.setattr(web_app, "connectivity_indicators", lambda _url: connectivity("healthy", "healthy"))
     assert state.optimus_connectivity_check() is None
     replies[:] = [lambda message: f"Aviso: {event_of(message)['type']}" for _ in range(10)]
+    # Sem "conexão restabelecida" no chat (o próprio usuário reconecta a VPN): seguem direto os avisos que esperavam.
     first = poll(client)[0]
-    assert first["text"] == "Aviso: connectivity_restored"  # o agente explica o retorno antes dos demais
-    restored = event_of(sent[-1])
-    assert restored["cause"]["key"] == "network" and restored["minutes_offline"] >= 1 and restored["queued_warnings"] >= 1
-    assert poll(client)[0]["text"] != "Aviso: connectivity_restored"  # em seguida, os avisos que esperavam
+    assert first["text"] != "Aviso: connectivity_restored" and first["text"].startswith("Aviso: ")
+    assert not any(item.get("key") == "connectivity_restored" for item in web_app.OPTIMUS_OFFERS)
 
 
 def test_vpn_down_with_the_agent_reachable_is_written_by_the_agent_once(proactive, monkeypatch) -> None:

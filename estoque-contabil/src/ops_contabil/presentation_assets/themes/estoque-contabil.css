@@ -1,0 +1,17 @@
+/* theme: estoque-contabil — tema próprio do Estoque Contábil (padrão das apresentações do Optimus).
+   Inspirado no deck de referência do usuário feito com html-ppt-skill: azul-marinho, acentos ciano/lilás/laranja. */
+:root{
+  --bg:#091425;--bg-soft:#0b1b31;--surface:#10253e;--surface-2:#17324e;
+  --border:rgba(122,202,247,.18);--border-strong:rgba(122,202,247,.37);
+  --text-1:#f2f7ff;--text-2:#b7cbe2;--text-3:#7790aa;
+  --accent:#6dd8ff;--accent-2:#a6a0ff;--accent-3:#ff9e6a;
+  --accent-ink:#071324;
+  --good:#79e4b9;--warn:#ffbf77;--bad:#ff7d9b;
+  --grad:linear-gradient(120deg,#6dd8ff,#a6a0ff 62%,#ff9e6a);
+  --grad-soft:linear-gradient(145deg,rgba(17,49,78,.88),rgba(8,22,42,.92));
+  --radius:14px;--radius-sm:9px;--radius-lg:22px;
+  --shadow:0 18px 50px rgba(0,0,0,.28);
+  --shadow-lg:0 28px 80px rgba(0,0,0,.35);
+  --font-mono:Consolas,'Cascadia Mono','Courier New',monospace;
+}
+body{background:#030a16}
