@@ -97,6 +97,12 @@ O agente também acompanha eventos proativos: falhas de extração, planilhas di
 
 O fluxo completo, o contrato de contexto, as ferramentas, os limites e a configuração do workflow estão em [docs/optimus.md](docs/optimus.md).
 
+### 🎞️ Apresentações do Optimus
+
+O Optimus prepara o roteiro da apresentação a partir dos indicadores da competência. O módulo local [`presentations.py`](src/ops_contabil/presentations.py) valida esse roteiro, preenche os slides com dados do sistema e gera um HTML autocontido. A apresentação pode ser aberta, ajustada e baixada pela página do Optimus; a versão mais recente da competência também pode ser incluída no relatório HTML compartilhável.
+
+Para o visual e a navegação dos slides, o sistema incorpora componentes do projeto [html-ppt-skill — HTML PPT Studio](https://github.com/lewislulu/html-ppt-skill), de **lewis**, sob licença **MIT**. Os componentes utilizados e as condições de uso estão registrados em [NOTICE.md](src/ops_contabil/presentation_assets/NOTICE.md) e [LICENSE](src/ops_contabil/presentation_assets/LICENSE). O procedimento técnico de geração, revisão e inserção da apresentação no relatório está descrito em [ARQUITETURA_FINAL.md](ARQUITETURA_FINAL.md#apresentações-do-optimus-html-ppt).
+
 ## 🧩 Funcionalidades
 
 - Processamento local de grandes bases contábeis sem Streamlit ou BigQuery.
