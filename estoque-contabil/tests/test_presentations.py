@@ -292,6 +292,55 @@ def test_over_12_months_card_matches_the_obsolescence_chart(env) -> None:  # noq
     assert round(over["pct_of_received"], 1) == round(risk["over_12_months_pct_of_received"], 1)
 
 
+def test_coverage_card_becomes_over_12_months_like_the_report_page(env) -> None:  # noqa: F811
+    settings, database, *_ = env
+    seed_base(database)
+    facts = report_insights(settings, "2026-09")
+    spec = decks.normalize_spec({"slides": [
+        {"layout": "highlight", "kicker": "DESTAQUE", "title": "Cobertura All Brazil de 100%", "kpi": "coverage",
+         "caption": "registros com Division"},
+        {"layout": "kpis", "title": "Visão geral", "kpis": ["fiscal_value", "coverage"], "insight": "Cobertura All Brazil de 100%."},
+    ]}, facts)
+    highlight, kpis = spec["slides"][1], spec["slides"][2]
+    assert highlight["kpi"] == "over_12_months" and "Cobertura" not in highlight["title"] + highlight["caption"]
+    assert kpis["kpis"] == ["fiscal_value", "over_12_months"] and not kpis["insight"]
+    html_text = decks.render_html(spec, facts)
+    assert "Cobertura All Brazil" not in html_text and "Estoque com mais de 12 meses" in html_text
+    assert "coverage" not in decks.KPIS and "cobertura" not in decks.facts_brief(facts).lower()
+
+
+def test_free_charts_cover_any_cut_of_the_base_including_projection(env) -> None:  # noqa: F811
+    from ops_contabil.presentation_data import dataset
+
+    settings, database, *_ = env
+    seed_base(database)  # agosto R$ 1.000; setembro R$ 1.350 (1081 R$ 1.050 + 2115 R$ 300)
+    facts = report_insights(settings, "2026-09")
+    facts["_loader"] = lambda query: dataset(settings, "2026-09", query)
+    spec = {"slides": [
+        {"layout": "chart", "kicker": "PROJEÇÃO", "chart": "custom",
+         "data": {"dimension": "period", "measure": "fiscal_value", "projection": 3}},
+        {"layout": "chart", "kicker": "CENTROS", "chart": "custom",
+         "data": {"dimension": "plant", "measure": "fiscal_value", "compare": True, "filters": {"division": ["Calçados"]}}},
+        {"layout": "chart", "title": "Dimensão inventada", "chart": "custom", "data": {"dimension": "cor_da_caixa"}},
+    ]}
+    decks.auto_texts(spec, facts)  # como no app: textos do sistema antes da validação
+    spec = decks.normalize_spec(spec, facts)
+    projection, plants = spec["slides"][1], spec["slides"][2]
+    assert len(spec["slides"]) == 4  # capa, 2 gráficos livres, encerramento (dimensão desconhecida sai)
+    assert projection["data"] == {"dimension": "period", "measure": "fiscal_value", "periods": 6, "projection": 3}
+    # Tendência linear: +R$ 350 por mês → out R$ 1.700, nov R$ 2.050, dez R$ 2.400 (marcados como projeção).
+    assert projection["title"] == f"Valor fiscal projetado em {decks.brl(2400)} em dezembro/2026"
+    assert "tendência linear das 2 competências" in projection["insight"]
+    html_text = decks.render_html(spec, facts)
+    assert "out/26 proj." in html_text and "dez/26 proj." in html_text and decks.brl(1700) in html_text
+    assert "Projeção" in html_text and "Realizado" in html_text
+    model = decks.chart_model("custom", facts, plants["data"])
+    assert [(item["label"], item["share"], item["variation"]) for item in model["items"]] == [("1081", 77.8, 5.0), ("2115", 22.2, None)]
+    assert plants["title"].startswith("1081 lidera em valor fiscal")
+    prompt = decks.patch_prompt(facts, spec, "inclua uma projeção para os próximos 3 meses")
+    assert '"projection":1-6' in prompt and "Nunca diga que não consegue" in prompt and len(prompt) < 9000
+
+
 def test_patch_operations_follow_the_current_numbering() -> None:
     current = {"title": "T", "subtitle": "S", "theme": "estoque-contabil",
                "slides": [{"layout": "cover", "title": "1"}, {"layout": "bullets", "title": "2"}, {"layout": "bullets", "title": "3"},

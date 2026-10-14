@@ -14,6 +14,7 @@ import httpx
 import yaml
 
 from .db import connect
+from .gr_collection import collection_status
 from .inventory import INVENTORY_COLUMNS, HIDDEN_UI_COLUMNS, ensure_inventory_schema
 from .master_base import master_base_status
 from .mb59 import ensure_mb59_schema
@@ -353,7 +354,7 @@ def connectivity_indicators(n8n_url: str) -> list[dict[str, str]]:
     network_level, network_status, network_detail = _vpn_probe(n8n_url)
     n8n_ok, n8n_detail = _n8n_probe(n8n_url)
     return [
-        _indicator("network", "VPN / rede", network_level, network_status, "Túnel VPN e acesso à rede corporativa", network_detail, "Conecte a VPN corporativa e valide o acesso à intranet. Se a VPN estiver conectada e ainda não for detectada, informe ao suporte o nome do cliente ou adaptador para parametrização."),
+        _indicator("network", "VPN / rede", network_level, network_status, "Túnel VPN e acesso à rede corporativa (necessária só para o Optimus; as extrações SAP não dependem da VPN)", network_detail, "Conecte a VPN corporativa e valide o acesso à intranet. Se a VPN estiver conectada e ainda não for detectada, informe ao suporte o nome do cliente ou adaptador para parametrização."),
         _indicator("n8n", "n8n / Optimus", "healthy" if n8n_ok else "critical", "Online" if n8n_ok else "Indisponível", "Webhook do agente contábil", n8n_detail, "Verifique se o workflow Optimus está ativo e se N8N_CHAT_URL aponta para o webhook de produção."),
     ]
 
@@ -437,6 +438,43 @@ def _next_period(period: str) -> str:
     return f"{year + month // 12}-{month % 12 + 1:02d}"
 
 
+def _collection_control(settings: Any, period: str, has_mb59: bool) -> dict[str, Any]:
+    """Controle da coleção dos pedidos (Base GR / SQVI DOC_COMPRA): carga e cobertura dos pedidos da MB59 do mês."""
+    title = "Season e Year dos pedidos (Base GR / SQVI)"
+    where = "Extrações SAP > etapa 3 \"Season e Year\""
+    status = collection_status(settings, period)
+    coverage = status["coverage"]
+    if not has_mb59:
+        return {"title": title, "level": "warning", "badge": "Sem MB59",
+                "detail": f"A MB59 do mês ainda não foi carregada; depois dela, carregue a Base GR ou o export da SQVI em {where}."}
+    if not status["mb59_ready"]:
+        return {"title": title, "level": "warning", "badge": "Regra anterior",
+                "detail": "Competência carregada antes da regra por SKU: o PASSO A PASSO segue a MB59 por CE & MAT. "
+                          f"Ao carregar a Base GR ou o export da SQVI em {where}, a MB59 já salva é reprocessada sozinha."}
+    orders = f"{coverage['mb59_orders']:,}".replace(",", ".")
+    if not status["imported"]:
+        return {"title": title, "level": "warning", "badge": "Não carregada",
+                "detail": f"A MB59 do mês tem {orders} pedidos (sem intercompany) e ainda não há coleção carregada: o passo 1 traz só a "
+                          "Product Offer End Dt, e Season e Year seguem para o mês anterior e o All Brazil. "
+                          f"Carregue em {where}."}
+    try:
+        loaded_at = datetime.fromisoformat(status["imported_at"]).strftime("%d/%m/%Y %H:%M")
+    except ValueError:
+        loaded_at = status["imported_at"][:16]
+    pct = coverage["pct"]
+    missing = coverage["without_collection"]
+    covered = f"{coverage['with_collection']:,}".replace(",", ".")
+    detail = (f"{status['source_label']} ({status['file_name']}) carregada em {loaded_at}"
+              f"{' por ' + status['imported_by'] if status.get('imported_by') else ''}: "
+              f"{covered} de {orders} pedidos da MB59 com coleção.")
+    if missing:
+        sample = ", ".join(coverage["missing_sample"][:5])
+        detail += (f" {missing} sem coleção (os SKUs desses pedidos seguem para o mês anterior e o All Brazil), "
+                   f"por exemplo {sample}.")
+    return {"title": title, "level": "healthy" if not missing else "warning",
+            "badge": f"{str(pct).replace('.', ',')}% dos pedidos" if pct is not None else "Carregada", "detail": detail}
+
+
 def governance_status(settings: Any, period: str) -> dict[str, Any]:
     with connect(settings.path("database")) as connection:
         sources = _period_source_status(connection, period)
@@ -463,6 +501,7 @@ def governance_status(settings: Any, period: str) -> dict[str, Any]:
     else:
         uniqueness = ("healthy", "Única", "Nenhuma chave repetida ou conflitante foi detectada.")
 
+    collection = collection_status(settings, period)
     as_of = date(*map(int, period.split("-")), 1).replace(day=monthrange(*map(int, period.split("-")))[1])
     snapshot_date = ab[0] if ab else None
     date_ok = bool(snapshot_date and snapshot_date <= as_of)
@@ -480,6 +519,7 @@ def governance_status(settings: Any, period: str) -> dict[str, Any]:
             "detail": "Campos obrigatórios ausentes bloqueiam cada importação antes de alterar a competência.",
         },
         {"title": "Consistência All Brazil", "level": uniqueness[0], "badge": uniqueness[1], "detail": uniqueness[2]},
+        _collection_control(settings, period, bool(sources.get("mb59"))),
         {
             "title": "Competência e data-base",
             "level": "healthy" if date_ok else "warning",
@@ -560,14 +600,33 @@ def governance_status(settings: Any, period: str) -> dict[str, Any]:
                  "Conflito: Material Nbr repetido com valores diferentes deixa vazio só o campo divergente (ver Consistência All Brazil).",
              ]},
             {"title": "MB59 (PASSO A PASSO) → Season, Year e Product Offer End Dt", "detail": f"Aba BASE da MB59_BASE GR · {mb59_columns} colunas reconhecidas por nome.",
-             "badge": "CE & MAT", "level": "healthy" if sources.get("mb59") else "warning", "steps": [
-                 "Chave: CE & MAT = Centro + Material, montada igual nas duas bases. Se o mesmo CE & MAT aparece mais de uma vez na MB59, "
-                 "vale o lançamento mais recente (Data de lançamento).",
-                 "Ordem de busca, campo a campo: 1º MB59 da competência por CE & MAT → 2º Base de Estoque do mês anterior por CE & MAT "
+             "badge": "SKU · pedido", "level": "healthy" if sources.get("mb59") else "warning", "steps": [
+                 "1º Base GR do mês (MB59) por SKU = 10 primeiros caracteres do Material, todos os centros: vale a entrada mais recente "
+                 "(Data de lançamento), sem pedidos intercompany (fornecedores 7008002 e 7008004). Product Offer End Dt = Data de lançamento; "
+                 "Season e Year = coleção do pedido de compra dessa entrada (Código coleção e Ano coleção da SQVI DOC_COMPRA, "
+                 "carregados em Extrações SAP pela Base GR ou pelo export da SQVI).",
+                 "Competências carregadas antes desta regra seguem a regra anterior: MB59 por CE & MAT, com o lançamento mais recente.",
+                 "Ordem de busca, campo a campo: 1º Base GR do mês por SKU → 2º Base de Estoque do mês anterior por CE & MAT "
                  "(ou a base mestre daquele mês, quando houver uma mais nova que a carga do sistema) → "
                  "3º All Brazil pelo Material (ou Estilo-Cor), sem Centro: Collection Code → Season, Collection Year → Year, "
                  "Product Offer End Dt → Product Offer End Dt.",
                  "Sem valor nas três fontes: o campo fica vazio e a linha aparece em \"Somente pendências de joins\" na Base de estoque.",
+             ]},
+            {"title": "Base GR / SQVI DOC_COMPRA → Season e Year dos pedidos",
+             "detail": "Arquivo .xlsx da etapa 3 de Extrações SAP, lido pelos nomes das colunas: qualquer aba (a BASE é lida primeiro), "
+                       "cabeçalho nas 15 primeiras linhas; ordem, maiúsculas e acentos não importam; colunas a mais são ignoradas.",
+             "badge": "Carregada" if collection["imported"] else "Pendente", "level": "healthy" if collection["imported"] else "warning",
+             "steps": [
+                 "Formato 1, Base GR (uma linha por entrada): obrigatórias Material, Pedido, Season (FA, HO, SP ou SU) e Year (4 dígitos); "
+                 "recomendadas Fornecedor (descarta intercompany 7008002 e 7008004) e Data de lançamento (confere a competência).",
+                 "Formato 2, export da SQVI DOC_COMPRA (uma linha por pedido): obrigatórias Doc.compra (ou Nº do documento de compras), "
+                 "Código coleção e Ano coleção; Empr opcional (só a 7170 é usada). É o formato mais enxuto: basta uma aba com essas 3 colunas. "
+                 "Uma planilha só com Pedido, Season e Year não é reconhecida (use os nomes da SQVI).",
+                 "Recusado, sem alterar nada: Season buscada pelo SKU na aba PE (e não pelo pedido), Season/Year com #N/D ou fórmula não "
+                 "calculada, lançamentos de outra competência ou nenhum pedido válido. A mensagem diz o motivo.",
+                 "Chave: Pedido do arquivo = pedido de compra da entrada mais recente do SKU (10 primeiros caracteres do Material) na MB59 do "
+                 "mês; uma coleção por pedido (coleções diferentes: vale a mais frequente e o conflito é informado). Pedidos da MB59 sem "
+                 "coleção no arquivo seguem para a Base de Estoque do mês anterior e o All Brazil.",
              ]},
             {"title": "Mapping → Local, STATUS OPERAÇÃO, Lifecycle e AGING", "detail": "Regras editáveis da página Mapping, compartilhadas entre as máquinas.",
              "badge": f"{mapping_rules} regras", "steps": [

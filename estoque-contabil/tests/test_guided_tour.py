@@ -40,3 +40,4 @@ def test_tour_screen_starts_after_loading_and_is_available_in_settings() -> None
     # Visão e relatórios: passo a passo do Mapa mental, dos Filtros e do Share Link (só administradores têm o botão).
     assert "sel:'#mindmap-btn'" in html and "sel:'#overview-filter-btn'" in html
     assert "sel:'#share-html',admin:true" in html and "Baixar HTML" in html
+    assert "sel:'#gr-form'" in html  # Season e Year dos pedidos (Base GR / SQVI)

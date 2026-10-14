@@ -43,8 +43,72 @@ def ensure_mb59_schema(connection: Any) -> None:
             schema_fingerprint varchar not null,
             imported_at timestamp not null default current_timestamp
         );
+        -- Base GR do mês por SKU (regra do PASSO A PASSO validada com a área): a entrada mais recente
+        -- de cada SKU (10 primeiros caracteres do material, todos os centros), sem pedidos intercompany.
+        create table if not exists mb59_sku_entries (
+            period varchar not null,
+            sku varchar not null,
+            posting_date date,
+            material_document varchar,
+            purchase_order varchar,
+            purchase_order_item varchar,
+            vendor varchar,
+            material varchar,
+            plant varchar,
+            movement_type varchar,
+            primary key(period, sku)
+        );
+        -- Pedidos de compra das entradas do mês (para a SQVI DOC_COMPRA e para conferir a Base GR importada).
+        create table if not exists mb59_orders (
+            period varchar not null,
+            purchase_order varchar not null,
+            vendor varchar,
+            lines bigint not null,
+            intercompany boolean not null,
+            primary key(period, purchase_order)
+        );
+        -- Coleção (Season/Year) de cada pedido de compra, vinda da Base GR ou do export da SQVI DOC_COMPRA.
+        create table if not exists gr_collection_rows (
+            period varchar not null,
+            purchase_order varchar not null,
+            season varchar not null,
+            year integer not null,
+            primary key(period, purchase_order)
+        );
+        create table if not exists gr_collection_imports (
+            period varchar primary key,
+            source_kind varchar not null,
+            file_name varchar not null,
+            source_path varchar not null,
+            source_sha256 varchar not null,
+            orders bigint not null,
+            lines bigint not null,
+            summary_json varchar,
+            imported_by varchar,
+            imported_at timestamp not null default current_timestamp
+        );
         """
     )
+
+
+# Fornecedores das transferências entre empresas do grupo (intercompany): ficam fora da regra do
+# PASSO A PASSO, como no fechamento manual (não têm coleção na SQVI DOC_COMPRA).
+INTERCOMPANY_VENDORS = frozenset({"7008002", "7008004"})
+
+
+def normalize_vendor(value: Any) -> str | None:
+    text = _text(value)
+    return text.lstrip("0") or text if text else None
+
+
+def is_intercompany(vendor: Any) -> bool:
+    return normalize_vendor(vendor) in INTERCOMPANY_VENDORS
+
+
+def sku_of(material: Any) -> str | None:
+    """SKU do fechamento: os 10 primeiros caracteres do material (modelo-cor, sem o tamanho)."""
+    text = _text(material)
+    return text.strip().upper()[:10] if text else None
 
 
 def _text(value: Any) -> str | None:
@@ -100,6 +164,8 @@ def import_mb59_xlsx(settings: Any, period: str, path: Path) -> dict[str, Any]:
             raise ValueError("Nenhuma aba da exportação MB59 atende ao contrato de colunas.")
         worksheet, resolution = best
         selected: dict[str, dict[str, Any]] = {}
+        sku_entries: dict[str, dict[str, Any]] = {}
+        orders: dict[str, dict[str, Any]] = {}
         source_rows = 0
         for source_row, row in enumerate(
             worksheet.iter_rows(min_row=resolution.header_row + 1, values_only=True),
@@ -141,7 +207,30 @@ def import_mb59_xlsx(settings: Any, period: str, path: Path) -> dict[str, Any]:
                         if candidate[field] is None:
                             candidate[field] = current[field]
                 selected[key] = candidate
+
+            # Pedidos e entrada mais recente por SKU (sem intercompany) para a regra por SKU.
+            purchase_order = _text(raw("purchase_order"))
+            vendor = normalize_vendor(raw("vendor"))
+            intercompany = vendor in INTERCOMPANY_VENDORS
+            if purchase_order:
+                order = orders.setdefault(purchase_order, {"period": period, "purchase_order": purchase_order,
+                                                            "vendor": vendor, "lines": 0, "intercompany": intercompany})
+                order["lines"] += 1
+            sku = sku_of(material)
+            if sku and posting_date and not intercompany:
+                entry = {
+                    "period": period, "sku": sku, "posting_date": posting_date,
+                    "material_document": _text(raw("material_document")), "purchase_order": purchase_order,
+                    "purchase_order_item": _text(raw("purchase_order_item")), "vendor": vendor,
+                    "material": material, "plant": plant, "movement_type": _text(raw("movement_type")),
+                }
+                rank = (posting_date, entry["material_document"] or "", entry["purchase_order_item"] or "")
+                previous = sku_entries.get(sku)
+                if previous is None or rank > previous["_rank"]:
+                    sku_entries[sku] = {**entry, "_rank": rank}
         rows = list(selected.values())
+        sku_rows = [{k: v for k, v in entry.items() if k != "_rank"} for entry in sku_entries.values()]
+        order_rows = list(orders.values())
         batch = pa.Table.from_pylist(rows) if rows else None
         source_hash = sha256(path)
         with connect(settings.path("database")) as connection:
@@ -152,6 +241,22 @@ def import_mb59_xlsx(settings: Any, period: str, path: Path) -> dict[str, Any]:
                 if batch is not None:
                     connection.register("mb59_batch", batch)
                     connection.execute("insert into mb59_rows select * from mb59_batch")
+                connection.execute("delete from mb59_sku_entries where period=?", [period])
+                if sku_rows:
+                    connection.register("mb59_sku_batch", pa.Table.from_pylist(sku_rows))
+                    connection.execute(
+                        """insert into mb59_sku_entries(period, sku, posting_date, material_document, purchase_order,
+                               purchase_order_item, vendor, material, plant, movement_type)
+                           select period, sku, posting_date, material_document, purchase_order,
+                               purchase_order_item, vendor, material, plant, movement_type from mb59_sku_batch"""
+                    )
+                connection.execute("delete from mb59_orders where period=?", [period])
+                if order_rows:
+                    connection.register("mb59_orders_batch", pa.Table.from_pylist(order_rows))
+                    connection.execute(
+                        """insert into mb59_orders(period, purchase_order, vendor, lines, intercompany)
+                           select period, purchase_order, vendor, lines, intercompany from mb59_orders_batch"""
+                    )
                 connection.execute("delete from mb59_imports where period=?", [period])
                 connection.execute(
                     """insert into mb59_imports(period,source_path,source_sha256,source_sheet,
@@ -169,6 +274,9 @@ def import_mb59_xlsx(settings: Any, period: str, path: Path) -> dict[str, Any]:
             "period": period,
             "source_rows": source_rows,
             "lookup_rows": len(rows),
+            "sku_entries": len(sku_rows),
+            "orders": len(order_rows),
+            "intercompany_orders": sum(1 for order in order_rows if order["intercompany"]),
             "path": str(path),
             "header_row": resolution.header_row,
         }
@@ -420,6 +528,30 @@ def enrich_inventory_pass_step(
             if row[0] not in (None, "")
         }
 
+        # Regra por SKU (validada com o fechamento manual): entrada mais recente do SKU no mês, sem intercompany;
+        # Product Offer End Dt = Data de lançamento e Season/Year = coleção do pedido (Base GR / SQVI DOC_COMPRA).
+        # Competências importadas antes desta regra não têm mb59_sku_entries e seguem a regra antiga (CE & MAT).
+        sku_lookup = {
+            str(row[0]): {
+                "product_offer_end_date": row[1],
+                "season": row[3],
+                "year": int(row[4]) if row[4] is not None else None,
+                "purchase_order": row[2],
+            }
+            for row in connection.execute(
+                """select entries.sku, entries.posting_date, entries.purchase_order, collection.season, collection.year
+                     from mb59_sku_entries entries
+                     left join gr_collection_rows collection
+                       on collection.period = entries.period and collection.purchase_order = entries.purchase_order
+                    where entries.period=?""",
+                [period],
+            ).fetchall()
+        }
+        use_sku_rule = bool(sku_lookup)
+        collection_imported = bool(
+            connection.execute("select count(*) > 0 from gr_collection_imports where period=?", [period]).fetchone()[0]
+        )
+
         # Passo 2: posição do mês anterior. Se houver base mestre (posição oficial carregada só para isso)
         # mais nova que a carga daquele mês no sistema, ela é a posição do mês anterior.
         previous_from_master = master_base_in_use(connection, previous_period)
@@ -481,8 +613,10 @@ def enrich_inventory_pass_step(
     }
 
     def choose(field: str, center_material_key: str, material_key: str) -> tuple[Any, str]:
+        month_entry = (sku_lookup.get(material_key[:10], {}) if use_sku_rule
+                       else mb_lookup.get(center_material_key, {}))
         candidates = (
-            ("mb59", mb_lookup.get(center_material_key, {}).get(field)),
+            ("mb59", month_entry.get(field)),
             ("previous_inventory", previous_lookup.get(center_material_key, {}).get(field)),
             ("all_brazil", all_brazil_lookup.get(material_key, {}).get(field)),
         )
@@ -561,6 +695,11 @@ def enrich_inventory_pass_step(
         "as_of": as_of.isoformat(),
         "rows": rows,
         "mb59_ce_mat_matches": sum(1 for row in current_rows if str(row[1]) in mb_lookup),
+        "pass_step_rule": "sku" if use_sku_rule else "ce_mat",
+        "gr_collection_imported": collection_imported,
+        "mb59_sku_matches": sum(
+            1 for row in current_rows if use_sku_rule and str(row[2] or "").strip().upper()[:10] in sku_lookup
+        ),
         "previous_ce_mat_matches": sum(1 for row in current_rows if str(row[1]) in previous_lookup),
         "previous_from_master_base": previous_from_master,
         "all_brazil_material_matches": sum(1 for row in current_rows if str(row[2]).strip() in all_brazil_lookup),
@@ -574,8 +713,15 @@ def enrich_inventory_pass_step(
             for field, counts in field_sources.items()
         },
         "message": (
-            "PASSO A PASSO aplicado com prioridade MB59 por CE & MAT, "
-            f"posição {previous_period}{' (base mestre)' if previous_from_master else ''} por CE & MAT e All Brazil por Material. "
+            (
+                "PASSO A PASSO aplicado com a Base GR do mês por SKU (entrada mais recente, sem intercompany; "
+                "Product Offer End Dt = Data de lançamento; Season/Year = coleção do pedido"
+                + ("" if collection_imported else " — coleção dos pedidos ainda não importada")
+                + "), "
+                if use_sku_rule
+                else "PASSO A PASSO aplicado com prioridade MB59 por CE & MAT, "
+            )
+            + f"posição {previous_period}{' (base mestre)' if previous_from_master else ''} por CE & MAT e All Brazil por Material. "
             "Campos sem correspondência foram marcados como Não localizado."
         ),
     }

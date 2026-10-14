@@ -22,7 +22,7 @@ O processo original dependia de planilhas grandes, fórmulas repetidas, buscas m
 
 1. Recebe ou extrai do SAP as bases ZMM119 e MB59 da competência.
 2. Valida o layout, o contrato de colunas, a empresa e a data-base antes de aceitar a carga.
-3. Consolida posição de estoque, movimentos, cadastro All Brazil, Mapping e posição anterior.
+3. Consolida posição de estoque, movimentos, cadastro All Brazil, Mapping, coleção dos pedidos e posição anterior.
 4. Aplica o PASSO A PASSO por campo para recuperar Product Offer End, Season e Year com rastreabilidade da fonte.
 5. Grava a base compilada localmente em DuckDB e Parquet para consultas rápidas e reprocessamento controlado.
 6. Disponibiliza uma interface web FastAPI com visão analítica, base detalhada, extrações, controles e Health Center.
@@ -107,6 +107,8 @@ Para o visual e a navegação dos slides, o sistema incorpora componentes do pro
 
 - Processamento local de grandes bases contábeis sem Streamlit ou BigQuery.
 - Extração assistida de ZMM119 e MB59 com SAP GUI já autenticado.
+- Importação da coleção dos pedidos pela Base GR ou pelo export da SQVI DOC_COMPRA, para associar Season e Year aos pedidos e apoiar o enriquecimento por SKU.
+- Tour guiado de primeiro acesso que apresenta as páginas e etapas do fluxo de fechamento.
 - Validação de layout, contratos de coluna, empresa, competência e data-base.
 - Enriquecimento por All Brazil, PASSO A PASSO, Mapping e posição anterior.
 - Reprocessamento dos joins sem reler a ZMM119 quando uma regra é corrigida.

@@ -285,6 +285,7 @@ def checklist(settings: Any, period: str) -> list[dict[str, Any]]:
     with connect(settings.path("database")) as connection:
         zmm = one(connection, "select imported_at from inventory_imports where period=?", [period])
         mb59 = one(connection, "select count(*) from mb59_imports where period=?", [period])
+        collection = one(connection, "select orders from gr_collection_imports where period=?", [period])
         all_brazil = one(connection, "select coverage_pct from all_brazil_imports where period=?", [period])
         pending = one(connection, """select count(*) from inventory_rows where period=? and
                                      (product_offer_end_date is null or season is null or year is null)""", [period]) if zmm else None
@@ -303,6 +304,9 @@ def checklist(settings: Any, period: str) -> list[dict[str, Any]]:
                   "detail": f"carregada em {when(zmm)}" if zmm else "extraia ou faça o upload da posição", "view": "sap"})
     items.append({"key": "mb59", "label": "MB59 (Base GR) da competência", "done": bool(mb59),
                   "detail": "carregada" if mb59 else "extraia a MB59 do mês", "view": "sap"})
+    items.append({"key": "gr_collection", "label": "Season e Year dos pedidos (Base GR / SQVI)", "done": collection is not None,
+                  "detail": f"{collection} pedidos com coleção" if collection is not None
+                  else "suba a Base GR ou o export da SQVI DOC_COMPRA", "view": "sap"})
     items.append({"key": "all_brazil", "label": "All Brazil do mês aplicada", "done": all_brazil is not None,
                   "detail": f"cobertura {float(all_brazil):.1f}%" if all_brazil is not None else "aguardando a base do mês",
                   "view": "all-brazil"})
@@ -345,7 +349,8 @@ def system_events(settings: Any, year: int, month: int, data: dict[str, dict[str
 
     with connect(settings.path("database")) as connection:
         for table, label, view in (("inventory_imports", "ZMM119", "sap"), ("mb59_imports", "MB59", "sap"),
-                                   ("all_brazil_imports", "All Brazil", "all-brazil")):
+                                   ("all_brazil_imports", "All Brazil", "all-brazil"),
+                                   ("gr_collection_imports", "Coleção dos pedidos", "sap")):
             try:
                 rows = connection.execute(f"select period, imported_at from {table}").fetchall()
             except Exception:  # noqa: BLE001

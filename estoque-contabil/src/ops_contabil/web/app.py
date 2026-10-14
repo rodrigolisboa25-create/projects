@@ -63,6 +63,7 @@ from ..mappings import (
 )
 from ..master_base import import_master_base
 from ..mb59 import (
+    ensure_mb59_schema,
     enrich_inventory_pass_step,
     import_mb59_xlsx,
     mb59_status,
@@ -120,6 +121,7 @@ from ..optimus_watch import (
     report_insights_event,
 )
 from .. import presentations as decks
+from ..presentation_data import dataset as presentation_dataset
 from ..periods import delete_compiled_period
 from ..sap_upload import (
     SAP_EXPORT_SEARCH_DAYS,
@@ -134,7 +136,9 @@ from ..sap_upload import (
     restore_previous,
     validate_sap_upload,
     wrong_transaction_message,
+    UPLOAD_LABELS,
 )
+from ..gr_collection import collection_status, identify_collection_file, import_collection, orders_for_sqvi
 from ..pipeline import run_pipeline
 from ..settings import Settings, load_settings
 from ..reporting import generate_report_html, generate_report_pdf
@@ -2432,7 +2436,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if transaction == "ZMM119":
             report_status("IMPORTING", "Importando a base ZMM119 para o Estoque Contábil.")
             return import_zmm119_xlsx(settings, period, target)
-        report_status("IMPORTING", "Importando a Base GR da MB59 para as consultas por CE & MAT.")
+        if transaction == "BASEGR":
+            return import_collection(settings, period, target, report=report_status)
+        report_status("IMPORTING", "Importando a Base GR da MB59 (entradas do mês por SKU e pedidos de compra).")
         return import_mb59_xlsx(settings, period, target)
 
     def enrich_sap_landing(
@@ -2460,6 +2466,22 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 f"pelo All Brazil ({enriched['coverage_pct']}%)."
                 f" {pass_step.get('message', 'PASSO A PASSO processado.')}"
             )
+        elif transaction == "BASEGR":
+            report_status("ENRICHING", "Aplicando Season e Year dos pedidos ao PASSO A PASSO da Base de Estoque.")
+            pass_step = enrich_inventory_pass_step(settings, period, month_end)
+            if pass_step.get("status") == "enriched":
+                apply_mapping_rules(settings, period, month_end)
+            ensure_not_cancelled()
+            coverage = loaded.get("coverage") or {}
+            kind = "Base GR" if loaded.get("kind") == "base_gr" else "export da SQVI DOC_COMPRA"
+            covered = (
+                f" {coverage['with_collection']} de {coverage['mb59_orders']} pedidos da MB59 do mês com coleção."
+                if coverage.get("mb59_orders") else " A MB59 do mês ainda não foi carregada."
+            )
+            message = (
+                f"Coleção dos pedidos carregada pela {kind} ({loaded['orders']} pedidos com Season e Year).{covered} "
+                f"{pass_step.get('message', '')}"
+            )
         else:
             report_status("ENRICHING", "Aplicando a prioridade PASSO A PASSO à Base de Estoque.")
             pass_step = enrich_inventory_pass_step(settings, period, month_end)
@@ -2468,7 +2490,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             ensure_not_cancelled()
             verb = "carregada por upload" if uploaded else "extraída"
             message = (
-                f"MB59 {verb} e indexada ({loaded['lookup_rows']} chaves CE & MAT). "
+                f"MB59 {verb} e indexada ({loaded['lookup_rows']} chaves CE & MAT, "
+                f"{loaded.get('sku_entries', 0)} SKUs com entrada no mês). "
                 f"{pass_step.get('message', '')}"
             )
         return {
@@ -3121,6 +3144,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         try:
             update(status="RUNNING", progress=10, message="Reunindo os números da competência…")
             facts = report_insights(settings, period)
+            # Gráficos livres (chart custom): o sistema consulta a Base de Estoque sob demanda, inclusive projeção.
+            facts["_loader"] = lambda query: presentation_dataset(settings, period, query)
             current = decks.load_version(settings, deck_id)[1] if revise else None
             if current is not None:  # versão salva com as regras de hoje: só o pedido conta como mudança
                 current = decks.normalize_spec(current, facts)
@@ -3362,7 +3387,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         finally:
             staging.unlink(missing_ok=True)
         if result.get("status") == "COMPLETED":
-            bridge_after_local_change([period], f"Upload {transaction}")
+            bridge_after_local_change([period], f"Upload {UPLOAD_LABELS.get(transaction, transaction)}")
         with SAP_JOB_LOCK:
             if result.get("status") != "COMPLETED":
                 result.setdefault("progress", SAP_JOBS[job_id].get("progress", 0))
@@ -3371,12 +3396,12 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 finished_at=datetime.now().isoformat(timespec="seconds"),
                 duration_seconds=round(time.time() - started, 1),
             )
-        notify_job_result("uploads", "sap", f"upload-{job_id}", f"Carga da planilha {transaction}", period, result)
+        notify_job_result("uploads", "sap", f"upload-{job_id}", f"Carga da planilha {UPLOAD_LABELS.get(transaction, transaction)}", period, result)
 
     @app.post("/api/sap/upload", dependencies=[Depends(require_token)])
     async def upload_sap_export(
         request: Request,
-        transaction: str = Query(pattern=r"^(ZMM119|MB59)$"),
+        transaction: str = Query(pattern=r"^(ZMM119|MB59|BASEGR)$"),
         period: str = Query(pattern=r"^\d{4}-\d{2}$"),
         file_name: str = Query(default="", max_length=260),
         as_of: date | None = Query(default=None),
@@ -3412,9 +3437,20 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 )
             # Guardrail imediato: planilha de outra transação (ou de outro sistema)
             # é recusada no envio, antes de criar o job ou tocar em qualquer dado.
-            detected = await run_in_threadpool(identify_sap_export, settings, staging)
-            if detected != transaction:
-                raise HTTPException(status_code=422, detail=wrong_transaction_message(transaction, detected))
+            if transaction == "BASEGR":
+                # A Base GR também tem as colunas da MB59: aqui vale a coleção dos pedidos (Base GR ou SQVI).
+                if await run_in_threadpool(identify_collection_file, staging) is None:
+                    raise HTTPException(
+                        status_code=422,
+                        detail=(
+                            "Este arquivo não é a Base GR (aba BASE com Pedido, Season e Year) nem o export da SQVI "
+                            "DOC_COMPRA (Doc.compra, Código coleção e Ano coleção). Nada foi alterado."
+                        ),
+                    )
+            else:
+                detected = await run_in_threadpool(identify_sap_export, settings, staging)
+                if detected != transaction:
+                    raise HTTPException(status_code=422, detail=wrong_transaction_message(transaction, detected))
         except BaseException:
             staging.unlink(missing_ok=True)
             raise
@@ -3438,6 +3474,34 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             daemon=True,
         ).start()
         return job
+
+    # Coleção (Season/Year) dos pedidos: situação da competência e lista de pedidos da MB59 para a SQVI.
+    @app.get("/api/sap/gr-collection/status", dependencies=[Depends(require_token)])
+    def get_gr_collection_status(period: str = Query(pattern=r"^\d{4}-\d{2}$")) -> dict[str, object]:
+        return collection_status(settings, period)
+
+    @app.get("/api/sap/month-status", dependencies=[Depends(require_token)])
+    def get_sap_month_status(period: str = Query(pattern=r"^\d{4}-\d{2}$")) -> dict[str, object]:
+        """Etapas do mês em Extrações SAP: quando a ZMM119 e a MB59 foram carregadas e a cobertura da coleção."""
+        with connect(settings.path("database")) as connection:
+            ensure_inventory_schema(connection)
+            ensure_mb59_schema(connection)
+            zmm = connection.execute("select max(imported_at) from inventory_imports where period=?", [period]).fetchone()[0]
+            mb59 = connection.execute("select max(imported_at) from mb59_imports where period=?", [period]).fetchone()[0]
+        collection = collection_status(settings, period)
+        stamp = lambda value: value.isoformat() if hasattr(value, "isoformat") else (str(value) if value else None)  # noqa: E731
+        return {
+            "period": period,
+            "zmm119": stamp(zmm),
+            "mb59": stamp(mb59),
+            "gr": {"imported": collection["imported"], "imported_at": collection.get("imported_at"),
+                   "pct": collection["coverage"]["pct"]},
+        }
+
+    @app.get("/api/sap/gr-collection/orders", dependencies=[Depends(require_token)])
+    def get_gr_collection_orders(period: str = Query(pattern=r"^\d{4}-\d{2}$")) -> dict[str, object]:
+        orders = orders_for_sqvi(settings, period)
+        return {"period": period, "count": len(orders), "orders": orders, "text": "\r\n".join(orders)}
 
     @app.get("/api/sap/jobs/{job_id}", dependencies=[Depends(require_token)])
     def get_sap_job(job_id: str) -> dict[str, object]:

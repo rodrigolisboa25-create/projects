@@ -35,8 +35,10 @@ from .mb59 import ensure_mb59_schema, ensure_pass_step_manual_schema, ensure_pas
 BRIDGE_TABLES = (
     "inventory_rows", "inventory_imports", "mb59_rows", "mb59_imports", "all_brazil_imports", "pass_step_sources",
     "master_base_rows", "master_base_imports", "pass_step_manual",
+    # Regra por SKU do PASSO A PASSO (entradas do mês, pedidos e coleção dos pedidos).
+    "mb59_sku_entries", "mb59_orders", "gr_collection_rows", "gr_collection_imports",
 )
-FRESHNESS_TABLES = ("inventory_imports", "mb59_imports", "all_brazil_imports")
+FRESHNESS_TABLES = ("inventory_imports", "mb59_imports", "all_brazil_imports", "gr_collection_imports")
 ROOT_SETTING = "bridge_root"
 STATE_SETTING = "bridge_state"
 DEFAULT_FOLDER_NAMES = ("Estoque_Cont",)

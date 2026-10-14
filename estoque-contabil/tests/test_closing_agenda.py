@@ -59,7 +59,7 @@ def test_page_routes_rules_tasks_and_calendar_export(env) -> None:  # noqa: F811
     client, csrf = client_for(ADMIN)
     headers = {"X-CSRF-Token": csrf}
     data = client.get("/api/closing/overview", params={"year": 2026, "month": 10}).json()
-    assert data["rule"] == agenda.DEFAULT_RULE and len(data["year_windows"]) == 12 and len(data["checklist"]) == 7
+    assert data["rule"] == agenda.DEFAULT_RULE and len(data["year_windows"]) == 12 and len(data["checklist"]) == 8
     assert [w["period"] for w in data["windows"]] == ["2026-09", "2026-10"]
 
     assert client.put("/api/closing/rule", headers=headers, json={"start": "last_day", "end_business_day": 2, "pre_alert_days": 5}).status_code == 200

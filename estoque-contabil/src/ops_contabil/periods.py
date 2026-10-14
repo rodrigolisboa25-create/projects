@@ -18,6 +18,10 @@ DIRECT_PERIOD_TABLES = (
     "mb59_imports",
     "all_brazil_imports",
     "pass_step_sources",
+    "mb59_sku_entries",
+    "mb59_orders",
+    "gr_collection_rows",
+    "gr_collection_imports",
 )
 RUN_CHILD_TABLES = ("source_files", "control_results", "accounting_insights")
 

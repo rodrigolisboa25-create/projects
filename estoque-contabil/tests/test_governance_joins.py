@@ -15,6 +15,7 @@ def test_structures_card_explains_every_join(env) -> None:  # noqa: F811
         "Posição de Estoque (ZMM119)",
         "All Brazil → Division, Origem e Lifecycle",
         "MB59 (PASSO A PASSO) → Season, Year e Product Offer End Dt",
+        "Base GR / SQVI DOC_COMPRA → Season e Year dos pedidos",
         "Mapping → Local, STATUS OPERAÇÃO, Lifecycle e AGING",
         "Campos calculados (sem join)",
     ]
@@ -24,8 +25,13 @@ def test_structures_card_explains_every_join(env) -> None:  # noqa: F811
     assert "Material da Base de Estoque (maiúsculas, sem espaços) = Material Nbr" in ab
     assert "Estilo-Cor (10 primeiros caracteres do Material) = Material Nbr" in ab and "nunca participa da chave" in ab
     mb = text["MB59 (PASSO A PASSO) → Season, Year e Product Offer End Dt"]
-    assert "1º MB59 da competência por CE & MAT" in mb and "2º Base de Estoque do mês anterior por CE & MAT" in mb
+    assert "1º Base GR do mês por SKU" in mb and "2º Base de Estoque do mês anterior por CE & MAT" in mb
+    assert "entrada mais recente" in mb and "intercompany" in mb and "coleção do pedido de compra" in mb
     assert "Collection Code → Season" in mb and "Collection Year → Year" in mb
+    gr = text["Base GR / SQVI DOC_COMPRA → Season e Year dos pedidos"]  # estrutura aceita do arquivo da etapa 3
+    assert "obrigatórias Material, Pedido, Season" in gr and "Doc.compra (ou Nº do documento de compras)" in gr
+    assert "Código coleção e Ano coleção" in gr and "aba PE" in gr and "Pedido, Season e Year não é reconhecida" in gr
+    assert items["Base GR / SQVI DOC_COMPRA → Season e Year dos pedidos"]["badge"] == "Pendente"
     mapping = text["Mapping → Local, STATUS OPERAÇÃO, Lifecycle e AGING"]
     assert "Centro da Base = Planta → Local" in mapping and "Days = data-base − Product Offer End Dt" in mapping
     assert items["All Brazil → Division, Origem e Lifecycle"]["badge"] == "Sem carga"  # competência sem All Brazil na base de teste

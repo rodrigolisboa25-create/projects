@@ -23,7 +23,9 @@ from .inventory import INVENTORY_COMPANY, _clean_value, _zmm119_positional_resol
 from .mb59 import _date, _text
 
 SAP_UPLOAD_MAX_BYTES = 500 * 1024 * 1024
-SAP_UPLOAD_TRANSACTIONS = ("ZMM119", "MB59")
+SAP_UPLOAD_TRANSACTIONS = ("ZMM119", "MB59", "BASEGR")
+# BASEGR: coleção (Season/Year) dos pedidos — a Base GR montada (aba BASE) ou o export da SQVI DOC_COMPRA.
+UPLOAD_LABELS = {"ZMM119": "ZMM119", "MB59": "MB59", "BASEGR": "Base GR / SQVI DOC_COMPRA"}
 
 
 def landing_target(settings: Any, transaction: str, period: str) -> Path:
@@ -92,6 +94,8 @@ def validate_sap_upload(settings: Any, transaction: str, period: str, path: Path
             "O arquivo enviado não é uma planilha XLSX válida. No SAP, exporte a grade "
             "no formato XLSX (Excel 2007 ou superior) e envie esse arquivo."
         )
+    if transaction == "BASEGR":
+        return _validate_collection(path)
     workbook = load_workbook(path, read_only=True, data_only=True)
     try:
         if transaction == "ZMM119":
@@ -99,6 +103,26 @@ def validate_sap_upload(settings: Any, transaction: str, period: str, path: Path
         return _validate_mb59(settings, period, workbook)
     finally:
         workbook.close()
+
+
+def _validate_collection(path: Path) -> dict[str, Any]:
+    """Reconhece a Base GR ou o export da SQVI; a leitura completa (e o resto da validação) ocorre na importação."""
+    from .gr_collection import _season_formula_by_sku, identify_collection_file
+
+    detected = identify_collection_file(path)
+    if detected is None:
+        raise ValueError(
+            "O arquivo não é a Base GR (aba BASE com Pedido, Season e Year) nem o export da SQVI DOC_COMPRA "
+            "(Doc.compra, Código coleção e Ano coleção). Nada foi alterado."
+        )
+    if detected["kind"] == "base_gr" and _season_formula_by_sku(
+        path, detected["sheet"], detected["header_row"], detected["positions"]["season"]
+    ):
+        raise ValueError(
+            "Na aba BASE deste arquivo, a Season foi buscada pelo SKU na aba PE, e não pelo pedido de compra na SQVI "
+            "DOC_COMPRA. Envie a Base GR com o PROCV da SQVI pelo pedido (ou o próprio export da SQVI). Nada foi alterado."
+        )
+    return {"transaction": "BASEGR", "kind": detected["kind"], "sheet": detected["sheet"]}
 
 
 def _validate_zmm119(workbook: Any) -> dict[str, Any]:

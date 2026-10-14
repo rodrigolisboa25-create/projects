@@ -159,7 +159,7 @@ def test_mb59_upload_is_indexed(env, tmp_path: Path) -> None:
     job = wait_job(client, upload(client, csrf, "MB59", "2026-09", source).json()["job_id"])
 
     assert job["status"] == "COMPLETED", job
-    assert "MB59 carregada por upload e indexada (4 chaves CE & MAT)" in job["message"]
+    assert "MB59 carregada por upload e indexada (4 chaves CE & MAT" in job["message"]
     with connect(database) as connection:
         assert connection.execute("select count(*) from mb59_rows where period='2026-09'").fetchone()[0] == 4
 

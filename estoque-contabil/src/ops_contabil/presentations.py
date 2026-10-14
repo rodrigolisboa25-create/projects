@@ -25,7 +25,9 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-ASSETS = Path(__file__).with_name("presentation_assets")
+from . import presentation_data as data_q
+
+ASSETS =Path(__file__).with_name("presentation_assets")
 FX_MODULES = ("_util", "constellation", "gradient-blob", "data-stream", "orbit-ring", "particle-burst")
 THEMES: dict[str, str] = {
     "estoque-contabil": "azul-marinho do Estoque Contábil, acentos ciano/lilás/laranja (padrão)",
@@ -55,15 +57,22 @@ CHARTS: dict[str, str] = {
     "pmm_division": "PMM analítico por divisão",
     "cost": "Composição do custo fiscal (FOB, II, Outros)",
     "origin": "Origem do material",
+    "custom": "Gráfico livre: qualquer recorte da Base de Estoque, inclusive projeção (campo data)",
 }
 KPIS: dict[str, str] = {
     "fiscal_value": "Valor fiscal",
     "free_quantity": "Utilização livre",
     "materials": "Materiais",
     "pmm": "Média PMM",
-    "coverage": "Cobertura All Brazil",
     "over_12_months": "Estoque com mais de 12 meses",
 }
+# A Visão e relatórios trocou o card Cobertura All Brazil por Acima de 12 meses: a apresentação segue a página.
+KPI_ALIASES = {"coverage": "over_12_months", "all_brazil_coverage": "over_12_months"}
+
+
+def _kpi_id(value: Any) -> str | None:
+    kpi = KPI_ALIASES.get(str(value or ""), value)
+    return kpi if kpi in KPIS else None
 TABLES: dict[str, str] = {
     "division": "Divisões: valor, participação, variação e PMM",
     "location": "Locais de estoque: valor e participação",
@@ -139,7 +148,8 @@ def catalog() -> dict[str, Any]:
             "cover": "capa: kicker, title, subtitle, tags (até 4 rótulos curtos)",
             "agenda": "roteiro: title, items (3 a 6 tópicos)",
             "kpis": "indicadores: title, kpis (2 a 4 ids de kpis), insight",
-            "chart": "gráfico do sistema: title (frase-mensagem), chart (id), insight, points (até 3 frases curtas)",
+            "chart": "gráfico do sistema: title (frase-mensagem), chart (id), insight, points (até 3 frases curtas); "
+                     "chart custom + data = qualquer recorte da base, inclusive projeção",
             "bullets": "lista numerada: title, lead (frase de apoio), items (até 5)",
             "columns": "3 colunas: title, columns [{label, title, text}] (até 3)",
             "table": "tabela do sistema: title, table (id), insight",
@@ -149,6 +159,9 @@ def catalog() -> dict[str, Any]:
             "closing": "encerramento: title, subtitle",
         },
         "charts": CHARTS,
+        "data": {"dimensions": {key: label for key, (_, label) in data_q.DIMENSIONS.items()},
+                 "measures": {key: value[2] for key, value in data_q.MEASURES.items()},
+                 "projection_months": data_q.MAX_PROJECTION},
         "kpis": KPIS,
         "tables": TABLES,
         "flows": FLOWS,
@@ -338,12 +351,20 @@ def normalize_spec(spec: Any, facts: dict[str, Any]) -> dict[str, Any]:
         elif layout == "agenda":
             slide.update(items=_items(raw.get("items"), 6, 90))
         elif layout == "kpis":
-            ids = [item for item in (raw.get("kpis") or []) if item in KPIS][:4]
+            ids = list(dict.fromkeys(kpi for kpi in map(_kpi_id, raw.get("kpis") or []) if kpi))[:4]
             slide.update(kpis=ids or ["fiscal_value", "free_quantity", "pmm", "materials"], insight=_clip(raw.get("insight"), 220))
         elif layout == "chart":
-            if raw.get("chart") not in CHARTS:
+            chart = raw.get("chart")
+            if chart == "custom" or (chart not in CHARTS and isinstance(raw.get("data"), dict)):
+                query = data_q.clean_query(raw.get("data"))
+                if query is None:  # dimensão/medida fora da lista: o slide sai, como um gráfico inexistente
+                    continue
+                slide.update(chart="custom", data=query)
+            elif chart not in CHARTS:
                 continue
-            slide.update(chart=raw["chart"], insight=_clip(raw.get("insight"), 260), points=_items(raw.get("points"), 3, 140))
+            else:
+                slide["chart"] = chart
+            slide.update(insight=_clip(raw.get("insight"), 260), points=_items(raw.get("points"), 3, 140))
         elif layout == "bullets":
             slide.update(lead=_clip(raw.get("lead"), 200), items=_items(raw.get("items"), 5, 150))
         elif layout == "columns":
@@ -365,8 +386,18 @@ def normalize_spec(spec: Any, facts: dict[str, Any]) -> dict[str, Any]:
                 continue
             slide.update(flow=raw["flow"], insight=_clip(raw.get("insight"), 260))
         elif layout == "highlight":
-            slide.update(kpi=raw.get("kpi") if raw.get("kpi") in KPIS else None,
+            slide.update(kpi=_kpi_id(raw.get("kpi")),
                          statement=_clip(raw.get("statement"), 40), caption=_clip(raw.get("caption"), 200))
+        if layout in ("kpis", "highlight") and (raw.get("kpi") in KPI_ALIASES or set(raw.get("kpis") or []) & set(KPI_ALIASES)):
+            # Card trocado (Cobertura All Brazil → Acima de 12 meses): texto que falava da cobertura sai junto.
+            mentions = lambda text: bool(re.search(r"cobertura|all\s*brazil", str(text or ""), re.I))  # noqa: E731
+            if layout == "highlight":
+                if mentions(slide["title"]):
+                    slide["title"] = "Estoque recebido com mais de 12 meses"
+                if mentions(slide["caption"]) or not slide["caption"]:
+                    slide["caption"] = kpi_value("over_12_months", facts)[1]
+            elif mentions(slide.get("insight")):
+                slide["insight"] = ""
         elif layout == "closing":
             slide.update(subtitle=_clip(raw.get("subtitle"), 180))
         if not slide["title"] and layout not in ("highlight",):
@@ -393,8 +424,54 @@ def normalize_spec(spec: Any, facts: dict[str, Any]) -> dict[str, Any]:
     return clean
 
 
-def chart_story(chart: str, facts: dict[str, Any]) -> tuple[str, str, list[str]]:
+def _dataset(facts: dict[str, Any], query: dict[str, Any] | None) -> dict[str, Any]:
+    """Dados do gráfico livre, consultados uma vez por apresentação (facts["_loader"] é ligado pelo app)."""
+    empty = {"title": data_q.describe(query) if query else CHARTS["custom"], "unit": "brl", "items": [], "note": "",
+             "measure": "", "dimension": ""}
+    if not query:
+        return empty
+    cache = facts.setdefault("_datasets", {})
+    key = data_q.query_key(query)
+    if key not in cache:
+        loader = facts.get("_loader")
+        try:
+            cache[key] = loader(query) if callable(loader) else empty
+        except Exception:  # noqa: BLE001 - base indisponível: o slide mostra "Sem dados"
+            cache[key] = empty
+    return cache[key]
+
+
+def custom_story(facts: dict[str, Any], query: dict[str, Any] | None) -> tuple[str, str, list[str]]:
+    ds = _dataset(facts, query)
+    items, unit, measure = ds["items"], ds["unit"], ds.get("measure") or "Valor"
+    if not items:
+        return ds["title"], ds.get("note") or "Sem dados para este recorte na competência.", []
+    if query and query["dimension"] == "period":
+        real = [item for item in items if not item.get("projected")]
+        future = [item for item in items if item.get("projected")]
+        if future:
+            last = future[-1]
+            return (f"{measure} projetado em {_fmt(last['value'], unit)} em {period_label(last['period'])}",
+                    ds.get("note") or "",
+                    [f"{period_short(item['period'])} (projeção): {_fmt(item['value'], unit)}" for item in future[:3]])
+        first, last = real[0], real[-1]
+        change = f" ({pct(100 * (last['value'] - first['value']) / first['value'], True)})" if first["value"] else ""
+        return (f"{measure}: de {_fmt(first['value'], unit)} em {period_short(first['period'])} para "
+                f"{_fmt(last['value'], unit)} em {period_short(last['period'])}{change}", ds.get("note") or "",
+                [f"{period_short(item['period'])}: {_fmt(item['value'], unit)}" for item in real[-3:]])
+    top = items[0]
+    share = f" ({pct(top['share'])} do total)" if top.get("share") is not None else ""
+    return (f"{_clip(top['label'], 40)} lidera em {measure.lower()} com {_fmt(top['value'], unit)}{share}",
+            f"{ds['title']} · competência {period_label(facts['period'])}.",
+            [f"{_clip(item['label'], 40)}: {_fmt(item['value'], unit)}" + (f" ({pct(item['variation'], True)})"
+                                                                         if item.get("variation") is not None else "")
+             for item in items[:3]])
+
+
+def chart_story(chart: str, facts: dict[str, Any], data: dict[str, Any] | None = None) -> tuple[str, str, list[str]]:
     """Título-mensagem, insight e tópicos de um gráfico escritos só com os fatos (sem o agente)."""
+    if chart == "custom":
+        return custom_story(facts, data)
     k, charts = facts["kpis"], facts["charts"]
     variation = k.get("variation_pct_vs_previous") or {}
     previous = f" vs {period_short(facts['previous_period'])}" if facts.get("previous_period") else ""
@@ -504,10 +581,12 @@ def auto_texts(spec: dict[str, Any], facts: dict[str, Any]) -> None:
         elif layout == "agenda" and not slide.get("items"):
             slide["items"] = list(dict.fromkeys(t for t in topics if t))[:6] or ["Visão geral", "Aging", "Divisões", "Pontos de atenção"]
         elif layout == "kpis" and not slide.get("insight"):
-            slide["insight"] = (f"{_num(k['materials'])} materiais na competência; cobertura All Brazil de "
-                                f"{pct(k['all_brazil_coverage_pct'])}.")
+            risk = facts["charts"]["Risco de obsolescência"]["all_divisions_total"]
+            slide["insight"] = (f"{_num(k['materials'])} materiais na competência; {brl(risk['over_12_months_value'])} acima de "
+                                f"12 meses ({pct(risk['over_12_months_pct_of_received'])} do recebido).")
         elif layout == "chart" and slide.get("chart") in CHARTS:
-            story = dict(zip(("title", "insight", "points"), chart_story(slide["chart"], facts)))
+            data = data_q.clean_query(slide.get("data")) if slide.get("chart") == "custom" else None
+            story = dict(zip(("title", "insight", "points"), chart_story(slide["chart"], facts, data)))
             for name, value in story.items():
                 if not slide.get(name):
                     slide[name] = value
@@ -584,8 +663,8 @@ def facts_brief(facts: dict[str, Any]) -> str:
     lines = [
         f"Competência {period_label(facts['period'])}" + (f"; anterior {period_label(previous)}" if previous else ""),
         f"KPIs: valor fiscal {brl(k['fiscal_value'])}{change('fiscal_value')}; utilização livre {_num(k['free_quantity'])}"
-        f"{change('free_quantity')}; materiais {_num(k['materials'])}; PMM {brl(k['pmm'])}{change('pmm')}; cobertura All Brazil "
-        f"{pct(k['all_brazil_coverage_pct'])}; acima de 12 meses {brl(risk['all_divisions_total']['over_12_months_value'])} "
+        f"{change('free_quantity')}; materiais {_num(k['materials'])}; PMM {brl(k['pmm'])}{change('pmm')}; "
+        f"acima de 12 meses {brl(risk['all_divisions_total']['over_12_months_value'])} "
         f"({pct(risk['all_divisions_total']['over_12_months_pct_of_received'])} do recebido)",
         "Aging (faixa: valor, % do total, Active/Inactive): " + "; ".join(
             f"{_bucket(item)} {brl(item['value'])} {pct(item['share_pct'])} A {brl(item['by_lifecycle'].get('Active', 0))}"
@@ -636,7 +715,21 @@ DETAIL_CHUNK = 2  # slides por chamada de textos (3 já beirava os 20 s do gatew
 def _ids_block() -> str:
     return (f"charts: {', '.join(CHARTS)}\nkpis: {', '.join(KPIS)}\ntables: {', '.join(TABLES)}\n"
             "flows: aging_flow (Futures/recebido → até/acima de 12 meses → Active/Inactive)\n"
-            f"themes: {', '.join(THEMES)} (padrão {DEFAULT_THEME})\n")
+            f"themes: {', '.join(THEMES)} (padrão {DEFAULT_THEME})\n" + _DATA_HELP)
+
+
+# Gráfico livre: o agente descreve o recorte; o sistema consulta a Base de Estoque (presentation_data.py).
+_DATA_HELP = (
+    "chart custom + data = QUALQUER recorte da Base de Estoque, inclusive projeção: "
+    '"data":{"dimension":' + "|".join(data_q.DIMENSIONS) + ',"measure":' + "|".join(data_q.MEASURES)
+    + ',"filters":{dimensão:[rótulos]},"top":1-20,"compare":true (variação vs mês anterior),'
+    '"periods":2-18 (histórico),"projection":1-6 (meses projetados por tendência linear; use dimension period),"title"?}. '
+    "Ex.: projeção de 3 meses do valor fiscal = {\"dimension\":\"period\",\"measure\":\"fiscal_value\",\"projection\":3}; "
+    "top 10 estilos = {\"dimension\":\"style\",\"top\":10}; % acima de 12 meses por local = "
+    "{\"dimension\":\"location\",\"measure\":\"over_12_pct\"}. Nunca diga que não consegue incluir um dado da base, "
+    "uma comparação ou uma projeção: monte um chart custom. Ao listar opções de visualização, inclua também ideias custom "
+    "(projeção, tendência, top estilos/materiais, centros, Futures, PMM por season etc.).\n"
+)
 
 
 def _request_block(request: str | None) -> str:
@@ -651,7 +744,7 @@ def outline_prompt(facts: dict[str, Any], request: str | None) -> str:
         "[TAREFA_APRESENTACAO] etapa 1/2: ESTRUTURA\n"
         "Escolha a estrutura de uma apresentação executiva animada sobre a posição contábil do estoque. " + _JSON_ONLY + "\n"
         'Formato: {"title":..,"subtitle":..,"theme":..,"slides":[{"l":layout,"t":título,"k":"TEMA do kicker (1-2 palavras)",'
-        '"id":id do chart/table/flow/kpi do highlight,"kpis":[ids, só no layout kpis]}]}\n'
+        '"id":id do chart/table/flow/kpi do highlight,"kpis":[ids, só no layout kpis],"data":{..} só no chart custom}]}\n'
         "Layouts: cover, agenda, section (abre um bloco), kpis (2-4), chart, flow, highlight (um kpi em destaque), "
         "columns (3 pontos de atenção ou próximos passos), bullets, table, closing.\n" + _ids_block() +
         "9 a 13 slides; cover primeiro e closing último; abra os blocos com section; use aging_flow ao falar de aging; "
@@ -662,6 +755,8 @@ def outline_prompt(facts: dict[str, Any], request: str | None) -> str:
 
 def _slide_line(number: int, slide: dict[str, Any]) -> str:
     ref = slide.get("chart") or slide.get("table") or slide.get("flow") or slide.get("kpi") or ",".join(slide.get("kpis") or [])
+    if slide.get("chart") == "custom" and isinstance(slide.get("data"), dict):
+        ref += " " + json.dumps(slide["data"], ensure_ascii=False, separators=(",", ":"))
     return f"{number}: {slide['layout']}{' ' + ref if ref else ''} | {slide.get('title') or ''}"
 
 
@@ -692,7 +787,7 @@ def slide_targets(slide: dict[str, Any], facts: dict[str, Any]) -> str:
         names += [f"kpi:{kpi}" for kpi in slide.get("kpis") or []] + ["insight"]
     elif layout == "chart":
         names += ["insight", "point:1-3", "chart"]
-        model = chart_model(slide["chart"], facts)
+        model = chart_model(slide["chart"], facts, slide.get("data"))
         if model["kind"] == "matrix" and (slide.get("chart_opts") or {}).get("type", "matrix") == "matrix":
             names += [f"cell:<ano>|<season> (anos {', '.join(y['year'] for y in model['years'])}; seasons {', '.join(model['seasons'])})",
                       "total:<ano>", "row:<ano>"]
@@ -786,7 +881,9 @@ def patch_prompt(facts: dict[str, Any], current: dict[str, Any], request: str, o
         "Você pode mudar tudo na FORMA: textos, títulos, slides (incluir, excluir, mover), trocar/incluir/retirar gráficos, "
         "tabelas e KPIs, tema, cores, negrito, tamanho, destaque, ocultar elementos, tipo/ordem/top/filtro do gráfico e formato "
         "dos números. Os VALORES dos números vêm do sistema e NUNCA podem ser alterados nem digitados: se pedirem para mudar "
-        "um valor, devolva ops vazio e explique em note. note = frase curta ao usuário sobre o que foi feito.\n"
+        "um valor, devolva ops vazio e explique em note. note = frase curta ao usuário sobre o que foi feito. Pedido de "
+        "dado novo, recorte, comparação, tendência ou projeção NÃO é mudar valor: inclua (add) ou troque (edit) um slide "
+        "chart com chart custom e data (o sistema calcula os números).\n"
         'Formato: {"title"?,"subtitle"?,"theme"?,"note"?,"ask"?,"ops":[...]}. Operações:\n'
         '{"op":"edit","n":3,"set":{campos do layout; layout/chart/table/kpis também}}\n'
         '{"op":"del","n":5} | {"op":"move","n":6,"after":2} | {"op":"add","after":4,"slide":{"layout":..,"kicker":"NN / TEMA","title":..,campos}}\n'
@@ -809,7 +906,7 @@ def patch_prompt(facts: dict[str, Any], current: dict[str, Any], request: str, o
         "escolha, pergunte uma só (a mais importante) e preencha o resto. Nunca \"troque\" para o mesmo tipo/cor que já está.\n"
         "n e after = números do ROTEIRO_ATUAL (after 0 = início); n = 0 em style/chart/number = todos os slides. Cores: #hex ou "
         f"{', '.join(k for k in COLOR_NAMES if '-' not in k or k.startswith('azul'))}. Campos por layout: kpis{{kpis,insight}} "
-        "chart{chart,insight,points} flow{flow,insight} table{table,insight} highlight{kpi,caption} " + _FIELDS + "\n"
+        "chart{chart,data (só chart custom),insight,points} flow{flow,insight} table{table,insight} highlight{kpi,caption} " + _FIELDS + "\n"
         + _ids_block() + _RULES + "\n"
         f'[ROTEIRO_ATUAL]\ntitle: {current["title"]} | subtitle: {current["subtitle"]} | theme: {current["theme"]}'
         + (f" | geral: {json.dumps(deck_level, ensure_ascii=False, separators=(',', ':'))}" if deck_level else "")
@@ -844,6 +941,8 @@ def outline_to_spec(outline: dict[str, Any]) -> dict[str, Any]:
         slide: dict[str, Any] = {"layout": layout, "title": raw.get("t"), "kicker": raw.get("k")}
         if layout == "chart":
             slide["chart"] = ref
+            if isinstance(raw.get("data"), dict):
+                slide["data"] = raw["data"]
         elif layout == "table":
             slide["table"] = ref
         elif layout == "flow":
@@ -1007,12 +1106,43 @@ def _fmt(value: float, unit: str) -> str:
     return brl(value) if unit == "brl" else pct(value) if unit == "pct" else _num(value)
 
 
-def chart_model(chart: str, facts: dict[str, Any]) -> dict[str, Any]:
+def chart_title(chart: str, facts: dict[str, Any], data: dict[str, Any] | None = None) -> str:
+    if chart == "custom":
+        return _dataset(facts, data_q.clean_query(data))["title"]
+    return CHARTS.get(chart, "").split(" (")[0]
+
+
+def chart_model(chart: str, facts: dict[str, Any], data: dict[str, Any] | None = None) -> dict[str, Any]:
     """Itens de um gráfico (rótulo, valor e unidade) com os números do sistema; a forma é decidida em chart_html."""
     charts = facts["charts"]
     total = facts["kpis"]["fiscal_value"] or 1
     model: dict[str, Any] = {"kind": "bars", "row": 56, "share": True, "variation": False, "legend": None}
-    if chart == "lifecycle_aging":
+    if chart == "custom":
+        query = data_q.clean_query(data)
+        ds = _dataset(facts, query)
+        unit = ds["unit"]
+        if query and query["dimension"] == "period":
+            # Série mensal: projeção em outra cor e marcada "proj." (estimativa por tendência, não número contábil).
+            model.update(kind="columns", share=False, legend=[("Realizado", "url(#hpGrad)"), ("Projeção", "var(--warn)")]
+                         if any(item.get("projected") for item in ds["items"]) else None, items=[
+                {"label": period_short(item["period"]) + (" proj." if item.get("projected") else ""), "value": item["value"],
+                 "unit": unit, **({"color": "var(--warn)"} if item.get("projected") else {}),
+                 "detail": (f"{period_label(item['period'])}: {ds['measure']} "
+                            + ("projetado " if item.get("projected") else "") + _fmt(item["value"], unit)
+                            + (" · " + ds["note"] if item.get("projected") and ds.get("note") else ""))}
+                for item in ds["items"]])
+        else:
+            model.update(row=56 if len(ds["items"]) <= 8 else 40, share=ds.get("total") is not None,
+                         variation=bool(query and query.get("compare")), items=[
+                {"label": item["label"], "value": item["value"], "unit": unit, "share": item.get("share"),
+                 "variation": item.get("variation"),
+                 "detail": f"{item['label']}: {ds['measure']} {_fmt(item['value'], unit)}"
+                           + (f" · {pct(item['share'])} do total" if item.get("share") is not None else "")
+                           + (f" · {pct(item['variation'], True)} vs {period_short(ds['previous_period'])}"
+                              if item.get("variation") is not None and ds.get("previous_period") else "")}
+                for item in ds["items"]])
+        model.update(title=ds["title"], note=ds.get("note") or "")
+    elif chart == "lifecycle_aging":
         aging = charts["Lifecycle × Aging"]["by_aging_bucket"]
         names = sorted({name for item in aging for name in item["by_lifecycle"]}, key=lambda name: (name != "Active", name))
         colors = {name: ("var(--accent)" if name == "Active" else "var(--accent-3)" if name == "Inactive" else "var(--text-3)") for name in names}
@@ -1143,7 +1273,8 @@ def _hbars(items: list[dict[str, Any]], *, width: int = 1060, row: int = 46, lab
     return "".join(parts)
 
 
-def _columns(items: list[dict[str, Any]], *, width: int = 1060, height: int = 470, line_name: str = "") -> str:
+def _columns(items: list[dict[str, Any]], *, width: int = 1060, height: int = 470, line_name: str = "",
+             legend: list[tuple[str, str]] | None = None) -> str:
     """Colunas com linha opcional (ex.: PMM) desenhada por cima numa faixa própria; colunas clicáveis."""
     if not items:
         return '<p class="dim">Sem dados para este gráfico.</p>'
@@ -1175,6 +1306,14 @@ def _columns(items: list[dict[str, Any]], *, width: int = 1060, height: int = 47
             parts.append(f'<circle cx="{x:.1f}" cy="{y:.1f}" r="7" class="hp-dot hp-fade" style="animation-delay:{delay}"/>'
                          f'<text x="{x:.1f}" y="{y - 16:.1f}" text-anchor="middle" class="hp-line-label hp-fade" '
                          f'style="animation-delay:{delay}">{esc(f"{line_name} {brl(item["line"])}")}</text>')
+        parts.append("</g>")
+    elif legend:  # ex.: Realizado × Projeção
+        x = width - 20 - sum(30 + 9 * len(name) for name, _ in legend)
+        parts.append(f"<g{_ref('legend')}>")
+        for name, color in legend:
+            parts.append(f'<rect x="{x}" y="4" width="14" height="14" rx="3" fill="{color}"/>'
+                         f'<text x="{x + 20}" y="16" class="hp-legend">{esc(name)}</text>')
+            x += 30 + 9 * len(name)
         parts.append("</g>")
     narrow = slot < 170
     for index, item in enumerate(items):
@@ -1246,10 +1385,10 @@ def _matrix(model: dict[str, Any], items: list[dict[str, Any]]) -> str:
     return f'<table class="hp-matrix"><thead><tr><th>Ano</th>{head}<th>Total</th></tr></thead><tbody>{"".join(rows)}</tbody></table>'
 
 
-def chart_html(chart: str, facts: dict[str, Any], opts: dict[str, Any] | None = None) -> str:
+def chart_html(chart: str, facts: dict[str, Any], opts: dict[str, Any] | None = None, data: dict[str, Any] | None = None) -> str:
     """Desenha o gráfico com os valores do sistema e as opções de forma (tipo, ordem, top, ocultar, destacar, cores)."""
     opts = opts or {}
-    model = chart_model(chart, facts)
+    model = chart_model(chart, facts, data)
     items = [dict(item) for item in model["items"]]
     if opts.get("only"):
         items = [item for item in items if _matches(str(item["label"]), opts["only"])]
@@ -1290,13 +1429,14 @@ def chart_html(chart: str, facts: dict[str, Any], opts: dict[str, Any] | None = 
     if kind == "matrix":
         return _matrix(model, items)
     if kind == "columns":
-        return _columns(items, line_name=model.get("line_name", "") if model["kind"] == "columns" else "")
+        return _columns(items, line_name=model.get("line_name", "") if model["kind"] == "columns" else "",
+                        legend=model["legend"] if chart == "custom" else None)
     if kind == "donut":
         for item in items:
             item["display"] = _display(item, False, show_variation) if opts.get("values", True) else ""
         return _donut(items)
     if kind == "table":
-        return _item_table(items, CHARTS.get(chart, "").split(" (")[0])
+        return _item_table(items, model.get("title") or CHARTS.get(chart, "").split(" (")[0])
     return _hbars(items, legend=legend, row=model["row"])
 
 # Fluxo do aging (layout "flow"): blocos posicionados num quadro 1700×610, ligações em curva com espessura proporcional
@@ -1387,8 +1527,6 @@ def kpi_value(kpi: str, facts: dict[str, Any]) -> tuple[str, str]:
         return _num(k["materials"]), "SKUs distintos"
     if kpi == "pmm":
         return brl(k["pmm"]), (f"{pct(variation.get('pmm'), True)}{previous}" if variation.get("pmm") is not None else "Vlr Tot Fisc ÷ quantidade livre")
-    if kpi == "coverage":
-        return pct(k["all_brazil_coverage_pct"]), "registros com Division"
     if kpi == "over_12_months":
         return brl(risk["over_12_months_value"]), f"{pct(risk['over_12_months_pct_of_received'])} do recebido"
     return "—", ""
@@ -1400,7 +1538,7 @@ def kpi_number(kpi: str, facts: dict[str, Any]) -> tuple[float, str] | None:
     risk = facts["charts"]["Risco de obsolescência"]["all_divisions_total"]
     return {
         "fiscal_value": (k["fiscal_value"], "brl"), "free_quantity": (k["free_quantity"], "num"), "materials": (k["materials"], "num"),
-        "pmm": (k["pmm"], "brl"), "coverage": (k["all_brazil_coverage_pct"], "pct"), "over_12_months": (risk["over_12_months_value"], "brl"),
+        "pmm": (k["pmm"], "brl"), "over_12_months": (risk["over_12_months_value"], "brl"),
     }.get(kpi)
 
 
@@ -1530,12 +1668,12 @@ def _render_slide(slide: dict[str, Any], index: int, total: int, spec: dict[str,
         return _slide(_head(slide) + f'<div class="grid g{len(cards)} hp-kpis anim-stagger-list" data-anim-target>{"".join(cards)}</div>{insight}',
                       index, total, footer, notes, title=slide["title"])
     if layout == "chart":
-        chart = chart_html(slide["chart"], facts, slide.get("chart_opts"))
+        chart = chart_html(slide["chart"], facts, slide.get("chart_opts"), slide.get("data"))
         points = "".join(f"<li{_ref(f'point:{i}')}>{esc(point)}</li>" for i, point in enumerate(slide.get("points") or [], 1))
         if not slide.get("insight") and not points:  # sem texto de apoio: o gráfico ocupa a largura toda
             return _slide(_head(slide) + f'<div class="hp-chart-wide hp-pickable" data-anim="fade-up"{_ref("chart")}>{chart}</div>'
                           + _detail(), index, total, footer, notes, title=slide["title"])
-        side = (f'<aside class="hp-side" data-anim="fade-left"><small>{esc(CHARTS[slide["chart"]].split(" (")[0])}</small>'
+        side = (f'<aside class="hp-side" data-anim="fade-left"><small>{esc(chart_title(slide["chart"], facts, slide.get("data")))}</small>'
                 + (f'<p{_ref("insight")}>{esc(slide["insight"])}</p>' if slide.get("insight") else "")
                 + (f'<ul>{points}</ul>' if points else "") + _detail() + "</aside>")
         return _slide(_head(slide) + f'<div class="hp-chart-row"><div class="hp-chart-box hp-pickable" data-anim="fade-up"{_ref("chart")}>'

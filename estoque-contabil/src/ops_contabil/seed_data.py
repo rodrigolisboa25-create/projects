@@ -207,8 +207,9 @@ def _local_state(database: Path) -> dict[str, Any]:
 # Tabelas com dados de uma competência. Numa atualização, cada competência do
 # pacote substitui a local somente se for nova ou mais recente; o resto do banco
 # (usuários, identidades, preferências, Mapping, auditoria) nunca é tocado.
-PERIOD_TABLES = ("inventory_rows", "inventory_imports", "mb59_rows", "mb59_imports", "all_brazil_imports")
-FRESHNESS_TABLES = ("inventory_imports", "mb59_imports", "all_brazil_imports")
+PERIOD_TABLES = ("inventory_rows", "inventory_imports", "mb59_rows", "mb59_imports", "all_brazil_imports",
+                 "mb59_sku_entries", "mb59_orders", "gr_collection_rows", "gr_collection_imports")
+FRESHNESS_TABLES = ("inventory_imports", "mb59_imports", "all_brazil_imports", "gr_collection_imports")
 UPDATE_BACKUP_NAME = "ops_contabil.antes-da-atualizacao.duckdb"
 
 
