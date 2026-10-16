@@ -22,6 +22,7 @@ DIRECT_PERIOD_TABLES = (
     "mb59_orders",
     "gr_collection_rows",
     "gr_collection_imports",
+    "mb59_material_entries",
 )
 RUN_CHILD_TABLES = ("source_files", "control_results", "accounting_insights")
 

@@ -25,7 +25,7 @@ WATCH_SEEN_KEY = "optimus_watch_seen"
 IGNORED_HEALTH = {"slides", "permissions"}
 
 ALL_BRAZIL_CAUSE = "material sem correspondência no All Brazil do mês (nem pelo Material completo, nem pelo Estilo-Cor de 10 caracteres)"
-PASS_STEP_CAUSE = "sem valor na MB59 da competência (CE & MAT), na posição do mês anterior e no All Brazil"
+PASS_STEP_CAUSE = "sem valor na Base GR/MB59 da competência, na posição do mês anterior e no All Brazil"
 GAP_FIELDS: tuple[tuple[str, str, str, str], ...] = (
     ("division_description", "Division Description", "All Brazil", ALL_BRAZIL_CAUSE),
     ("material_origin", "Material Origin", "All Brazil", ALL_BRAZIL_CAUSE),

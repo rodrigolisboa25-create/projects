@@ -99,21 +99,25 @@ def test_sku_rule_uses_latest_entry_without_intercompany_and_the_order_collectio
     assert loaded["sku_entries"] == 2 and loaded["orders"] == 5 and loaded["intercompany_orders"] == 2
     assert orders_for_sqvi(settings, "2026-09") == ["4700000003", "4800000001", "4800000002"]
 
-    # Sem a coleção: a data já vem da Base GR; Season/Year seguem para o mês anterior.
+    # Sem a coleção: a data já vem da Base GR (primeira entrada do Material); Season/Year seguem para o mês anterior.
     result = enrich_inventory_pass_step(settings, "2026-09", date(2026, 9, 30))
     assert result["pass_step_rule"] == "sku" and result["gr_collection_imported"] is False
+    assert result["offer_season_rule"] == "material"
     rows = position(database)
-    assert rows["AAA111-001-S"][0] == date(2026, 9, 20)  # SKU (tamanho diferente) e a entrada mais recente (outro centro)
-    assert rows["AAA111-001-S"][1:3] == ("SP", 2025)  # coleção ainda do mês anterior
+    assert rows["BBB222-002-M"][0] == date(2026, 9, 10)  # primeira entrada do Material no arquivo (mesmo Material, qualquer centro)
+    # O tamanho S não teve entrada no mês: nada vem de outro tamanho do mesmo modelo (PROCV pelo Material).
+    assert rows["AAA111-001-S"][:3] == (date(2025, 3, 1), "SP", 2025)
 
     summary = import_collection(settings, "2026-09", file, imported_by=ADMIN)
     assert summary["kind"] == "base_gr" and summary["orders"] == 3 and summary["intercompany_lines"] == 2
     assert summary["coverage"]["pct"] == 100.0
     enrich_inventory_pass_step(settings, "2026-09", date(2026, 9, 30))
     rows = position(database)
-    assert rows["AAA111-001-S"] == (date(2026, 9, 20), "HO", 2026, "MB59")
-    # A entrada intercompany mais nova (25/09) é ignorada: vale a de 10/09 do pedido 4700000003.
-    assert rows["BBB222-002-M"] == (date(2026, 9, 10), "SU", 2026, "MB59")
+    # Tudo pelo Material (como no fechamento): o tamanho S não teve entrada no mês, então fica com o mês anterior.
+    assert rows["AAA111-001-S"] == (date(2025, 3, 1), "SP", 2025, "Mês anterior (2026-08)")
+    # A entrada intercompany mais nova (25/09) é ignorada: vale a de 10/09 do pedido 4700000003. Esse pedido é
+    # nacional (47…), então o Year não vem dele (só pedidos de importação) e, sem mês anterior nem All Brazil, fica vazio.
+    assert rows["BBB222-002-M"] == (date(2026, 9, 10), "SU", None, "MB59")
     # Só entrada intercompany no mês: vai para o mês anterior (por CE & MAT).
     assert rows["CCC333-003-L"][1:3] == ("SP", 2025) and rows["CCC333-003-L"][3].startswith("Mês anterior")
     assert rows["ZZZ999-009-M"][3] == "Não localizado"
@@ -210,7 +214,7 @@ def test_old_month_mb59_is_prepared_when_the_collection_arrives(env, tmp_path) -
     summary = import_collection(settings, "2026-09", file)
     assert summary["mb59_prepared"] is True and summary["coverage"]["with_collection"] == 3
     enrich_inventory_pass_step(settings, "2026-09", date(2026, 9, 30))
-    assert position(database)["AAA111-001-S"] == (date(2026, 9, 20), "HO", 2026, "MB59")
+    assert position(database)["AAA111-001-S"] == (date(2025, 3, 1), "SP", 2025, "Mês anterior (2026-08)")  # tudo pelo Material
 
 
 def test_old_periods_keep_the_ce_mat_rule(env) -> None:  # noqa: F811

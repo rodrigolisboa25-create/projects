@@ -160,6 +160,19 @@ def test_documentation_api_and_page_permission(tmp_path: Path, packaged: Path) -
     assert any(page["key"] == "docs" for page in granted.json()["page_catalog"])
 
 
+def test_floating_optimus_is_wired_in_the_pages() -> None:
+    """Optimus flutuante: um único iframe num contêiner fixo (janela, bolha, aba vertical) e o modo compacto do chat."""
+    templates = Path(__file__).resolve().parents[1] / "src" / "ops_contabil" / "web" / "templates"
+    dashboard = (templates / "dashboard.html").read_text(encoding="utf-8")
+    optimus = (templates / "optimus.html").read_text(encoding="utf-8")
+    for marker in ('id="optimus-dock"', 'id="optimus-bubble"', 'id="optimus-tab"', 'data-od="min"', 'data-od="max"', 'data-od="close"',
+                   'name="optimus_floating"', "window.mountOptimusFrame", "window.optimusDockView?.(view)", "optimus_floating:ui.elements.optimus_floating.checked"):
+        assert marker in dashboard, marker
+    assert "Conversar com o Optimus" in dashboard and "writing-mode:vertical-rl" in dashboard
+    for marker in ("html.docked .optimus-header{display:none}", "top.optimusUserMessage()", "top.optimusDockStatus(text,type)", "top.optimusDockOpen()"):
+        assert marker in optimus, marker
+
+
 def test_user_profile_gets_only_interface_and_notifications_in_settings(tmp_path: Path) -> None:
     _, user, csrf = make_machine(tmp_path, "user", USER, "user", '["overview"]')
     session = user.get("/api/auth/session").json()
@@ -167,9 +180,13 @@ def test_user_profile_gets_only_interface_and_notifications_in_settings(tmp_path
 
     # Interface e experiência: lê e grava só os campos de interface.
     prefs = user.get("/api/preferences/interface").json()
-    assert set(prefs) == {"density", "default_page_size", "animations_enabled", "chart_animations_enabled", "card_animations_enabled", "mindmap_calm", "presentations_enabled"}
+    assert set(prefs) == {"density", "default_page_size", "animations_enabled", "chart_animations_enabled", "card_animations_enabled", "mindmap_calm",
+                          "presentations_enabled", "optimus_floating"}
     assert prefs["mindmap_calm"] is False  # mapa mental sóbrio vem desmarcado por padrão
     assert prefs["presentations_enabled"] is True  # o Optimus oferece apresentações por padrão
+    assert prefs["optimus_floating"] is True  # Optimus flutuante ligado por padrão
+    off = user.put("/api/preferences/interface", json={"optimus_floating": False}, headers={"X-CSRF-Token": csrf})
+    assert off.status_code == 200 and off.json()["optimus_floating"] is False
     saved = user.put("/api/preferences/interface", json={"density": "comfortable", "card_animations_enabled": False},
                      headers={"X-CSRF-Token": csrf})
     assert saved.status_code == 200 and saved.json()["density"] == "comfortable" and saved.json()["card_animations_enabled"] is False

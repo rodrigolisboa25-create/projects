@@ -12,7 +12,11 @@ from openpyxl import load_workbook
 from .audit import sha256
 from .db import connect
 from .ingestion.schema_resolver import load_contracts, resolve_headers
+from .inventory import YEAR_BEFORE_2022, YEAR_BEFORE_2022_LABEL
 from .master_base import master_base_in_use
+from .pass_step_rules import (  # noqa: F401
+    IMPORT_ORDER_PREFIX, STEP1_OPTIONS, STEP2_OPTIONS, ensure_rules_schema, load_rules, step1_lookup, step2_lookups,
+)
 from .sources.all_brazil import pass_step_lookup_from_all_brazil
 
 
@@ -58,6 +62,18 @@ def ensure_mb59_schema(connection: Any) -> None:
             movement_type varchar,
             primary key(period, sku)
         );
+        -- Entradas do mês por Material completo e pedido (primeira linha de cada par na ordem do arquivo): o Year do
+        -- passo 1 é o da coleção do pedido de importação da primeira entrada do Material (regra validada com o fechamento de 09/2026).
+        create table if not exists mb59_material_entries (
+            period varchar not null,
+            material varchar not null,
+            purchase_order varchar not null,
+            posting_date date,
+            source_row bigint,
+            last_posting_date date,
+            primary key(period, material, purchase_order)
+        );
+        alter table mb59_material_entries add column if not exists last_posting_date date;
         -- Pedidos de compra das entradas do mês (para a SQVI DOC_COMPRA e para conferir a Base GR importada).
         create table if not exists mb59_orders (
             period varchar not null,
@@ -165,6 +181,7 @@ def import_mb59_xlsx(settings: Any, period: str, path: Path) -> dict[str, Any]:
         worksheet, resolution = best
         selected: dict[str, dict[str, Any]] = {}
         sku_entries: dict[str, dict[str, Any]] = {}
+        material_entries: dict[tuple[str, str], dict[str, Any]] = {}
         orders: dict[str, dict[str, Any]] = {}
         source_rows = 0
         for source_row, row in enumerate(
@@ -216,6 +233,13 @@ def import_mb59_xlsx(settings: Any, period: str, path: Path) -> dict[str, Any]:
                 order = orders.setdefault(purchase_order, {"period": period, "purchase_order": purchase_order,
                                                             "vendor": vendor, "lines": 0, "intercompany": intercompany})
                 order["lines"] += 1
+                pair = (material.strip().upper(), purchase_order)
+                if pair not in material_entries:  # primeira linha do par, como o PROCV do fechamento
+                    material_entries[pair] = {"period": period, "material": pair[0], "purchase_order": purchase_order,
+                                              "posting_date": posting_date, "source_row": source_row,
+                                              "last_posting_date": posting_date}
+                elif posting_date and (material_entries[pair]["last_posting_date"] or date.min) < posting_date:
+                    material_entries[pair]["last_posting_date"] = posting_date  # opção "entrada mais recente"
             sku = sku_of(material)
             if sku and posting_date and not intercompany:
                 entry = {
@@ -249,6 +273,13 @@ def import_mb59_xlsx(settings: Any, period: str, path: Path) -> dict[str, Any]:
                                purchase_order_item, vendor, material, plant, movement_type)
                            select period, sku, posting_date, material_document, purchase_order,
                                purchase_order_item, vendor, material, plant, movement_type from mb59_sku_batch"""
+                    )
+                connection.execute("delete from mb59_material_entries where period=?", [period])
+                if material_entries:
+                    connection.register("mb59_material_batch", pa.Table.from_pylist(list(material_entries.values())))
+                    connection.execute(
+                        """insert into mb59_material_entries(period, material, purchase_order, posting_date, source_row, last_posting_date)
+                           select period, material, purchase_order, posting_date, source_row, last_posting_date from mb59_material_batch"""
                     )
                 connection.execute("delete from mb59_orders where period=?", [period])
                 if order_rows:
@@ -349,8 +380,10 @@ def _manual_value(field: str, value: Any) -> Any:
             raise ValueError(f"Season inválida: {text}. Use {', '.join(SEASONS)}.")
         return text
     if field == "year":
+        if text == YEAR_BEFORE_2022_LABEL:
+            return YEAR_BEFORE_2022
         if not text.isdigit() or not 2000 <= int(text) <= 2100:
-            raise ValueError(f"Year inválido: {text}. Informe o ano com 4 dígitos (2000 a 2100).")
+            raise ValueError(f"Year inválido: {text}. Informe o ano com 4 dígitos (2000 a 2100) ou {YEAR_BEFORE_2022_LABEL}.")
         return int(text)
     try:
         return date.fromisoformat(text)
@@ -411,7 +444,8 @@ def save_pass_step_manual(settings: Any, period: str, items: list[dict[str, Any]
                 )
                 connection.execute(
                     "insert into pass_step_manual(period, center_material_key, field, value, filled_by) values (?,?,?,?,?)",
-                    [period, key, field, str(value), filled_by],
+                    [period, key, field,
+                     YEAR_BEFORE_2022_LABEL if field == "year" and value == YEAR_BEFORE_2022 else str(value), filled_by],
                 )
                 filled_at = connection.execute(
                     "select filled_at from pass_step_manual where period=? and center_material_key=? and field=?",
@@ -528,7 +562,7 @@ def enrich_inventory_pass_step(
             if row[0] not in (None, "")
         }
 
-        # Regra por SKU (validada com o fechamento manual): entrada mais recente do SKU no mês, sem intercompany;
+        # Regra anterior, por SKU (opção sku_latest e cargas antigas): entrada mais recente do SKU no mês, sem intercompany;
         # Product Offer End Dt = Data de lançamento e Season/Year = coleção do pedido (Base GR / SQVI DOC_COMPRA).
         # Competências importadas antes desta regra não têm mb59_sku_entries e seguem a regra antiga (CE & MAT).
         sku_lookup = {
@@ -548,6 +582,12 @@ def enrich_inventory_pass_step(
             ).fetchall()
         }
         use_sku_rule = bool(sku_lookup)
+        # Passo 1 conforme as regras ajustáveis (pass_step_rules; padrão = regra validada com o fechamento de 09/2026):
+        # Year pela primeira entrada de importação do Material; Product Offer End Dt e Season pela primeira entrada do
+        # Material. ``None`` = a opção não tem dados nesta competência (carga antiga): segue a regra por SKU / CE & MAT.
+        ensure_rules_schema(connection)
+        rules = load_rules(connection)
+        step1 = {field: step1_lookup(connection, period, rules[field]["step1"], field) for field in PASS_STEP_FIELDS}
         collection_imported = bool(
             connection.execute("select count(*) > 0 from gr_collection_imports where period=?", [period]).fetchone()[0]
         )
@@ -569,6 +609,9 @@ def enrich_inventory_pass_step(
             for row in previous_rows
             if row[0] not in (None, "")
         }
+        # Passo 2 conforme as regras: CE & MAT (Product Offer End Dt e Season) ou Material completo (Year), na ordem.
+        step2 = {field: step2_lookups(connection, previous_period, rules[field]["step2"], field, previous_from_master)
+                 for field in PASS_STEP_FIELDS}
 
         # 4º (último recurso): preenchimento manual feito na Base de estoque para o que as três fontes não trouxeram.
         ensure_pass_step_manual_schema(connection)
@@ -613,11 +656,19 @@ def enrich_inventory_pass_step(
     }
 
     def choose(field: str, center_material_key: str, material_key: str) -> tuple[Any, str]:
-        month_entry = (sku_lookup.get(material_key[:10], {}) if use_sku_rule
-                       else mb_lookup.get(center_material_key, {}))
+        found = step1[field]
+        if found is None:  # carga antiga, sem entradas por Material: regra por SKU (ou CE & MAT)
+            month_value = (sku_lookup.get(material_key[:10], {}) if use_sku_rule
+                           else mb_lookup.get(center_material_key, {})).get(field)
+        else:
+            table, kind = found
+            month_value = table.get(material_key if kind == "material" else material_key[:10])
+        previous_value = next((value for table, kind in step2[field]
+                               if (value := table.get(center_material_key if kind == "ce_mat" else material_key)) not in (None, "")),
+                              None)
         candidates = (
-            ("mb59", month_entry.get(field)),
-            ("previous_inventory", previous_lookup.get(center_material_key, {}).get(field)),
+            ("mb59", month_value),
+            ("previous_inventory", previous_value),
             ("all_brazil", all_brazil_lookup.get(material_key, {}).get(field)),
         )
         for source, value in candidates:
@@ -646,6 +697,8 @@ def enrich_inventory_pass_step(
         season, season_source = choose("season", center_key, material_only_key)
         year_value, year_source = choose("year", center_key, material_only_key)
         year_number = int(year_value) if year_value is not None else None
+        if year_number is not None and year_number < 2022:
+            year_number = YEAR_BEFORE_2022  # "Tudo que for antes de 2022 deixar <2022", como na posição oficial
         updates.append({
             "source_row": int(source_row),
             "product_offer_end_date": offer_end,
@@ -696,6 +749,10 @@ def enrich_inventory_pass_step(
         "rows": rows,
         "mb59_ce_mat_matches": sum(1 for row in current_rows if str(row[1]) in mb_lookup),
         "pass_step_rule": "sku" if use_sku_rule else "ce_mat",
+        "year_rule": (step1["year"][1] if step1["year"] is not None else ("sku" if use_sku_rule else "ce_mat")),
+        "offer_season_rule": (step1["product_offer_end_date"][1] if step1["product_offer_end_date"] is not None
+                              else ("sku" if use_sku_rule else "ce_mat")),
+        "rules": rules,
         "gr_collection_imported": collection_imported,
         "mb59_sku_matches": sum(
             1 for row in current_rows if use_sku_rule and str(row[2] or "").strip().upper()[:10] in sku_lookup
@@ -714,15 +771,29 @@ def enrich_inventory_pass_step(
         },
         "message": (
             (
-                "PASSO A PASSO aplicado com a Base GR do mês por SKU (entrada mais recente, sem intercompany; "
-                "Product Offer End Dt = Data de lançamento; Season/Year = coleção do pedido"
-                + ("" if collection_imported else " — coleção dos pedidos ainda não importada")
-                + "), "
-                if use_sku_rule
-                else "PASSO A PASSO aplicado com prioridade MB59 por CE & MAT, "
+                "PASSO A PASSO aplicado pelas regras vigentes: "
+                + "; ".join(
+                    f"{label} — 1º {STEP1_OPTIONS[rules[field]['step1']]} → 2º {STEP2_OPTIONS[rules[field]['step2']]}"
+                    f"{' (base mestre)' if previous_from_master else ''}"
+                    for field, label in (("product_offer_end_date", "Product Offer End Dt"), ("season", "Season"), ("year", "Year"))
+                )
+                + " → 3º All Brazil por Material"
+                + ("" if collection_imported else " (coleção dos pedidos ainda não importada)")
+                + ". Campos sem correspondência foram marcados como Não localizado."
             )
-            + f"posição {previous_period}{' (base mestre)' if previous_from_master else ''} por CE & MAT e All Brazil por Material. "
-            "Campos sem correspondência foram marcados como Não localizado."
+            if any(step1[field] is not None for field in PASS_STEP_FIELDS)
+            else (  # carga antiga, sem entradas por Material
+                (
+                    "PASSO A PASSO aplicado com a Base GR do mês por SKU (entrada mais recente, sem intercompany; "
+                    "Product Offer End Dt = Data de lançamento; Season/Year = coleção do pedido"
+                    + ("" if collection_imported else " — coleção dos pedidos ainda não importada")
+                    + "), "
+                    if use_sku_rule
+                    else "PASSO A PASSO aplicado com prioridade MB59 por CE & MAT, "
+                )
+                + f"posição {previous_period}{' (base mestre)' if previous_from_master else ''} por CE & MAT e All Brazil por Material. "
+                "Campos sem correspondência foram marcados como Não localizado."
+            )
         ),
     }
 

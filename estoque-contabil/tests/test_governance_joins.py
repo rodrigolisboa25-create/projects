@@ -25,8 +25,9 @@ def test_structures_card_explains_every_join(env) -> None:  # noqa: F811
     assert "Material da Base de Estoque (maiúsculas, sem espaços) = Material Nbr" in ab
     assert "Estilo-Cor (10 primeiros caracteres do Material) = Material Nbr" in ab and "nunca participa da chave" in ab
     mb = text["MB59 (PASSO A PASSO) → Season, Year e Product Offer End Dt"]
-    assert "1º Base GR do mês por SKU" in mb and "2º Base de Estoque do mês anterior por CE & MAT" in mb
-    assert "entrada mais recente" in mb and "intercompany" in mb and "coleção do pedido de compra" in mb
+    # Regra vigente (1.35+): Base GR pelo Material completo → mês anterior → All Brazil → manual.
+    assert "1º Base GR do mês (MB59) pelo Material completo" in mb and "2º Base de Estoque do mês anterior" in mb
+    assert "primeira entrada do Material" in mb and "pedido de importação (48…)" in mb and "coleção do pedido de compra" in mb
     assert "Collection Code → Season" in mb and "Collection Year → Year" in mb
     gr = text["Base GR / SQVI DOC_COMPRA → Season e Year dos pedidos"]  # estrutura aceita do arquivo da etapa 3
     assert "obrigatórias Material, Pedido, Season" in gr and "Doc.compra (ou Nº do documento de compras)" in gr

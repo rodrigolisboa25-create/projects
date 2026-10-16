@@ -104,6 +104,21 @@ from ..drive_bridge import (
     set_root as bridge_set_root,
     sync_from_bridge,
 )
+from ..conference import ConferenceCancelled, delete_run as conference_delete_run, latest_run as conference_latest_run
+from ..conference import run_conference, save_run as conference_save_run, short_facts as conference_facts
+from ..pass_step_rules import (
+    DEFAULT_RULES as DEFAULT_PASS_STEP_RULES,
+    FIELD_LABELS as RULE_FIELD_LABELS,
+    STEP1_OPTIONS,
+    STEP2_OPTIONS,
+    describe as describe_rules,
+    load_rules,
+    publish_rules,
+    rules_history,
+    rules_state,
+    save_rules,
+    sync_rules,
+)
 from ..optimus_watch import (
     CONNECTIVITY_KEYS,
     collect_events,
@@ -122,6 +137,8 @@ from ..optimus_watch import (
 )
 from .. import presentations as decks
 from ..presentation_data import dataset as presentation_dataset
+from .. import visuals as custom_visuals
+from .. import drivefs
 from ..periods import delete_compiled_period
 from ..sap_upload import (
     SAP_EXPORT_SEARCH_DAYS,
@@ -175,9 +192,58 @@ class RunRequest(BaseModel):
     period: str = Field(pattern=r"^\d{4}-\d{2}$")
 
 
+# Drive compartilhado Estoque_Cont (ponte entre máquinas) na nuvem: é onde se liberam os membros.
+DEFAULT_BRIDGE_DRIVE_URL = "https://drive.google.com/drive/folders/0AERqv4gve9toUk9PVA"
+BRIDGE_DRIVE_URL_KEY = "bridge_drive_url"
+
+
+class BridgeLinkRequest(BaseModel):
+    url: str = Field(min_length=20, max_length=300)
+
+
+class AllBrazilLinkRequest(BaseModel):
+    year: int = Field(ge=2000, le=2100)
+    month: int = Field(ge=1, le=12)
+    url: str = Field(min_length=20, max_length=300)
+
+
+class VisualTurn(BaseModel):
+    role: str = Field(pattern=r"^(user|optimus)$")
+    text: str = Field(max_length=2000)
+
+
+class VisualInterpretRequest(BaseModel):
+    period: str = Field(pattern=r"^\d{4}-\d{2}$")
+    message: str = Field(min_length=2, max_length=1000)
+    history: list[VisualTurn] = Field(default_factory=list, max_length=12)
+
+
+class VisualCreateRequest(BaseModel):
+    period: str = Field(pattern=r"^\d{4}-\d{2}$")
+    spec: dict[str, object]
+    filters: dict[str, object] | None = None
+    force: bool = False  # mesmo dado de um gráfico existente, mas em outro estilo (o usuário confirmou)
+
+
 class ImportRequest(BaseModel):
     period: str = Field(pattern=r"^\d{4}-\d{2}$")
     force: bool = False
+
+
+class RuleApplyRequest(BaseModel):
+    """Aprovação de uma sugestão da conferência (Fase 3): troca a regra de um campo do PASSO A PASSO."""
+    conference_id: str = Field(min_length=4, max_length=80)
+    field: str = Field(pattern=r"^(product_offer_end_date|season|year)$")
+    step1: str = Field(max_length=40)
+    step2: str = Field(max_length=40)
+    reason: str = Field(default="", max_length=500)
+
+
+class RuleRestoreRequest(BaseModel):
+    """Volta as regras a uma versão do histórico e reprocessa a competência."""
+    version: int = Field(ge=0)
+    period: str | None = Field(default=None, pattern=r"^\d{4}-\d{2}$")
+    reason: str = Field(default="", max_length=500)
 
 
 class SapRunRequest(BaseModel):
@@ -199,6 +265,7 @@ class SystemSettingsRequest(BaseModel):
     card_animations_enabled: bool = True
     mindmap_calm: bool = False
     presentations_enabled: bool = True
+    optimus_floating: bool = True
     backup_enabled: bool = False
     backup_folder: str = Field(default="", max_length=500)
     backup_frequency: str = Field(default="daily", pattern=r"^(daily|weekly|monthly)$")
@@ -228,6 +295,7 @@ class InterfacePreferencesRequest(BaseModel):
     card_animations_enabled: bool | None = None
     mindmap_calm: bool | None = None
     presentations_enabled: bool | None = None
+    optimus_floating: bool | None = None
 
 
 class TourSeenRequest(BaseModel):
@@ -468,6 +536,8 @@ DEFAULT_SYSTEM_SETTINGS: dict[str, object] = {
     "mindmap_calm": False,
     # Optimus oferece montar apresentações no chat (Configurações > Interface e experiência).
     "presentations_enabled": True,
+    # Optimus flutuante: o chat acompanha o usuário nas outras páginas (janela, bolha ou aba). Ligado por padrão.
+    "optimus_floating": True,
     "backup_enabled": False,
     # Vazio = automático: pasta "backups" do Drive compartilhado desta máquina,
     # ou %LOCALAPPDATA%\OpsContabil\backup quando o Drive não estiver acessível.
@@ -751,6 +821,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             or (path.startswith("/api/mappings") and request.method != "GET")
             or path.startswith("/api/installer")
             or path.startswith("/api/inventory/master-base")
+            # Conferência com o fechamento manual: enviar planilha, aprovar e restaurar regras são de administradores.
+            or (path.startswith("/api/governance/conference") and request.method != "GET")
+            or (path.startswith("/api/governance/rules") and request.method != "GET")
+            # Inserir visuais na Visão e relatórios (conversa com o Optimus, inserir e remover) é de administradores.
+            or (path.startswith("/api/dashboard/visuals") and request.method != "GET")
             or (path.startswith("/api/settings") and path not in {"/api/settings/environment"})
         )
         if admin_only and user["role"] != "admin":
@@ -924,6 +999,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         direction: str = Query(default="asc", pattern=r"^(asc|desc)$"),
         filters: str = Query(default="{}", max_length=4000),
         pending_joins: bool = Query(default=False),
+        origin: str = Query(default="", pattern=r"^(|mb59|prev|ab|manual|none)$"),
+        origin_field: str = Query(default="", pattern=r"^(|product_offer_end_date|season|year)$"),
     ) -> dict[str, object]:
         try:
             column_filters = json.loads(filters)
@@ -932,7 +1009,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         if not isinstance(column_filters, dict):
             raise HTTPException(status_code=422, detail="Filtros de coluna devem ser um objeto")
         result = list_inventory(
-            settings, period, page, page_size, q, sort, direction, column_filters, pending_joins
+            settings, period, page, page_size, q, sort, direction, column_filters, pending_joins,
+            origin or None, origin_field or None,
         )
         # Auditoria do PASSO A PASSO (sem coluna nova): origem de Product Offer End Dt, Season e Year das linhas da página.
         result["pass_step_sources"] = {
@@ -986,6 +1064,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         direction: str = Query(default="asc", pattern=r"^(asc|desc)$"),
         filters: str = Query(default="{}", max_length=4000),
         pending_joins: bool = Query(default=False),
+        origin: str = Query(default="", pattern=r"^(|mb59|prev|ab|manual|none)$"),
+        origin_field: str = Query(default="", pattern=r"^(|product_offer_end_date|season|year)$"),
     ):
         try:
             column_filters = json.loads(filters)
@@ -1008,6 +1088,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 direction,
                 column_filters,
                 pending_joins,
+                origin or None,
+                origin_field or None,
             )
         except Exception as exc:
             target.unlink(missing_ok=True)
@@ -1193,6 +1275,29 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             except Exception:  # noqa: BLE001 - sem permissão de escrita ou arquivo em uso: tenta no próximo ciclo
                 continue
 
+    def rules_sync_once() -> None:
+        """Regras ajustáveis do PASSO A PASSO pela pasta do Drive: vale a alteração aprovada mais recente."""
+        if not bridge_enabled(settings):
+            return
+        try:
+            root = bridge_root(settings)
+            publish_rules(settings, root)
+            sync_rules(settings, root)
+        except Exception:  # noqa: BLE001 - Drive indisponível: tenta no próximo ciclo
+            return
+
+    def visuals_sync_once() -> None:
+        """Visuais inseridos (Visão e relatórios) pela pasta do Drive: a mesma lista para toda a equipe."""
+        if not bridge_enabled(settings):
+            return
+        try:
+            custom_visuals.sync_visuals(settings, bridge_root(settings))
+        except Exception:  # noqa: BLE001 - Drive indisponível: tenta no próximo ciclo
+            return
+
+    def visuals_sync_soon() -> None:
+        threading.Thread(target=visuals_sync_once, daemon=True).start()
+
     def background_worker() -> None:
         interval = int((settings.raw.get("bridge") or {}).get("sync_interval_seconds") or 120)
         next_bridge_cycle = 0.0
@@ -1206,6 +1311,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 access_sync_once()
                 mapping_sync_once()
                 closing_sync_once()
+                rules_sync_once()
+                visuals_sync_once()
             try:
                 run_backup_now()
             except Exception:  # noqa: BLE001 - erro fica registrado no estado do backup
@@ -1365,6 +1472,30 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         record_access_change(settings, email, by=http_request.state.user["email"])
         access_sync_soon()
         return settings_payload()
+
+    # Link do drive compartilhado Estoque_Cont na nuvem (para o administrador liberar membros no Google Drive).
+    # O sistema não consegue compartilhar sozinho; o aviso de acesso abre este link no navegador.
+    def _bridge_drive_url() -> str:
+        with connect(settings.path("database")) as connection:
+            row = connection.execute("select setting_value from system_settings where setting_key=?", [BRIDGE_DRIVE_URL_KEY]).fetchone()
+        return str(row[0]) if row and row[0] else DEFAULT_BRIDGE_DRIVE_URL
+
+    @app.get("/api/settings/bridge/link", dependencies=[Depends(require_token)])
+    def get_bridge_drive_link() -> dict[str, object]:
+        url = _bridge_drive_url()
+        return {"url": url, "default": url == DEFAULT_BRIDGE_DRIVE_URL}
+
+    @app.post("/api/settings/bridge/link", dependencies=[Depends(require_token)])
+    def set_bridge_drive_link(payload: BridgeLinkRequest) -> dict[str, object]:
+        url = payload.url.strip()
+        if not re.match(r"^https://drive\.google\.com/drive/(u/\d+/)?folders/[A-Za-z0-9_-]{10,}", url):
+            raise HTTPException(status_code=422, detail="Cole o link da pasta copiado do Google Drive (https://drive.google.com/drive/folders/…).")
+        with connect(settings.path("database")) as connection:
+            connection.execute(
+                """insert into system_settings(setting_key, setting_value, updated_at) values (?, ?, current_timestamp)
+                   on conflict(setting_key) do update set setting_value=excluded.setting_value, updated_at=excluded.updated_at""",
+                [BRIDGE_DRIVE_URL_KEY, url])
+        return {"url": url, "default": url == DEFAULT_BRIDGE_DRIVE_URL}
 
     @app.post("/api/settings/access/{email}/disable", dependencies=[Depends(require_token)])
     def disable_allowed_user(email: str, request: Request) -> dict[str, object]:
@@ -1681,11 +1812,144 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             raise HTTPException(status_code=422, detail="Filtros devem ser um objeto")
         return aging_race(settings, period, chosen)
 
+    # ------------------------------------------------------------------ visuais inseridos pelo Optimus (Visão e relatórios)
+    # O Optimus devolve só a especificação; os números vêm da Base de Estoque (visuals.dataset). A lista é da equipe toda
+    # (sincronizada pelo Drive); inserir e remover são exclusivos de administradores (ver admin_only no middleware).
+
+    def _visual_owner(request: Request) -> str:
+        return str((getattr(request.state, "user", None) or {}).get("email") or "").lower()
+
+    def _visual_payload(item: dict[str, object], period: str, page_filters: dict[str, object]) -> dict[str, object]:
+        spec = item["spec"]
+        payload = {"id": item["id"], "spec": spec, "title": spec["title"], "subtitle": custom_visuals.subtitle(spec),
+                   "type": spec["type"], "span": custom_visuals.TYPES[spec["type"]]["span"]}
+        try:
+            payload["data"] = data = custom_visuals.dataset(settings, period, spec, page_filters)
+            # Largura toda quando não cabe em meia página (matriz com muitas colunas, muitas colunas com variação).
+            if custom_visuals.is_wide(spec, data):
+                payload["span"] = 12
+        except Exception as exc:  # noqa: BLE001 - o card mostra o motivo; os demais gráficos seguem
+            payload["error"] = str(exc)
+        return payload
+
+    @app.get("/api/dashboard/visuals", dependencies=[Depends(require_token)])
+    def get_custom_visuals(
+        request: Request,
+        period: str = Query(pattern=r"^\d{4}-\d{2}$"),
+        filters: str = Query(default="{}", max_length=8000),
+    ) -> dict[str, object]:
+        """Visuais que o usuário inseriu, com os dados da competência e dos filtros da página."""
+        try:
+            chosen = json.loads(filters or "{}")
+        except json.JSONDecodeError as exc:
+            raise HTTPException(status_code=422, detail="Filtros inválidos") from exc
+        chosen = chosen if isinstance(chosen, dict) else {}
+        return {"period": period, "visuals": [_visual_payload(item, period, chosen)
+                                              for item in custom_visuals.list_visuals(settings, _visual_owner(request))]}
+
+    @app.post("/api/dashboard/visuals/interpret", dependencies=[Depends(require_token)])
+    async def interpret_custom_visual(payload: VisualInterpretRequest, request: Request) -> dict[str, object]:
+        """Conversa do "Inserir visuais": o Optimus transforma o pedido em especificação (sem números).
+
+        Sem o Optimus (VPN desligada ou n8n fora), o sistema interpreta pedidos simples por palavras-chave."""
+        owner = _visual_owner(request)
+        options = overview_filter_options(settings, payload.period)
+        catalog = custom_visuals.catalog(options)
+        answer: dict[str, object] | None = None
+        source, note = "optimus", None
+        n8n_url = os.getenv("N8N_CHAT_URL", "").strip()
+        if n8n_url:
+            prompt = custom_visuals.agent_prompt(catalog, [turn.model_dump() for turn in payload.history], payload.message,
+                                                 payload.period)
+            for attempt in range(2):
+                try:
+                    response = await _post_to_optimus_n8n(
+                        n8n_url, session_id=f"visual-{uuid.uuid4().hex[:10]}",
+                        chat_input=prompt if attempt == 0 else "Devolva SOMENTE o JSON entre [[VISUAL]] e [[/VISUAL]].\n" + prompt,
+                        user_email=owner, period=payload.period)
+                    answer = custom_visuals.parse_agent_reply(_n8n_text(response))
+                    break
+                except HTTPException as exc:
+                    note = str(exc.detail)
+                    break
+                except (ValueError, json.JSONDecodeError) as exc:
+                    note = str(exc)
+        if answer is None:
+            source = "sistema"
+            try:
+                answer = custom_visuals.local_interpret(payload.message, options)
+            except ValueError as exc:
+                return {"action": "ask", "reply": str(exc), "source": source, "note": note}
+        action = str(answer.get("action"))
+        reply = str(answer.get("reply") or "").strip()[:500]
+        if action == "exists":
+            builtin = next((b for b in custom_visuals.BUILTINS if b["id"] == answer.get("builtin")), None)
+            if builtin is None:
+                return {"action": "ask", "reply": reply or "Pode detalhar o gráfico que você quer?", "source": source}
+            return {"action": "exists", "reply": reply or f"Esse gráfico já existe na página: {builtin['title']}.",
+                    "duplicate": {"kind": "builtin", "target": builtin["id"], "title": builtin["title"], "same_type": True},
+                    "source": source}
+        if action in ("ask", "unsupported"):
+            options_list = [str(o)[:80] for o in (answer.get("options") or []) if str(o).strip()][:4] if action == "ask" else []
+            return {"action": action, "reply": reply or "Pode detalhar o gráfico que você quer?", "options": options_list,
+                    "source": source}
+        try:
+            spec = custom_visuals.clean_spec(answer.get("spec"))
+        except ValueError as exc:
+            return {"action": "ask", "reply": str(exc), "source": source}
+        existing = custom_visuals.list_visuals(settings, owner)
+        duplicate = custom_visuals.find_duplicate(spec, existing)
+        if duplicate:
+            return {"action": "exists", "spec": spec, "duplicate": duplicate, "source": source,
+                    "reply": f"Esse gráfico já existe na página: {duplicate['title']}. Vou levar você até ele."}
+        result: dict[str, object] = {"action": "create", "spec": spec, "reply": reply or f"Vou inserir: {spec['title']}.",
+                                     "source": source, "note": note if source == "sistema" else None}
+        # Sozinho na linha, este estilo ficaria esticado de ponta a ponta: sugere um gráfico para ficar ao lado.
+        try:
+            def wide(item_spec: dict[str, object]) -> bool:
+                data = (custom_visuals.dataset(settings, payload.period, item_spec)
+                        if item_spec["type"] in ("matriz", "colunas") else None)
+                return custom_visuals.is_wide(item_spec, data)
+
+            if custom_visuals.needs_partner(spec, wide(spec), [wide(item["spec"]) for item in existing]):
+                partners = [p for p in custom_visuals.complements(spec, existing) if not wide(p)]
+                if partners:
+                    result["pairing"] = {"suggestions": [{"title": p["title"], "spec": p} for p in partners]}
+        except Exception:  # noqa: BLE001 - sem sugestão, o visual entra sozinho (de ponta a ponta)
+            pass
+        return result
+
+    @app.post("/api/dashboard/visuals", dependencies=[Depends(require_token)])
+    def add_custom_visual(payload: VisualCreateRequest, request: Request) -> dict[str, object]:
+        """Insere o visual (antes de "Evolução do Aging por Material"); igual a um gráfico existente não é inserido."""
+        owner = _visual_owner(request)
+        try:
+            spec = custom_visuals.clean_spec(payload.spec)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        duplicate = custom_visuals.find_duplicate(spec, custom_visuals.list_visuals(settings, owner))
+        if duplicate and (duplicate["same_type"] or not payload.force):
+            raise HTTPException(status_code=409, detail=f"Esse gráfico já existe na página: {duplicate['title']}.")
+        try:
+            item = custom_visuals.add_visual(settings, owner, spec)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail=str(exc)) from exc
+        visuals_sync_soon()  # vai para as outras máquinas pelo Drive
+        return _visual_payload(item, payload.period, payload.filters or {})
+
+    @app.delete("/api/dashboard/visuals/{visual_id}", dependencies=[Depends(require_token)])
+    def delete_custom_visual(visual_id: str, request: Request) -> dict[str, object]:
+        """Remove um visual para toda a equipe (só administradores; os gráficos originais da página não podem ser removidos)."""
+        if not custom_visuals.delete_visual(settings, _visual_owner(request), visual_id):
+            raise HTTPException(status_code=404, detail="Visual não encontrado.")
+        visuals_sync_soon()
+        return {"status": "deleted", "id": visual_id}
+
     @app.get("/api/dashboard/filter-options", dependencies=[Depends(require_token)])
     def get_dashboard_filter_options(
         period: str = Query(default="2026-07", pattern=r"^\d{4}-\d{2}$"),
     ) -> dict[str, object]:
-        """Valores de Division, Centro, Local de estoque e Season da competência (filtros da Visão e relatórios)."""
+        """Valores de Division, Centro, Local de estoque, Season e Year da competência (filtros da Visão e relatórios)."""
         return overview_filter_options(settings, period)
 
     @app.get("/api/governance/status", dependencies=[Depends(require_token)])
@@ -1753,7 +2017,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # Interface e experiência: disponível a qualquer perfil (o perfil Usuário vê em
     # Configurações apenas esta seção e Notificações). Não expõe dados de administração.
     INTERFACE_KEYS = ("density", "default_page_size", "animations_enabled", "chart_animations_enabled", "card_animations_enabled", "mindmap_calm",
-                      "presentations_enabled")
+                      "presentations_enabled", "optimus_floating")
 
     @app.get("/api/preferences/interface", dependencies=[Depends(require_token)])
     def get_interface_preferences() -> dict[str, object]:
@@ -2384,6 +2648,26 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             int(year_text): {int(month_text): url for month_text, url in (mapped or {}).items()}
             for year_text, mapped in (drive_map.get("years") or {}).items()
         }
+        # Links de meses novos: 1º os já gravados no Estoque_Cont (vêm de qualquer máquina), 2º descoberta automática
+        # pelo Google Drive para computador (drivefs.month_folder_ids). Descobertos novos são gravados para todos.
+        shared = _all_brazil_shared_links()
+        for year_text, mapped in (shared.get("years") or {}).items():
+            for month_text, url in (mapped or {}).items():
+                links.setdefault(int(year_text), {})[int(month_text)] = url
+        discovered_links: dict[tuple[int, int], str] = {}
+        try:
+            for (year_title, month_title), cloud_id in drivefs.month_folder_ids(root.name).items():
+                month_match = re.match(r"^(\d{1,2})\.", month_title)
+                if year_title.isdigit() and month_match and 1 <= int(month_match.group(1)) <= 12:
+                    key = (int(year_title), int(month_match.group(1)))
+                    if key[1] not in links.get(key[0], {}):
+                        discovered_links[key] = drivefs.folder_url(cloud_id)
+        except Exception:  # noqa: BLE001 - sem DriveFS: links conhecidos ou pasta principal
+            discovered_links = {}
+        for (year, month), url in discovered_links.items():
+            links.setdefault(year, {})[month] = url
+        if discovered_links:
+            _save_all_brazil_links({key: url for key, url in discovered_links.items()}, "descoberta automática")
         years: list[dict[str, object]] = []
         for year in sorted(set(discovered) | set(links), reverse=True):
             months: list[dict[str, object]] = []
@@ -2423,12 +2707,74 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                         "label": f"{month:02d}. {MONTH_NAMES[month]}",
                         "path": str(folder),
                         "drive_url": drive_url,
+                        "link_known": month in links.get(year, {}),  # sem link: abre a pasta principal
                         "files": files,
                     }
                 )
             if months:
                 years.append({"year": year, "months": months})
         return {"root": str(root), "root_url": root_url, "years": years}
+
+    # Link "Abrir no Drive" de meses novos: descobertos sozinhos pelo banco local do Google Drive para computador
+    # (drivefs.py); se a máquina não tiver o DriveFS, um administrador cola o link uma vez. Os dois casos valem para
+    # todas as máquinas (Estoque_Cont/all_brazil/links.json).
+    ALL_BRAZIL_LINKS_KEY = "all_brazil_drive_links"
+
+    def _all_brazil_links_file() -> Path | None:
+        try:
+            return bridge_root(settings) / "all_brazil" / "links.json" if bridge_enabled(settings) else None
+        except Exception:  # noqa: BLE001 - Drive indisponível: usa a cópia local
+            return None
+
+    def _all_brazil_shared_links() -> dict[str, object]:
+        path = _all_brazil_links_file()
+        if path is not None and path.is_file():
+            try:
+                return json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                pass
+        with connect(settings.path("database")) as connection:
+            row = connection.execute("select setting_value from system_settings where setting_key=?", [ALL_BRAZIL_LINKS_KEY]).fetchone()
+        try:
+            return json.loads(row[0]) if row and row[0] else {}
+        except (TypeError, json.JSONDecodeError):
+            return {}
+
+    def _save_all_brazil_links(new_links: dict[tuple[int, int], str], by: str) -> bool:
+        """Grava links de meses (local e no Estoque_Cont, para as outras máquinas). True se foi para o Drive."""
+        data = _all_brazil_shared_links()
+        for (year, month), url in new_links.items():
+            data.setdefault("years", {}).setdefault(str(year), {})[f"{month:02d}"] = url
+        data["updated_by"], data["updated_at"] = by, datetime.now().isoformat(timespec="seconds")
+        text = json.dumps(data, ensure_ascii=False, indent=1)
+        with connect(settings.path("database")) as connection:
+            connection.execute(
+                """insert into system_settings(setting_key, setting_value, updated_at) values (?, ?, current_timestamp)
+                   on conflict(setting_key) do update set setting_value=excluded.setting_value, updated_at=excluded.updated_at""",
+                [ALL_BRAZIL_LINKS_KEY, text])
+        path = _all_brazil_links_file()
+        if path is None:
+            return False
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            partial = path.with_name(f".{path.name}.parcial")
+            partial.write_text(text, encoding="utf-8")
+            os.replace(partial, path)
+            return True
+        except OSError:  # perfil Leitor no Estoque_Cont: fica só nesta máquina
+            return False
+
+    @app.post("/api/sources/all-brazil/link", dependencies=[Depends(require_token)])
+    def set_all_brazil_month_link(payload: AllBrazilLinkRequest, request: Request) -> dict[str, object]:
+        """Reserva da descoberta automática: um administrador cola o link da pasta de um mês."""
+        if request.state.user["role"] != "admin":
+            raise HTTPException(status_code=403, detail="Só administradores cadastram links das pastas.")
+        url = payload.url.strip()
+        if not re.match(r"^https://drive\.google\.com/drive/(u/\d+/)?folders/[A-Za-z0-9_-]{10,}", url):
+            raise HTTPException(status_code=422, detail="Cole o link da pasta do mês copiado do Google Drive (https://drive.google.com/drive/folders/…).")
+        url = re.sub(r"/drive/u/\d+/folders/", "/drive/folders/", url).split("?")[0]
+        shared = _save_all_brazil_links({(payload.year, payload.month): url}, request.state.user["email"])
+        return {"year": payload.year, "month": payload.month, "url": url, "shared": shared}
 
     # Importação e enriquecimento compartilhados pela extração automática (robô)
     # e pela carga manual (upload). Devem ser chamados sob SAP_IMPORT_LOCK.
@@ -3398,6 +3744,172 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             )
         notify_job_result("uploads", "sap", f"upload-{job_id}", f"Carga da planilha {UPLOAD_LABELS.get(transaction, transaction)}", period, result)
 
+    # ------------------------------------------------------------------ agente de conferência
+    # Fase 1 (conferência) e Fase 2 (diagnóstico) rodam em segundo plano no servidor local; a Fase 3 (aprovar ou
+    # restaurar regras) só acontece com ação explícita de um administrador. O Optimus recebe só o resumo pronto,
+    # pela fila de avisos: sem conexão com o n8n, o aviso espera — nada fica travado.
+    CONFERENCE_JOBS: dict[str, dict[str, object]] = {}
+    CONFERENCE_LOCK = threading.Lock()
+    CONFERENCE_EXTENSIONS = (".xlsb", ".xlsx", ".xlsm")
+
+    def _conference_job_update(conference_id: str, **values: object) -> None:
+        with CONFERENCE_LOCK:
+            job = CONFERENCE_JOBS.get(conference_id)
+            if job is not None:
+                job.update(values, updated_at=datetime.now().isoformat(timespec="seconds"))
+
+    def run_conference_job(conference_id: str, period: str, staged: Path, file_name: str, sha: str, user_email: str) -> None:
+        conference_save_run(settings, conference_id, period=period, file_name=file_name, sha=sha, status="RUNNING",
+                            message="Conferência em andamento.", created_by=user_email)
+
+        def progress(value: int, message: str) -> None:
+            # Cancelar: o pedido marca o job e a conferência para aqui, no próximo ponto de controle.
+            with CONFERENCE_LOCK:
+                cancelled = bool((CONFERENCE_JOBS.get(conference_id) or {}).get("cancel"))
+            if cancelled:
+                raise ConferenceCancelled()
+            _conference_job_update(conference_id, progress=value, message=message)
+
+        try:
+            result = run_conference(settings, conference_id, period, staged, progress)
+            progress(99, "Gravando o resultado…")
+            conference_save_run(settings, conference_id, period=period, file_name=file_name, sha=sha, status="COMPLETED",
+                                message="Conferência concluída.", created_by=user_email, summary=result["summary"],
+                                diagnosis=result["diagnosis"], finished=True)
+            _conference_job_update(conference_id, status="COMPLETED", progress=100, message="Conferência concluída.")
+            run = conference_latest_run(settings, conference_id=conference_id) or {}
+            facts = conference_facts(run)
+            notify_job_result("uploads", "governance", f"conference-{conference_id}", "Conferência com o fechamento manual", period,
+                              {"status": "COMPLETED", "message": " ".join((facts.get("explanation") or [])[:3])})
+            # O Optimus explica o resultado no chat com os números prontos (nada é calculado pelo agente).
+            queue_optimus_event({"type": "conference_result", "topic": "Conferência com o fechamento manual", "period": period,
+                                 "conference": facts}, key=f"conference:{conference_id}")
+        except ConferenceCancelled:
+            conference_delete_run(settings, conference_id)  # o último resultado da competência continua valendo
+            _conference_job_update(conference_id, status="CANCELLED", message="Conferência cancelada.")
+        except Exception as exc:  # noqa: BLE001 - a falha fica registrada e é avisada
+            conference_save_run(settings, conference_id, period=period, file_name=file_name, sha=sha, status="FAILED",
+                                message=str(exc), created_by=user_email, finished=True)
+            _conference_job_update(conference_id, status="FAILED", message=str(exc))
+            notify_job_result("uploads", "governance", f"conference-{conference_id}", "Conferência com o fechamento manual", period,
+                              {"status": "FAILED", "message": str(exc)})
+        finally:
+            staged.unlink(missing_ok=True)  # a planilha enviada não fica guardada: só as linhas lidas (parquet) e o resultado
+
+    @app.post("/api/governance/conference/upload", dependencies=[Depends(require_token)])
+    async def upload_conference(
+        request: Request,
+        period: str = Query(pattern=r"^\d{4}-\d{2}$"),
+        file_name: str = Query(default="", max_length=260),
+    ) -> dict[str, object]:
+        """Recebe a Posição de Estoque fechada à mão (.xlsb/.xlsx) e inicia a conferência em segundo plano."""
+        suffix = Path(file_name).suffix.lower()
+        if suffix not in CONFERENCE_EXTENSIONS:
+            raise HTTPException(status_code=422, detail="Envie a Posição de Estoque fechada à mão em .xlsb ou .xlsx (aba Base Orig.).")
+        with CONFERENCE_LOCK:
+            if any(job.get("status") in {"QUEUED", "RUNNING"} for job in CONFERENCE_JOBS.values()):
+                raise HTTPException(status_code=409, detail="Já existe uma conferência em andamento. Aguarde terminar.")
+        folder = settings.path("landing") / "conferencia" / period
+        folder.mkdir(parents=True, exist_ok=True)
+        conference_id = uuid.uuid4().hex[:16]
+        staged = folder / f"{conference_id}{suffix}"
+        digest = hashlib.sha256()
+        size = 0
+        try:
+            with staged.open("wb") as handle:
+                async for chunk in request.stream():
+                    size += len(chunk)
+                    if size > SAP_UPLOAD_MAX_BYTES:
+                        raise HTTPException(status_code=413, detail="A planilha excede o limite de 500 MB.")
+                    digest.update(chunk)
+                    handle.write(chunk)
+            if size == 0:
+                raise HTTPException(status_code=422, detail="O arquivo enviado está vazio.")
+        except BaseException:
+            staged.unlink(missing_ok=True)
+            raise
+        user_email = str((getattr(request.state, "user", None) or {}).get("email") or "")
+        job = {"conference_id": conference_id, "period": period, "file_name": Path(file_name).name, "status": "RUNNING",
+               "progress": 2, "message": f"Planilha {Path(file_name).name} recebida ({size / 1048576:.1f} MB).",
+               "created_at": datetime.now().isoformat(timespec="seconds"), "created_by": user_email}
+        with CONFERENCE_LOCK:
+            CONFERENCE_JOBS.clear()
+            CONFERENCE_JOBS[conference_id] = job
+        threading.Thread(target=run_conference_job,
+                         args=(conference_id, period, staged, Path(file_name).name, digest.hexdigest(), user_email),
+                         daemon=True, name=f"conference-{conference_id}").start()
+        return dict(job)
+
+    @app.post("/api/governance/conference/{conference_id}/cancel", dependencies=[Depends(require_token)])
+    def cancel_conference(conference_id: str) -> dict[str, object]:
+        """Cancela a conferência em andamento (vale no próximo ponto de controle; nada do resultado parcial fica)."""
+        with CONFERENCE_LOCK:
+            job = CONFERENCE_JOBS.get(conference_id)
+            if job is None or job.get("status") not in {"QUEUED", "RUNNING"}:
+                raise HTTPException(status_code=409, detail="Não há conferência em andamento para cancelar.")
+            job.update(cancel=True, message="Cancelando a conferência…", updated_at=datetime.now().isoformat(timespec="seconds"))
+            return dict(job)
+
+    @app.get("/api/governance/conference", dependencies=[Depends(require_token)])
+    def get_conference(period: str = Query(pattern=r"^\d{4}-\d{2}$"), conference_id: str | None = Query(default=None)) -> dict[str, object]:
+        """Andamento da conferência em curso e o último resultado da competência (com diagnóstico)."""
+        with CONFERENCE_LOCK:
+            active = next((dict(job) for job in CONFERENCE_JOBS.values()
+                           if job.get("period") == period and (conference_id is None or job.get("conference_id") == conference_id)), None)
+        run = conference_latest_run(settings, conference_id=conference_id) if conference_id else conference_latest_run(settings, period)
+        return {"period": period, "job": active, "run": run}
+
+    def _rules_payload() -> dict[str, object]:
+        with connect(settings.path("database")) as connection:
+            state = rules_state(connection)
+            history = rules_history(connection)
+        return {**state, "is_default": state["rules"] == DEFAULT_PASS_STEP_RULES,
+                "described": describe_rules(state["rules"]), "fields": RULE_FIELD_LABELS,
+                "step1_options": STEP1_OPTIONS, "step2_options": STEP2_OPTIONS, "history": history}
+
+    def _after_rules_change(period: str | None) -> dict[str, object] | None:
+        """Leva a regra nova para o Drive e reprocessa a competência (a ponte publica o resultado)."""
+        threading.Thread(target=rules_sync_once, daemon=True).start()
+        if not period:
+            return None
+        return start_inventory_enrichment(ImportRequest(period=period))
+
+    @app.get("/api/governance/rules", dependencies=[Depends(require_token)])
+    def get_pass_step_rules() -> dict[str, object]:
+        return _rules_payload()
+
+    @app.post("/api/governance/rules/apply", dependencies=[Depends(require_token)])
+    def apply_pass_step_rule(payload: RuleApplyRequest, request: Request) -> dict[str, object]:
+        if payload.step1 not in STEP1_OPTIONS or payload.step2 not in STEP2_OPTIONS:
+            raise HTTPException(status_code=422, detail="Opção de regra desconhecida.")
+        run = conference_latest_run(settings, conference_id=payload.conference_id)
+        if not run or run.get("status") != "COMPLETED":
+            raise HTTPException(status_code=404, detail="Conferência não encontrada ou ainda não concluída.")
+        user_email = str((getattr(request.state, "user", None) or {}).get("email") or "")
+        with connect(settings.path("database")) as connection:
+            rules = load_rules(connection)
+            rules[payload.field] = {"step1": payload.step1, "step2": payload.step2}
+            saved = save_rules(connection, rules, action="aprovada", changed_by=user_email, conference_id=payload.conference_id,
+                               period=str(run["period"]), reason=payload.reason or "Sugestão da conferência com o fechamento manual")
+        job = _after_rules_change(str(run["period"]))
+        return {"status": "applied", "version": saved["version"], "rules": saved["rules"], "reprocess": job, **{"payload": _rules_payload()}}
+
+    @app.post("/api/governance/rules/restore", dependencies=[Depends(require_token)])
+    def restore_pass_step_rules(payload: RuleRestoreRequest, request: Request) -> dict[str, object]:
+        user_email = str((getattr(request.state, "user", None) or {}).get("email") or "")
+        with connect(settings.path("database")) as connection:
+            if payload.version == 0:
+                target, period = {}, payload.period  # versão 0 = regra padrão validada (09/2026)
+            else:
+                item = next((h for h in rules_history(connection, limit=500) if h["version"] == payload.version), None)
+                if item is None:
+                    raise HTTPException(status_code=404, detail="Versão não encontrada no histórico.")
+                target, period = item["rules"], payload.period or item.get("period")
+            saved = save_rules(connection, target, action="restaurada", changed_by=user_email, period=period,
+                               reason=payload.reason or f"Restauração da versão {payload.version}")
+        job = _after_rules_change(period or latest_period(settings))
+        return {"status": "restored", "version": saved["version"], "rules": saved["rules"], "reprocess": job, "payload": _rules_payload()}
+
     @app.post("/api/sap/upload", dependencies=[Depends(require_token)])
     async def upload_sap_export(
         request: Request,
@@ -3636,7 +4148,42 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             "aging_days": "Data-base contábil menos Product Offer End Date.",
             "aging_bucket": "Valores negativos = Futures; demais distribuídos nas faixas versionadas do sistema.",
             "cost_split": "FOB 50%, II 35% e Outros Custos 15% do Vlr Tot Fisc, conforme regra vigente mapeada.",
-            "season_year": "Season + Year; anos anteriores a 2022 podem ser agrupados como <2022 nas visões históricas.",
+            "season_year": "Season + Year (ex.: FA2026); com Year \"<2022\", FA<2022.",
+            "year_rule": (
+                "Year pelo Material completo, sem Centro (igual ao fechamento manual, validado em 09/2026): 1º coleção do pedido "
+                "de importação (48…) da primeira entrada do Material no mês; 2º Year do mesmo Material na posição do mês anterior; "
+                "3º All Brazil; 4º preenchimento manual. Anos anteriores a 2022 são gravados como \"<2022\" (inclusive o texto "
+                "\"<2022\" da posição oficial). O filtro Year da Visão e relatórios aceita \"<2022\"."
+            ),
+            "offer_season_rule": (
+                "Product Offer End Dt e Season (confirmado com a área em 15/10/2026): 1º Base GR do mês pelo Material completo — "
+                "Data de lançamento da primeira entrada do Material na ordem do arquivo e Season da primeira entrada cujo pedido tem "
+                "coleção; 2º mês anterior pelo CE & MAT; 3º All Brazil; 4º manual. O KPI de junho/2025 não é usado."
+            ),
+            "conference_agent": (
+                "Agente de conferência (Controles e auditoria, opcional): um administrador envia a Posição de Estoque fechada à mão "
+                "(.xlsb/.xlsx); o sistema compara linha a linha Year, Season e Product Offer End Dt e os totais por AGING, Season e "
+                "Year, marca como 'sem origem' os valores da planilha que não existem em nenhuma fonte (provável erro na planilha) e "
+                "testa as variações das regras do PASSO A PASSO (passo 1 na Base GR × passo 2 no mês anterior), sugerindo a que mais "
+                "reduz a diferença em R$. A regra só muda quando um administrador aprova; cada mudança fica no histórico, vai para as "
+                "outras máquinas pelo Drive e pode ser restaurada. O resultado chega ao chat como evento proativo conference_result: "
+                "explique só com os números do evento, sem inventar causas. Durante a conferência há o botão Cancelar (nada do "
+                "resultado parcial fica gravado)."
+            ),
+            "custom_visuals": (
+                "Inserir visuais (Visão e relatórios, botão ao lado do Mapa mental, só administradores; estilos da página mais "
+                "Linhas e Tabela ranking; top também por aging médio): o administrador pede um gráfico em português numa "
+                "janela própria; o sistema calcula os números e insere o card antes de 'Evolução do Aging por Material', no mesmo "
+                "estilo dos demais, visível para toda a equipe (só administradores removem), lado a lado (um que sobra sozinho vai de ponta a ponta; quando ficaria esticado, o Optimus "
+                "sugere um par para ficar ao lado), e ele vai para o HTML e o PDF do relatório. Pedido igual a um gráfico existente não cria outro. "
+                "Os gráficos originais não podem ser alterados. Se pedirem um gráfico novo aqui no chat, oriente a usar esse botão."
+            ),
+            "drive_sharing": (
+                "Drive compartilhado Estoque_Cont (https://drive.google.com/drive/folders/0AERqv4gve9toUk9PVA): administradores = "
+                "Gerente de conteúdo; usuários com a Agenda de fechamento = Colaborador; demais usuários = Leitor. O sistema não "
+                "inclui membros sozinho: ao salvar um acesso em Configurações, aparece o aviso com o e-mail, o link e o papel certo "
+                "(no navegador: nome do drive › Gerenciar membros)."
+            ),
         },
         # Faixas padrão do Mapping "Faixas de aging" (dias iniciais entre parênteses);
         # as vigentes podem ser editadas e são consultadas pela ferramenta mappings.
@@ -3919,7 +4466,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
                 "save_user_access": "Somente administradores. Prepara cadastro/alteração de acesso: {\"type\":\"save_user_access\",\"email\":\"...\",\"role\":\"user|admin\",\"pages\":[\"overview\",\"inventory\",\"sap\",\"all-brazil\",\"mapping\",\"governance\",\"health\",\"agent\",\"docs\"]}. Executa só após confirm_sap.",
                 "disable_user_access": "Somente administradores. Prepara a desativação de um acesso (não exclui): {\"type\":\"disable_user_access\",\"email\":\"...\"}. Executa só após confirm_sap.",
                 "set_notification_preferences": "Prepara as preferências de notificação deste computador: enabled, sound, sap, uploads, optimus, bridge, backup, connectivity (true/false). Executa só após confirm_sap.",
-                "set_interface_preferences": "Prepara Interface e experiência deste computador: density (compact|comfortable), default_page_size, animations_enabled, chart_animations_enabled, card_animations_enabled. Executa só após confirm_sap.",
+                "set_interface_preferences": "Prepara Interface e experiência deste computador: density (compact|comfortable), default_page_size, animations_enabled, chart_animations_enabled, card_animations_enabled, mindmap_calm, presentations_enabled, optimus_floating (chat do Optimus acompanhando o usuário nas outras páginas: janela, bolha e aba lateral). Executa só após confirm_sap.",
                 "set_report_insights": (
                     "Grava, na hora e sem confirm_sap, se o usuário quer receber no chat o resumo proativo dos principais "
                     "gráficos da Visão e relatórios: {\"type\":\"set_report_insights\",\"enabled\":true|false}. Use quando "
@@ -4638,7 +5185,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             except Exception as exc:  # noqa: BLE001 - validação do modelo
                 return invalid(str(exc))
             if not values:
-                return invalid("Informe ao menos uma preferência: density, default_page_size, animations_enabled, chart_animations_enabled ou card_animations_enabled.")
+                return invalid("Informe ao menos uma preferência: density, default_page_size, animations_enabled, chart_animations_enabled, "
+                               "card_animations_enabled, mindmap_calm, presentations_enabled ou optimus_floating.")
             return prepare({"kind": "interface_prefs", "values": values},
                            "Interface e experiência: " + ", ".join(f"{key} = {value}" for key, value in values.items()) + ".")
 

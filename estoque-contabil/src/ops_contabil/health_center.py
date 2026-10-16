@@ -16,6 +16,8 @@ import yaml
 from .db import connect
 from .gr_collection import collection_status
 from .inventory import INVENTORY_COLUMNS, HIDDEN_UI_COLUMNS, ensure_inventory_schema
+from .conference import latest_run as conference_latest_run
+from .conference import short_facts as conference_facts
 from .master_base import master_base_status
 from .mb59 import ensure_mb59_schema
 from .sources.all_brazil import MONTH_NAMES, resolve_all_brazil_root
@@ -433,6 +435,18 @@ def system_health(
     }
 
 
+def _conference_summary(run: dict[str, Any], facts: dict[str, Any]) -> str:
+    """Uma linha para o controle automático: arquivo, quando, linhas e valor total (os % ficam no selo)."""
+    rows = (facts.get("rows") or {}).get("comparadas") or 0
+    totals = facts.get("totals") or {}
+    when = str(run.get("finished_at") or run.get("created_at") or "")[:16].replace("T", " ")
+    difference = float(totals.get("diferenca") or 0)
+    value = ("valor total igual" if abs(difference) < 0.01 else
+             f"diferença no valor total de R$ {difference:,.2f}".replace(",", "_").replace(".", ",").replace("_", "."))
+    rows_text = f"{int(rows):,}".replace(",", ".")
+    return f"{facts.get('file_name')} · {when} · {rows_text} linhas comparadas · {value}. Detalhes no card Agente de conferência, abaixo."
+
+
 def _next_period(period: str) -> str:
     year, month = map(int, period.split("-"))
     return f"{year + month // 12}-{month % 12 + 1:02d}"
@@ -546,10 +560,27 @@ def governance_status(settings: Any, period: str) -> dict[str, Any]:
                 f"{' por ' + master['imported_by'] if master['imported_by'] else ''} como base mestre. "
                 "Ela não é uma competência e não aparece na Base de estoque nem nos relatórios: serve só como "
                 f"posição do mês anterior no PASSO A PASSO de {_next_period(master['period'])} "
-                "(Season, Year e Product Offer End Dt por CE & MAT; origem \"Mês anterior · base mestre\")."
+                "(Season e Product Offer End Dt por CE & MAT, Year pelo Material; origem \"Mês anterior · base mestre\")."
                 + ("" if master["in_use"] else
                    f" Uma carga posterior da posição de {master['period']} no sistema já a substituiu.")
             ),
+        })
+    # Conferência com o fechamento manual (agente de conferência): o último resultado da competência.
+    try:
+        run = conference_latest_run(settings, period)
+    except Exception:  # noqa: BLE001 - tabela ainda não criada nesta máquina
+        run = None
+    if run and run.get("status") == "COMPLETED" and run.get("summary"):
+        facts = conference_facts(run)
+        fields = facts.get("fields") or {}
+        worst = min((item["iguais_pct"] for item in fields.values()), default=100.0)
+        controls.append({
+            "title": "Conferência com o fechamento manual",
+            "level": "healthy" if worst >= 99.5 else "warning",
+            "wide": True,
+            "badge": " · ".join(f"{item['label']} {item['iguais_pct']:.1f}%".replace(".", ",") for item in fields.values()),
+            # Resumo de uma linha; a explicação completa fica no card "Agente de conferência" e no chat do Optimus.
+            "detail": _conference_summary(run, facts),
         })
     source = None
     if ab:
@@ -600,16 +631,18 @@ def governance_status(settings: Any, period: str) -> dict[str, Any]:
                  "Conflito: Material Nbr repetido com valores diferentes deixa vazio só o campo divergente (ver Consistência All Brazil).",
              ]},
             {"title": "MB59 (PASSO A PASSO) → Season, Year e Product Offer End Dt", "detail": f"Aba BASE da MB59_BASE GR · {mb59_columns} colunas reconhecidas por nome.",
-             "badge": "SKU · pedido", "level": "healthy" if sources.get("mb59") else "warning", "steps": [
-                 "1º Base GR do mês (MB59) por SKU = 10 primeiros caracteres do Material, todos os centros: vale a entrada mais recente "
-                 "(Data de lançamento), sem pedidos intercompany (fornecedores 7008002 e 7008004). Product Offer End Dt = Data de lançamento; "
-                 "Season e Year = coleção do pedido de compra dessa entrada (Código coleção e Ano coleção da SQVI DOC_COMPRA, "
+             "badge": "Material · pedido", "level": "healthy" if sources.get("mb59") else "warning", "steps": [
+                 "1º Base GR do mês (MB59) pelo Material completo, todos os centros: Product Offer End Dt = Data de lançamento; "
+                 "Season e Year = coleção do pedido de compra da entrada (Código coleção e Ano coleção da SQVI DOC_COMPRA, "
                  "carregados em Extrações SAP pela Base GR ou pelo export da SQVI).",
-                 "Competências carregadas antes desta regra seguem a regra anterior: MB59 por CE & MAT, com o lançamento mais recente.",
-                 "Ordem de busca, campo a campo: 1º Base GR do mês por SKU → 2º Base de Estoque do mês anterior por CE & MAT "
-                 "(ou a base mestre daquele mês, quando houver uma mais nova que a carga do sistema) → "
-                 "3º All Brazil pelo Material (ou Estilo-Cor), sem Centro: Collection Code → Season, Collection Year → Year, "
-                 "Product Offer End Dt → Product Offer End Dt.",
+                 "2º Base de Estoque do mês anterior (ou a base mestre daquele mês, quando houver uma mais nova que a carga do "
+                 "sistema) → 3º All Brazil pelo Material (ou Estilo-Cor), sem Centro: Collection Code → Season, Collection Year → "
+                 "Year, Product Offer End Dt → Product Offer End Dt → 4º preenchimento manual na Base de estoque.",
+                 "Regra vigente (padrão validado com o fechamento de 09/2026; ajustável só por aprovação de administrador no Agente "
+                 "de conferência): Product Offer End Dt e Season — 1º Base GR do mês pelo Material completo (primeira entrada do "
+                 "Material na ordem do arquivo; Season da primeira entrada cujo pedido tem coleção) → 2º mês anterior pelo CE & MAT → "
+                 "3º All Brazil. Year — 1º coleção do pedido de importação (48…) da primeira entrada do Material → 2º mês anterior "
+                 "pelo Material (qualquer centro) → 3º All Brazil. Anos anteriores a 2022 ficam \"<2022\".",
                  "Sem valor nas três fontes: o campo fica vazio e a linha aparece em \"Somente pendências de joins\" na Base de estoque.",
              ]},
             {"title": "Base GR / SQVI DOC_COMPRA → Season e Year dos pedidos",
@@ -624,8 +657,7 @@ def governance_status(settings: Any, period: str) -> dict[str, Any]:
                  "Uma planilha só com Pedido, Season e Year não é reconhecida (use os nomes da SQVI).",
                  "Recusado, sem alterar nada: Season buscada pelo SKU na aba PE (e não pelo pedido), Season/Year com #N/D ou fórmula não "
                  "calculada, lançamentos de outra competência ou nenhum pedido válido. A mensagem diz o motivo.",
-                 "Chave: Pedido do arquivo = pedido de compra da entrada mais recente do SKU (10 primeiros caracteres do Material) na MB59 do "
-                 "mês; uma coleção por pedido (coleções diferentes: vale a mais frequente e o conflito é informado). Pedidos da MB59 sem "
+                 "Chave: Pedido do arquivo = pedido de compra das entradas da MB59 do mês (por Material); uma coleção por pedido (coleções diferentes: vale a mais frequente e o conflito é informado). Pedidos da MB59 sem "
                  "coleção no arquivo seguem para a Base de Estoque do mês anterior e o All Brazil.",
              ]},
             {"title": "Mapping → Local, STATUS OPERAÇÃO, Lifecycle e AGING", "detail": "Regras editáveis da página Mapping, compartilhadas entre as máquinas.",
@@ -637,8 +669,9 @@ def governance_status(settings: Any, period: str) -> dict[str, Any]:
                  "Days negativo → 0) Futures.",
              ]},
             {"title": "Campos calculados (sem join)", "detail": "Fórmulas aplicadas depois dos joins, linha a linha.", "badge": "Fórmulas", "steps": [
-                 "Season/Coleção: Season + Year (por exemplo, FA2026).",
-                 "Tudo que for antes de 2022 deixar <2022: o próprio Year, ou <2022 quando o Year é menor que 2022.",
+                 "Season/Coleção: Season + Year (por exemplo, FA2026; com Year \"<2022\", FA<2022).",
+                 "Tudo que for antes de 2022 deixar <2022: o próprio Year, ou <2022 quando o Year é menor que 2022. O texto \"<2022\" "
+                 "da posição oficial é mantido como Year (aparece \"<2022\" na grade, na exportação e no filtro Year da Visão).",
                  "CE UNIT e Custo Fiscal UNIT.: Vlr Tot Emp ÷ Utilização livre e Vlr Tot Fisc ÷ Utilização livre.",
                  "FOB, II e Outros Custos: 50%, 35% e 15% do Vlr Tot Fisc.",
              ]},

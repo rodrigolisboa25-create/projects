@@ -73,3 +73,16 @@ def test_summary_and_every_chart_follow_the_filters(env) -> None:  # noqa: F811
     assert response.status_code == 200 and response.json()["fiscal_value"] == 10.0
     assert client.get("/api/dashboard/summary", params={"period": "2026-09", "filters": "[1]"}).status_code == 422
     assert client.get("/api/dashboard/filter-options", params={"period": "2026-09"}).json()["dimensions"][0]["key"] == "division"
+
+
+def test_year_filter_includes_before_2022(env) -> None:  # noqa: F811
+    settings, database, *_ = env
+    seed(database)
+    with connect(database) as connection:
+        connection.execute("update inventory_rows set historical_year_bucket='<2022' where period='2026-09' and plant='2115'")
+        connection.execute("update inventory_rows set historical_year_bucket='2024' where period='2026-09' and plant='2030'")
+    options = {d["key"]: d for d in overview_filter_options(settings, "2026-09")["dimensions"]}
+    assert options["year"]["label"] == "Year"
+    assert [item["value"] for item in options["year"]["values"]] == ["<2022", "2024", "2026"]  # ordem cronológica
+    assert dashboard_summary(settings, "2026-09", {"year": ["<2022"]})["fiscal_value"] == 60.0
+    assert dashboard_summary(settings, "2026-09", {"year": ["<2022", "2024"]})["fiscal_value"] == 70.0

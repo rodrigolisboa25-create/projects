@@ -21,6 +21,7 @@ import shutil
 import socket
 import tempfile
 import threading
+import time
 import uuid
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -37,6 +38,8 @@ BRIDGE_TABLES = (
     "master_base_rows", "master_base_imports", "pass_step_manual",
     # Regra por SKU do PASSO A PASSO (entradas do mês, pedidos e coleção dos pedidos).
     "mb59_sku_entries", "mb59_orders", "gr_collection_rows", "gr_collection_imports",
+    # Year do PASSO A PASSO por Material (entradas do mês por Material e pedido).
+    "mb59_material_entries",
 )
 FRESHNESS_TABLES = ("inventory_imports", "mb59_imports", "all_brazil_imports", "gr_collection_imports")
 ROOT_SETTING = "bridge_root"
@@ -230,9 +233,26 @@ def validate_folder(path: Path) -> None:
     probe = path / f".teste_escrita_{uuid.uuid4().hex[:8]}"
     try:
         probe.write_text("ok", encoding="utf-8")
-        probe.unlink()
     except OSError as exc:
         raise ValueError(f"Sem permissão de escrita na pasta: {path} ({exc})") from exc
+    finally:
+        # Sempre apaga o teste (antes, uma gravação que falhava — ex.: disco cheio — deixava o arquivo vazio na pasta)
+        # e limpa sobras antigas de qualquer máquina.
+        _remove_quietly(probe)
+        cutoff = time.time() - 3600
+        for leftover in path.glob(".teste_escrita_*"):
+            try:
+                if leftover.stat().st_mtime < cutoff:
+                    _remove_quietly(leftover)
+            except OSError:
+                continue
+
+
+def _remove_quietly(path: Path) -> None:
+    try:
+        path.unlink(missing_ok=True)
+    except OSError:
+        pass
 
 
 def set_root(settings: Any, new_path: str | None, *, leave_redirect: bool = True, changed_by: str = "") -> dict[str, Any]:

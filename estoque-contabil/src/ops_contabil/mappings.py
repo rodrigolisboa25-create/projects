@@ -303,7 +303,7 @@ def apply_mapping_rules(settings: Any, period: str, as_of: date | None = None) -
                  aging_bucket=null,
                  fob_amount=fiscal_total_amount*0.50, import_tax_amount=fiscal_total_amount*0.35,
                  other_costs_amount=fiscal_total_amount*0.15,
-                 season_year=case when season is not null and year is not null then season || cast(cast(year as integer) as varchar) end,
+                 season_year=case when season is not null and year is not null then season || (case when year=0 then '<2022' else cast(cast(year as integer) as varchar) end) end,
                  historical_year_bucket=case when year is null then null when year<2022 then '<2022' else cast(cast(year as integer) as varchar) end
                where period=?""",
             [as_of, period],

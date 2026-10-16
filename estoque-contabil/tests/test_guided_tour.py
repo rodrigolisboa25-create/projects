@@ -41,3 +41,6 @@ def test_tour_screen_starts_after_loading_and_is_available_in_settings() -> None
     assert "sel:'#mindmap-btn'" in html and "sel:'#overview-filter-btn'" in html
     assert "sel:'#share-html',admin:true" in html and "Baixar HTML" in html
     assert "sel:'#gr-form'" in html  # Season e Year dos pedidos (Base GR / SQVI)
+    assert "sel:'#conference-card'" in html  # Agente de conferência (opcional)
+    assert "floating:true" in html and "!s.floating||" in html  # Optimus flutuante: some do tour se estiver desligado
+    assert "admin:true,sel:'#cv-launch'" in html  # Inserir visuais: só administradores

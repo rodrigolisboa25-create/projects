@@ -468,6 +468,34 @@
     .report-chart.is-columns .report-value{font-size:10.5px;margin-bottom:3px}
     .report-chart.is-columns .report-label{margin-top:4px;font-weight:700}
     .report-note{color:#4a5b70;font-size:10px;white-space:nowrap}
+    /* Chat flutuante (janela no canto da tela, nas outras páginas): o cabeçalho fica na janela do sistema
+       e o conteúdo se ajusta à largura reduzida, sem perder nenhum recurso. */
+    html.docked body{font-size:13.5px}
+    html.docked .optimus-header{display:none}
+    html.docked .messages{padding:12px 12px 10px;gap:10px}
+    html.docked .bubble{max-width:94%;padding:9px 11px;border-radius:12px}
+    html.docked .message.assistant .bubble h1{font-size:16.5px}
+    html.docked .message.assistant .bubble h2{font-size:15.5px}
+    html.docked .message.assistant .bubble h3{font-size:14.5px}
+    html.docked .message.assistant .bubble h4{font-size:13.5px}
+    html.docked .message.assistant .bubble ul,html.docked .message.assistant .bubble ol{padding-left:20px}
+    html.docked .markdown-table{min-width:100%;font-size:12px}
+    html.docked .markdown-table th,html.docked .markdown-table td{padding:7px 8px}
+    html.docked .welcome{padding:18px 6px}
+    html.docked .welcome h2{font-size:18px}
+    html.docked .typing{padding:0 12px 6px}
+    html.docked .composer-wrap{padding:8px 10px 10px}
+    html.docked textarea{min-height:42px;padding:10px 11px}
+    html.docked .send{height:42px;min-width:70px;padding:0 12px}
+    html.docked .choice-row{gap:6px}
+    html.docked .choice-btn{height:32px;padding:0 12px;font-size:12.5px}
+    html.docked .deck-card{flex-wrap:wrap;gap:10px}
+    html.docked .deck-card .choice-btn{width:100%}
+    html.docked .report-charts{grid-template-columns:minmax(0,1fr)}
+    html.docked .report-chart{padding:10px 11px 9px}
+    html.docked .report-chart.is-bars .report-chart-body{grid-template-columns:minmax(58px,82px) minmax(0,1fr) auto;gap:6px}
+    html.docked .report-chart.is-columns .report-chart-body{gap:6px;height:150px}
+    html.docked .reply-chip{font-size:12px}
   </style>
 </head>
 
@@ -576,6 +604,8 @@
 
       if(type==='online')statusDot.classList.add('online');
       if(type==='error')statusDot.classList.add('error');
+      // Mesmo status no cabeçalho da janela flutuante do sistema.
+      try{const top=window.top||window;if(top!==window&&typeof top.optimusDockStatus==='function')top.optimusDockStatus(text,type)}catch{}
     }
 
     function showError(message=''){
@@ -966,6 +996,10 @@
       if(persist&&role!=='user'){
         try{const top=window.top||window;if(top!==window&&typeof top.registerOptimusMessage==='function')top.registerOptimusMessage()}catch{}
       }
+      // Mensagem do usuário: ele está conversando, e o chat o acompanha ao mudar de página (Optimus flutuante).
+      if(persist&&role==='user'){
+        try{const top=window.top||window;if(top!==window&&typeof top.optimusUserMessage==='function')top.optimusUserMessage()}catch{}
+      }
       welcomeEl?.remove();
 
       const wrapper=document.createElement('div');
@@ -1258,7 +1292,8 @@
         const top=window.top||window;
         if(top.document.hidden||!top.document.hasFocus())return true;
         const panel=top.document.querySelector('[data-panel="agent"]');
-        if(panel&&!panel.classList.contains('active'))return true;
+        const docked=typeof top.optimusDockOpen==='function'&&top.optimusDockOpen();
+        if(panel&&!panel.classList.contains('active')&&!docked)return true;
       }catch{
         return document.hidden||!document.hasFocus();
       }

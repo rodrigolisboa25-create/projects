@@ -73,6 +73,12 @@ SUM_COLUMNS = (
 )
 DATE_COLUMNS = {"product_offer_end_date"}
 HIDDEN_UI_COLUMNS = {"historical_year_bucket"}
+# Na Posição de Estoque oficial, o Year de itens antigos vem como o texto "<2022" (sem o ano).
+# O Year é numérico no sistema: esse texto é guardado como 0, cai em "<2022" em todos os relatórios
+# e aparece como "<2022" na grade e na exportação. Nenhum ano é inventado.
+YEAR_BEFORE_2022 = 0
+YEAR_BEFORE_2022_LABEL = "<2022"
+YEAR_DISPLAY_SQL = f"case when year={YEAR_BEFORE_2022} then '{YEAR_BEFORE_2022_LABEL}' else cast(cast(year as integer) as varchar) end"
 INVENTORY_COMPANY = "7170"
 
 
@@ -229,6 +235,8 @@ def _clean_number(value: Any) -> float | None:
 def _clean_value(name: str, value: Any) -> Any:
     if value is None or value == "":
         return None
+    if name == "year" and str(value).strip() == YEAR_BEFORE_2022_LABEL:
+        return float(YEAR_BEFORE_2022)
     if name in NUMERIC_COLUMNS:
         return _clean_number(value)
     if name in DATE_COLUMNS:
@@ -486,6 +494,17 @@ def _serialize(value: Any) -> Any:
     return value
 
 
+# Filtro "Origem do PASSO A PASSO" da Base de estoque: rótulos gravados em pass_step_sources (ver mb59.py).
+PASS_STEP_ORIGINS: dict[str, tuple[str, str]] = {
+    "mb59": ("MB59%", "MB59 (Base GR do mês)"),
+    "prev": ("Mês anterior%", "Mês anterior"),
+    "ab": ("All Brazil%", "All Brazil"),
+    "manual": ("Manual%", "Manual"),
+    "none": ("Não localizado%", "Não localizado"),
+}
+PASS_STEP_ORIGIN_FIELDS = ("product_offer_end_date", "season", "year")
+
+
 def _inventory_query_parts(
     period: str,
     query: str,
@@ -493,8 +512,13 @@ def _inventory_query_parts(
     direction: str,
     column_filters: dict[str, str] | None = None,
     pending_joins: bool = False,
+    origin: str | None = None,
+    origin_field: str | None = None,
 ) -> tuple[str, list[Any], str, str]:
-    """Monta a mesma consulta usada pela grade e pelo download filtrado."""
+    """Monta a mesma consulta usada pela grade e pelo download filtrado.
+
+    ``origin`` (mb59, prev, ab, manual, none) filtra pela origem do PASSO A PASSO em ``origin_field`` (ou em qualquer
+    um dos três campos quando vazio)."""
     allowed = {name for name, _ in INVENTORY_COLUMNS} | {"source_row"}
     safe_sort = sort if sort in allowed else "source_row"
     safe_direction = "desc" if direction.lower() == "desc" else "asc"
@@ -521,8 +545,15 @@ def _inventory_query_parts(
         value = str(raw_value).strip()
         if name not in allowed or not value:
             continue
-        where += f' and coalesce(cast("{name}" as varchar),\'\') ilike ?'
+        column = YEAR_DISPLAY_SQL if name == "year" else f'cast("{name}" as varchar)'
+        where += f" and coalesce({column},'') ilike ?"
         params.append(f"%{value}%")
+    if origin in PASS_STEP_ORIGINS:
+        fields = [origin_field] if origin_field in PASS_STEP_ORIGIN_FIELDS else list(PASS_STEP_ORIGIN_FIELDS)
+        pattern = PASS_STEP_ORIGINS[origin][0]
+        where += (" and source_row in (select source_row from pass_step_sources where period=? and ("
+                  + " or ".join(f'"{field}" like ?' for field in fields) + "))")
+        params.extend([period, *[pattern] * len(fields)])
     return where, params, safe_sort, safe_direction
 
 
@@ -536,11 +567,16 @@ def list_inventory(
     direction: str,
     column_filters: dict[str, str] | None = None,
     pending_joins: bool = False,
+    origin: str | None = None,
+    origin_field: str | None = None,
 ) -> dict[str, Any]:
     names = [name for name, _ in INVENTORY_COLUMNS]
     where, params, sort, direction = _inventory_query_parts(
-        period, query, sort, direction, column_filters, pending_joins
+        period, query, sort, direction, column_filters, pending_joins, origin, origin_field
     )
+    with connect(settings.path("database")) as connection:  # a tabela de origens existe mesmo em bases antigas
+        connection.execute("""create table if not exists pass_step_sources (period varchar not null, source_row bigint not null,
+                              product_offer_end_date varchar, season varchar, year varchar)""")
     select = ",".join(["source_row", *[f'"{name}"' for name in names]])
     with connect(settings.path("database")) as connection:
         ensure_inventory_schema(connection)
@@ -574,14 +610,16 @@ def export_inventory_xlsx(
     direction: str,
     column_filters: dict[str, str] | None = None,
     pending_joins: bool = False,
+    origin: str | None = None,
+    origin_field: str | None = None,
 ) -> dict[str, Any]:
     """Exporta todas as linhas que atendem exatamente aos filtros ativos da grade."""
     visible_columns = [(name, label) for name, label in INVENTORY_COLUMNS if name not in HIDDEN_UI_COLUMNS]
     names = [name for name, _ in visible_columns]
     where, params, sort, direction = _inventory_query_parts(
-        period, query, sort, direction, column_filters, pending_joins
+        period, query, sort, direction, column_filters, pending_joins, origin, origin_field
     )
-    select = ",".join(["source_row", *[f'"{name}"' for name in names]])
+    select = ",".join(["source_row", *[YEAR_DISPLAY_SQL if name == "year" else f'"{name}"' for name in names]])
 
     # XLSX gravado em fluxo (xlsx_stream): ~500 mil linhas em segundos, sem temporários do openpyxl.
     from .xlsx_stream import write_xlsx
@@ -622,6 +660,8 @@ OVERVIEW_FILTER_COLUMNS: dict[str, tuple[str, str]] = {
     "plant": ("plant", "Centro"),
     "location": ("location_group", "Local de estoque"),
     "season": ("season", "Season"),
+    # Year agrupado como nos relatórios: anos anteriores a 2022 (e o texto "<2022" da posição oficial) viram "<2022".
+    "year": ("historical_year_bucket", "Year"),
 }
 NO_FILTER: tuple[str, list[Any]] = ("", [])
 
@@ -646,14 +686,16 @@ def overview_filter_sql(filters: dict[str, Any] | None) -> tuple[str, list[Any]]
 
 
 def overview_filter_options(settings: Any, period: str) -> dict[str, Any]:
-    """Valores disponíveis em cada filtro da competência, do maior para o menor valor fiscal."""
+    """Valores disponíveis em cada filtro da competência, do maior para o menor valor fiscal (Year em ordem cronológica)."""
     with connect(settings.path("database")) as connection:
         ensure_inventory_schema(connection)
         dimensions = []
         for key, (column, label) in OVERVIEW_FILTER_COLUMNS.items():
+            label_sql = _label_sql(column)
+            order = f"case when {label_sql}='<2022' then '0' else {label_sql} end" if key == "year" else "3 desc"
             rows = connection.execute(
                 f"""select {_label_sql(column)}, count(*), coalesce(sum(fiscal_total_amount),0)
-                    from inventory_rows where period=? group by 1 order by 3 desc""",
+                    from inventory_rows where period=? group by 1 order by {order}""",
                 [period],
             ).fetchall()
             dimensions.append({"key": key, "label": label, "values": [
@@ -898,17 +940,20 @@ def _division_variance(
 
 
 
-def aging_race(settings: Any, period: str, filters: dict[str, Any] | None = None, top: int = 12, months: int = 36) -> dict[str, Any]:
+def aging_race(settings: Any, period: str, filters: dict[str, Any] | None = None, top: int = 12, months: int = 36,
+               extra: tuple[str, list[Any]] = NO_FILTER) -> dict[str, Any]:
     """Evolução do Aging por Material (Visão e relatórios): série histórica mês a mês, na posição da competência.
 
     Para cada material (Texto breve material) entre os ``top`` de maior valor fiscal já em aging (Product Offer End Dt
     até a data-base), em cada fim de mês da série: valor fiscal acumulado das linhas cujo Product Offer End Dt já tinha
     passado e tempo médio em estoque nesse mês (dias desde o Product Offer End Dt, ponderado pela quantidade livre).
-    A série vai do mês mais antigo desses materiais (no máximo ``months`` meses antes) até a data-base."""
+    A série vai do mês mais antigo desses materiais (no máximo ``months`` meses antes) até a data-base.
+    ``extra`` (" and ...", parâmetros) recorta mais (visuais inseridos pelo Optimus)."""
     year_number, month_number = map(int, period.split("-"))
     as_of = date(year_number, month_number, 1) + timedelta(days=32)
     as_of = as_of.replace(day=1) - timedelta(days=1)
     where_filter, filter_params = overview_filter_sql(filters)
+    where_filter, filter_params = where_filter + extra[0], [*filter_params, *extra[1]]
     with connect(settings.path("database")) as connection:
         ensure_inventory_schema(connection)
         rows = connection.execute(
