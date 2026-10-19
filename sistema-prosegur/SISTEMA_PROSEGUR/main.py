@@ -645,6 +645,25 @@ def preencher_parametros_din(ws, row_idx: int, empresa: str, data_procedimento: 
 def escrever_aba_dinamica(ws, linhas_dinamica: list[list[Any]], empresa: str) -> None:
     max_col = max(ws.max_column, 56)
     data_procedimento = datetime.now()
+
+    # Alguns templates têm células mescladas em linhas vazias abaixo do
+    # intervalo originalmente previsto para os dados. Quando o lote cresce,
+    # essas linhas passam a fazer parte da tabela e não podem continuar
+    # mescladas (por exemplo, M:N nas linhas 157:164 do template SBF).
+    last_row = max(3, len(linhas_dinamica) + 2)
+    merges_na_area_dados = [
+        str(merged_range)
+        for merged_range in ws.merged_cells.ranges
+        if merged_range.max_row >= 3 and merged_range.min_row <= last_row
+    ]
+    for merged_range in merges_na_area_dados:
+        ws.unmerge_cells(merged_range)
+    if merges_na_area_dados:
+        logar(
+            f'[SAP][{empresa}] Removidas mesclas que cruzavam as linhas de dados '
+            f'da aba Din.: {", ".join(merges_na_area_dados)}'
+        )
+
     limpar_valores(ws, 3, max_col)
 
     for row_offset, row in enumerate(linhas_dinamica, start=3):
@@ -657,7 +676,6 @@ def escrever_aba_dinamica(ws, linhas_dinamica: list[list[Any]], empresa: str) ->
 
         preencher_parametros_din(ws, row_offset, empresa, data_procedimento)
 
-    last_row = max(3, len(linhas_dinamica) + 2)
     ws.auto_filter.ref = f'L2:AD{last_row}'
 
 
@@ -969,7 +987,7 @@ def gerar_excels(execution_id: str) -> tuple[str | None, int]:
     else:
         logar("[CONCLUÍDO] Processamento finalizado com sucesso. Tudo conferido!")
     # --------------------------------------
-
+    
     conn = sqlite3.connect(DB_PATH)
     try:
         df_db = pd.read_sql_query(
