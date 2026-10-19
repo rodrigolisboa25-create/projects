@@ -47,7 +47,7 @@ if "%PYTHON_CMD%"=="" (
     echo [ERRO] Python nao encontrado nesta maquina.
     echo.
     echo Instale o Python pelo site oficial:
-    echo https://www.python.org/downloads/
+    echo https://www.python.org/downloads/windows/
     echo.
     echo Durante a instalacao, marque a opcao:
     echo Add python.exe to PATH
