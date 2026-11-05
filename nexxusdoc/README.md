@@ -1,6 +1,6 @@
 # 🧩 NexxusDoc
 
-**Python · FastAPI · HTML/CSS/JavaScript · n8n · Gemini via endpoint compatível com OpenAI · Google Drive · PDF**
+**Python · FastAPI · HTML/CSS/JavaScript · n8n · Gemini · Qwen3.5:4b local (Ollama) · Google Drive · PDF**
 
 Aplicação local para Windows que transforma entrevistas guiadas em procedimentos operacionais (POPs). O agente de IA **NexxusDoc** conversa com quem executa o processo, coleta etapas, controles e evidências, ajuda a identificar lacunas e produz um documento para revisão humana. A aplicação conecta esse conhecimento em um universo visual de processos e usa as informações reunidas para identificar automações direcionadas. Também administra versões, aprovações e consultas ao acervo.
 
@@ -63,6 +63,12 @@ O sistema **orquestra a descoberta e a preparação**: reúne fontes, liga proce
 
 O **Fluxo As Is** pode representar etapas, decisões, raias, sistemas e pontos de melhoria a partir do procedimento. Isso ajuda a localizar gargalos e dependências antes de desenhar um fluxo futuro. Veja [como o conhecimento alimenta a automação](docs/conhecimento-e-automacao.md).
 
+### 🖥️ Resumo executivo com Qwen local
+
+Na página **Automação**, o administrador master pode pedir um resumo executivo para uma oportunidade específica. A API envia ao **Ollama na própria máquina** um contexto curto do processo, da etapa, da solução proposta, dos pré-requisitos, riscos e estimativas já registrados. O modelo padrão é **Qwen3.5:4b** (`NEXUS_LLM_MODEL`); `NEXUS_LLM_URL` aceita somente um endereço local (`127.0.0.1` ou `localhost`).
+
+A Qwen redige a explicação para gestores; os números vêm do procedimento e da análise de automação, não de cálculos inventados pelo modelo. Essa chamada **não usa n8n nem VPN**. Só o master inicia a geração; o resultado é salvo na pasta compartilhada `resumos_executivos/` e pode ser consultado pelos demais usuários. É preciso ter o Ollama em execução e o modelo instalado no computador do master. O texto ainda exige conferência humana antes de ser usado para decidir investimentos.
+
 ### 🔎 Transações SAP e dados no BigQuery
 
 Quando o procedimento registra transações SAP, a página **Automação** pode consultar dados do lake por meio do n8n e do BigQuery, desde que o usuário tenha a permissão e a integração esteja configurada. A consulta padrão olha os **últimos 30 dias**: identifica documentos por transação na **BKPF** e verifica a presença correspondente na **BSEG** e na **ACDOCA**. A tela mostra contagens e datas agregadas, não linhas financeiras individuais; os resultados por transação são reaproveitados em cache por até sete dias.
@@ -78,6 +84,13 @@ Essas opções são **hipóteses técnicas**, não soluções ativadas pelo sist
 ## 🤖 NexxusDoc: agente de IA
 
 O [workflow n8n](workflows/normas_procedimentos_n8n.json) usa um nó **AI Agent** e um nó **OpenAI Chat Model** apontado, na instalação original, para o modelo configurado como `gemini-3.6-flash` por um endpoint compatível. A cópia publicada não inclui a credencial nem o endpoint da organização. A seleção do modelo pertence à instância n8n; a API local controla a sessão, valida respostas e gera o documento.
+
+Há dois usos distintos de modelos de linguagem:
+
+| Modelo e execução | Uso no sistema |
+| --- | --- |
+| **Gemini via n8n** | Entrevistas, redação e consulta de procedimentos, além das análises técnicas ligadas às transações SAP. |
+| **Qwen3.5:4b via Ollama local** | Redação do resumo executivo de uma oportunidade de automação por vez, para apoiar a decisão de gestores. |
 
 O [prompt](workflows/system_message_nexxusdoc.md) orienta a entrevista; o [questionário](questionnaire.json) define campos e perguntas. A API prepara o contexto com referências, anexos e documentos relacionados. O modelo devolve a próxima pergunta ou síntese; o backend decide se há dados suficientes para gerar o PDF. A IA auxilia a redação e a consulta, mas o conteúdo exige revisão por pessoas autorizadas.
 
@@ -191,7 +204,8 @@ nexxusdoc/
 2. Copie `.env.example` para `.env` e configure a pasta compartilhada, e-mail master, segredo de sessão e URL n8n.
 3. Importe o workflow no n8n e configure suas próprias credenciais de modelo, Gmail, Drive e BigQuery conforme os nós usados.
 4. Configure o identificador da pasta sincronizada no instalador e a ponte do Drive quando necessários.
-5. Providencie cadastros e bases curadas específicos em ambiente restrito; eles foram excluídos desta cópia.
+5. Para habilitar o resumo executivo local, instale o Ollama e o modelo Qwen no computador do master; os parâmetros opcionais são `NEXUS_LLM_URL` e `NEXUS_LLM_MODEL`.
+6. Providencie cadastros e bases curadas específicos em ambiente restrito; eles foram excluídos desta cópia.
 
 **A cópia pública não é um pacote de produção pronto.** Caminhos, IDs, projeto de dados e endereços foram substituídos por exemplos. Sua implantação precisa preencher esses parâmetros e validar permissões.
 
