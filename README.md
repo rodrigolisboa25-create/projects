@@ -4,6 +4,16 @@ Repositório de projetos desenvolvidos para automatizar processos, organizar dad
 
 ## 📚 Projetos disponíveis
 
+### 🧩 NexxusDoc
+
+Agente de documentação de processos que conduz entrevistas guiadas, organiza referências, gera procedimentos em PDF e apoia revisão, aprovação e consulta ao acervo. Aplicação local para Windows com fluxo de IA e armazenamento no ambiente corporativo.
+
+**Tecnologias:** Python, FastAPI, HTML/CSS/JavaScript, n8n, Google Drive e PDF.
+
+- [Visão geral, recursos e arquitetura](nexxusdoc/README.md)
+
+---
+
 ### 📦 Estoque Contábil
 
 Plataforma local em Python e FastAPI para processar posições contábeis de estoque, automatizar extrações do SAP, consolidar regras de negócio e disponibilizar consultas e análises em uma interface web executada na máquina do usuário. O projeto tem como destaque o agente de IA **Optimus**, integrado ao n8n e ao Google Gemini.
