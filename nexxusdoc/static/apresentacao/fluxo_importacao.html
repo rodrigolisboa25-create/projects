@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Fluxo de importação: Fisia × Centauro</title>
+<!-- Motor de slides: html-ppt-skill (MIT, ver NOTICE.md). Tema e roteiro: NexxusDoc.
+     Os arquivos vão com ?v=<c> (c = FLOW_DECK_REV do index.html, no endereço desta página): o NexxusDoc já os baixa na
+     tela de carregamento e o navegador os guarda; uma versão nova muda o endereço. -->
+<script>
+var FLOW_REV=encodeURIComponent(new URLSearchParams(location.search).get('c')||'0');
+document.write(['base.css','animations.css','tema-nexxusdoc.css'].map(function(n){return '<link rel="stylesheet" href="'+n+'?v='+FLOW_REV+'">'}).join(''));
+</script>
+</head>
+<body>
+<div class="deck" id="deck">
+  <canvas id="space" aria-hidden="true"></canvas>
+  <div class="loading" id="loading" hidden>Carregando o fluxo de importação…</div>
+</div>
+<!-- Aberta pelo REF. DOCS, o idioma é escolhido na tela do universo e os dados vêm de lá (idiomas.js: português, inglês e
+     espanhol). Depois o script monta os slides e carrega runtime.js e fx-runtime.js. -->
+<script>
+document.write(['idiomas.js','fluxo_importacao.js'].map(function(n){return '<script src="'+n+'?v='+FLOW_REV+'"><\/script>'}).join(''));
+</script>
+</body>
+</html>

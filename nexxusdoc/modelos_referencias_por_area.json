@@ -1,0 +1,69 @@
+{
+  "observacao": "MODELOS fixos que acompanham o sistema. Servem apenas de ponto de partida quando uma area com nome parecido e cadastrada; a base viva fica em referencias_por_area.json (pasta compartilhada), mantida automaticamente pelo NexxusDoc.",
+  "areas": [
+    {
+      "nome": "Contas a Pagar",
+      "palavras_chave": ["pagar", "fornecedor", "cap", "pagamento"],
+      "temas": ["recebimento e conferência de notas fiscais (NF-e, NFS-e, CT-e)", "three-way match (pedido de compra x recebimento x nota)", "cadastro e validação de fornecedores e dados bancários", "retenções na fonte (IRRF, PIS/COFINS/CSLL, ISS, INSS)", "alçadas e aprovação de pagamentos", "programação e remessa de pagamentos (CNAB, DDA, boletos, PIX)", "pagamentos urgentes ou fora do fluxo", "adiantamentos e prestação de contas", "conciliação de fornecedores e baixas", "provisões de despesas e fechamento mensal", "segregação entre cadastro, aprovação e pagamento"],
+      "referencias": ["Legislação de retenções da Receita Federal (IN RFB 1.234/2012 e alterações)", "LC 116/2003 (ISS)", "Layouts CNAB 240/400 da FEBRABAN", "Boas práticas de controles internos (COSO)"],
+      "sistemas_comuns": ["ERP (ex.: SAP - MM/FI)", "portal de fornecedores", "internet banking / VAN bancária", "DDA", "planilhas de programação de pagamentos"],
+      "riscos_tipicos": ["pagamento em duplicidade", "fraude em dados bancários", "retenção incorreta de tributos", "pagamento sem aprovação", "multas e juros por atraso"]
+    },
+    {
+      "nome": "Contas a Receber",
+      "palavras_chave": ["receber", "cliente", "cobrança", "car", "recebimento"],
+      "temas": ["faturamento e emissão de títulos", "concessão e limite de crédito", "cobrança e régua de cobrança", "baixa e conciliação de recebimentos (CNAB, PIX, cartões)", "conciliação de adquirentes e marketplaces", "PDD / perdas estimadas de crédito", "renegociação e descontos", "chargebacks e cancelamentos"],
+      "referencias": ["CPC 48 (instrumentos financeiros - perda esperada)", "CPC 47 (receita de contrato com cliente)", "Layouts CNAB da FEBRABAN"],
+      "sistemas_comuns": ["ERP (ex.: SAP - SD/FI)", "conciliador de cartões/adquirentes", "plataforma de cobrança"],
+      "riscos_tipicos": ["recebimento não identificado", "baixa indevida", "inadimplência", "divergência com adquirentes"]
+    },
+    {
+      "nome": "Contabilidade",
+      "palavras_chave": ["contab", "fechamento", "razão", "balancete", "conciliação contábil"],
+      "temas": ["calendário e checklist de fechamento contábil", "conciliações de contas patrimoniais", "provisões e estimativas", "lançamentos manuais e sua aprovação", "ativo imobilizado e depreciação", "arrendamentos", "demonstrações financeiras e notas explicativas", "auditoria externa e PBC", "plano de contas"],
+      "referencias": ["Pronunciamentos do CPC (ex.: CPC 00, 25, 27, 06, 16)", "Lei 6.404/1976", "ECD/SPED Contábil", "NBC TG"],
+      "sistemas_comuns": ["ERP (ex.: SAP - FI/CO)", "ferramenta de conciliação", "planilhas de conciliação", "BI de fechamento"],
+      "riscos_tipicos": ["erro material nas demonstrações", "lançamento manual sem revisão", "saldo sem conciliação", "atraso no fechamento"]
+    },
+    {
+      "nome": "Fiscal e Tributário",
+      "palavras_chave": ["fiscal", "tribut", "imposto", "icms", "sped"],
+      "temas": ["escrituração fiscal (EFD ICMS/IPI, EFD-Contribuições, EFD-Reinf)", "apuração de ICMS, ICMS-ST, DIFAL, PIS/COFINS, IPI", "obrigações acessórias e calendário fiscal", "cadastro tributário de produtos (NCM, CEST, CST/CSOSN)", "créditos tributários e compensações", "benefícios fiscais", "reforma tributária (IBS/CBS) e transição"],
+      "referencias": ["Guia Prático da EFD (SPED)", "Convênios e ajustes SINIEF/CONFAZ", "LC 214/2025 e EC 132/2023 (reforma tributária)"],
+      "sistemas_comuns": ["ERP", "motor fiscal", "validador/PVA do SPED", "portais das SEFAZ"],
+      "riscos_tipicos": ["autuação fiscal", "perda de crédito", "multa por obrigação acessória", "classificação fiscal incorreta"]
+    },
+    {
+      "nome": "Tesouraria",
+      "palavras_chave": ["tesour", "caixa", "banco", "financeiro", "conciliação bancária"],
+      "temas": ["fluxo de caixa projetado e realizado", "conciliação bancária", "aplicações financeiras e captações", "gestão de contas e poderes bancários", "hedge e câmbio", "fechamento de câmbio e remessas ao exterior", "tarifas bancárias e covenants"],
+      "referencias": ["CPC 03 (fluxo de caixa)", "CPC 48 (instrumentos financeiros)", "Normas cambiais do Banco Central"],
+      "sistemas_comuns": ["ERP", "TMS / sistema de tesouraria", "internet banking", "VAN bancária"],
+      "riscos_tipicos": ["falta de liquidez", "fraude bancária", "conciliação pendente", "exposição cambial"]
+    },
+    {
+      "nome": "Estoque e Custos",
+      "palavras_chave": ["estoque", "custo", "inventário", "cmv", "almoxarifado"],
+      "temas": ["inventário físico e cíclico", "custo médio e formação de custo", "provisão para perdas e obsolescência", "ajustes de estoque e aprovação", "conciliação estoque físico x contábil", "transferências entre CDs e lojas", "devoluções e avarias", "CMV e margens"],
+      "referencias": ["CPC 16 (estoques)", "Bloco K do SPED (quando aplicável)", "Regulamento do IR sobre custo de estoques"],
+      "sistemas_comuns": ["ERP (ex.: SAP - MM)", "WMS", "coletores de inventário", "planilhas de conciliação de estoque"],
+      "riscos_tipicos": ["divergência entre físico e contábil", "perda não registrada", "ajuste sem aprovação", "custo incorreto"]
+    },
+    {
+      "nome": "Controles Internos e Compliance",
+      "palavras_chave": ["controle", "compliance", "auditoria", "risco", "governança"],
+      "temas": ["matriz de riscos e controles", "testes de desenho e efetividade", "segregação de funções e acessos", "planos de ação de auditoria", "políticas e normas internas", "canal de denúncias", "LGPD e privacidade"],
+      "referencias": ["COSO 2013 / COSO ERM", "Lei 12.846/2013 (Anticorrupção)", "LGPD - Lei 13.709/2018", "Normas do IIA"],
+      "sistemas_comuns": ["ferramenta GRC", "ServiceNow", "planilhas de matriz de controles"],
+      "riscos_tipicos": ["controle inexistente ou ineficaz", "acesso indevido", "não conformidade regulatória"]
+    },
+    {
+      "nome": "Folha e Departamento Pessoal",
+      "palavras_chave": ["folha", "pessoal", "rh", "salário", "esocial"],
+      "temas": ["cálculo e fechamento da folha", "eSocial e DCTFWeb", "férias, rescisões e 13º", "benefícios", "encargos (INSS, FGTS, IRRF)", "provisões trabalhistas", "ponto e horas extras"],
+      "referencias": ["CLT", "Manual do eSocial", "Legislação do FGTS e da Previdência"],
+      "sistemas_comuns": ["sistema de folha", "eSocial", "sistema de ponto"],
+      "riscos_tipicos": ["passivo trabalhista", "multa no eSocial", "pagamento incorreto"]
+    }
+  ]
+}

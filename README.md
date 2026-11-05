@@ -6,11 +6,79 @@ Repositório de projetos desenvolvidos para automatizar processos, organizar dad
 
 ### 🧩 NexxusDoc
 
-Agente de documentação de processos que conduz entrevistas guiadas, organiza referências, gera procedimentos em PDF e apoia revisão, aprovação e consulta ao acervo. Aplicação local para Windows com fluxo de IA e armazenamento no ambiente corporativo.
+Aplicação local para Windows que transforma entrevistas guiadas em procedimentos operacionais. O agente de IA **NexxusDoc** organiza respostas, referências, controles e exceções; o sistema gera o PDF, coordena revisão e aprovação e mantém um acervo consultável. Esta pasta inclui o código e a documentação em uma versão pública sanitizada.
 
-**Tecnologias:** Python, FastAPI, HTML/CSS/JavaScript, n8n, Google Drive e PDF.
+> 🤖 **Agente em destaque:** o workflow n8n usa um AI Agent com o modelo configurado como `gemini-3.6-flash` por um endpoint compatível com OpenAI. A API local prepara contexto de cada rodada, valida campos essenciais e controla a geração. O modelo ajuda a perguntar e redigir; a pessoa responsável revisa e aprova o conteúdo.
 
-- [Visão geral, recursos e arquitetura](nexxusdoc/README.md)
+#### 📌 O problema
+
+Documentar um processo a partir de conversas e arquivos dispersos dificulta identificar responsáveis, etapas, evidências, controles e contingências. Sem versões e aprovação, um texto novo pode circular sem validação ou perder sua relação com os documentos que o fundamentaram.
+
+#### ✅ A solução
+
+1. A pessoa autenticada inicia uma entrevista ou envia um procedimento antigo para revisão.
+2. O agente pergunta uma coisa por vez, usando questionário, contexto da área e referências vinculadas.
+3. A aplicação extrai texto dos anexos e procura duplicidades e documentos relacionados no acervo.
+4. A prévia mostra as respostas; o backend impede a geração com lacunas essenciais.
+5. O sistema monta o PDF com sumário, passos, papéis, riscos, evidências e fontes.
+6. Um aprovador habilitado aprova ou solicita ajustes; versões e decisões ficam registradas.
+7. A consulta ao acervo cita fontes e o mapa de automação reúne oportunidades por esforço e impacto.
+
+```mermaid
+flowchart TB
+    A["Entrevista e anexos"] --> B["FastAPI local"]
+    B --> C["Questionário e validações"]
+    B --> D["n8n e modelo Gemini"]
+    D --> B
+    C --> E["Prévia e PDF"]
+    E --> F["Revisão e aprovação"]
+    F --> G["Acervo no Drive"]
+    G --> B
+```
+
+#### 🤖 IA e fluxo da conversa
+
+O backend controla a sessão e prepara os dados necessários para o workflow. O n8n entrega prompt e contexto ao agente, recebe a pergunta seguinte ou a síntese e devolve o resultado à API. O fluxo usa um endereço de retomada para consultas assíncronas, evitando o limite de duração do proxy da instalação original. O modelo pode sugerir perguntas, apontar lacunas e apoiar consultas; a validação do documento e a autorização de acesso permanecem na aplicação.
+
+O roteiro cobre objetivo, escopo, gatilhos, entradas e saídas, etapas, sistemas, responsáveis, riscos, controles, exceções, evidências, indicadores e potencial de automação. Na revisão, o agente aproveita o documento existente e pergunta apenas o que falta. A arquitetura e os limites estão em [nexxusdoc/docs/ia-e-fluxos.md](nexxusdoc/docs/ia-e-fluxos.md).
+
+#### 🧩 Principais recursos
+
+- Entrevista guiada, anexos, referências, prévia e validação de campos essenciais.
+- PDF com sumário navegável, histórico, links e documentos relacionados.
+- Revisão de procedimentos existentes, alerta de duplicidade e consulta ao acervo com fontes.
+- Workflow de aprovação por owner ou administrador, com retorno para ajustes.
+- Mapa de automação por impacto e esforço, com exportação para Excel.
+- Instalação por usuário, atualização assinada, auditoria e diagnóstico de VPN e sincronização.
+
+#### 🛠️ Tecnologias
+
+**Python** · **FastAPI** · **HTML/CSS/JavaScript** · **n8n** · **Gemini** · **Google Drive** · **PDF** · **openpyxl**
+
+#### 📁 Estrutura
+
+```text
+nexxusdoc/
+├── app.py                 # API, regras e geração de documentos
+├── static/                # interface e módulos visuais
+├── workflows/             # agente n8n e prompt
+├── questionnaire.json     # roteiro da entrevista
+├── instalador_nexus.py    # instalação e atualização
+├── nexus_launcher.pyw     # inicialização local
+├── docs/                  # arquitetura e segurança da publicação
+└── README.md              # funcionamento e configuração
+```
+
+#### 📚 Documentação
+
+- [Código, funcionamento e adaptação](nexxusdoc/README.md)
+- [Arquitetura da IA e fluxos](nexxusdoc/docs/ia-e-fluxos.md)
+- [Workflow n8n e configuração](nexxusdoc/workflows/README.md)
+- [Escopo da versão pública e dados excluídos](nexxusdoc/docs/seguranca.md)
+
+#### 🔐 Reutilização
+
+O código foi copiado de uma pasta corporativa sem modificar a origem. A versão pública troca e-mails, URLs, projetos e identificadores internos por exemplos e exclui credenciais, cadastros, assinaturas, documentos reais, logs e backups. Para executar em outra instalação, configure as integrações e forneça os dados autorizados no ambiente de destino.
 
 ---
 

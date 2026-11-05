@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" role="img" aria-label="NexxusDoc">
+  <!-- NexxusDoc: N formado por uma rede de nós dentro de um hexágono (nexo + documento) -->
+  <rect width="256" height="256" rx="56" fill="#003D18"/>
+  <path d="M128 44l73 42v84l-73 42-73-42V86Z" fill="none" stroke="#EEF3D3" stroke-width="6" stroke-linejoin="round" opacity="0.35"/>
+  <path d="M55 170V86l146 84V86" fill="none" stroke="#AFD037" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="128" cy="44" r="10" fill="#AFD037"/>
+  <circle cx="128" cy="212" r="10" fill="#AFD037"/>
+  <circle cx="55" cy="86" r="20" fill="#EEF3D3"/>
+  <circle cx="55" cy="170" r="20" fill="#EEF3D3"/>
+  <circle cx="201" cy="86" r="20" fill="#EEF3D3"/>
+  <circle cx="201" cy="170" r="20" fill="#EEF3D3"/>
+  <circle cx="55" cy="86" r="7" fill="#003D18"/>
+  <circle cx="55" cy="170" r="7" fill="#003D18"/>
+  <circle cx="201" cy="86" r="7" fill="#003D18"/>
+  <circle cx="201" cy="170" r="7" fill="#003D18"/>
+  <circle cx="128" cy="128" r="12" fill="#EEF3D3"/>
+</svg>

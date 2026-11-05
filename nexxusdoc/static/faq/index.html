@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Dúvidas frequentes · NexxusDoc</title>
+<link rel="icon" type="image/svg+xml" href="/static/assets/nexxusdoc.svg?v=nexo">
+<style>
+/* Página apartada (aberta em outra aba pelo botão "? Dúvidas" do topo), tema claro. Conteúdo fixo em faq.json. */
+:root{--ink:#14261b;--muted:#5d6f63;--line:#e1e8da;--soft:#f6f9f2;--green:#003D18;--green-2:#0d5a2a;--lime:#AFD037;--lime-soft:#eef6d6}
+*{box-sizing:border-box}
+html{scrollbar-gutter:stable}
+body{margin:0;background:#fff;color:var(--ink);font-family:"Segoe UI",Inter,Arial,sans-serif;font-size:14px}
+header{position:sticky;top:0;z-index:5;display:flex;align-items:center;gap:16px;height:64px;padding:0 32px;background:#f4f7ef;border-bottom:1px solid var(--line)}
+.brand{font-size:26px;font-weight:800;letter-spacing:-.4px;color:var(--green);text-decoration:none}.brand i{font-style:normal;color:#5f8f12}
+header .sep{width:1px;height:26px;background:#cfd9c6}
+header .crumb{font-size:15px;font-weight:650;color:var(--ink)}
+main{max-width:1180px;margin:0 auto;padding:28px 32px 60px}
+.hero{display:grid;grid-template-columns:auto minmax(0,1fr) minmax(280px,380px);gap:20px;align-items:center;padding:24px 26px;margin-bottom:22px;
+  border:1px solid var(--line);border-radius:18px;background:linear-gradient(135deg,#fbfdf7,#f1f6e8)}
+.hero-ico{width:58px;height:58px;border-radius:16px;display:grid;place-items:center;background:linear-gradient(145deg,var(--green-2),var(--green));box-shadow:0 8px 18px #003d1830}
+.hero-ico svg{width:32px;height:32px;fill:none;stroke:var(--lime);stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.eyebrow{font-size:10.5px;letter-spacing:1.3px;text-transform:uppercase;font-weight:800;color:#5f8f12}
+h1{margin:3px 0 6px;font-size:28px;letter-spacing:-.3px;color:var(--green)}
+.hero p{margin:0;color:var(--muted);line-height:1.55}.hero p b{color:var(--ink)}
+.search{display:flex;align-items:center;gap:9px;height:46px;padding:0 14px;border:1px solid #cdd8c4;border-radius:13px;background:#fff;cursor:text}
+.search:focus-within{border-color:#7ea51f;box-shadow:0 0 0 3px #afd03740}
+.search svg{width:19px;height:19px;flex:none;fill:none;stroke:#6b7d70;stroke-width:2;stroke-linecap:round}
+.search input{flex:1;min-width:0;border:0;outline:none;font:inherit;font-size:15px;color:var(--ink);background:transparent}
+.layout{display:grid;grid-template-columns:270px minmax(0,1fr);gap:22px;align-items:start}
+nav{position:sticky;top:86px;display:grid;gap:2px;padding:12px;border:1px solid var(--line);border-radius:16px;background:#fff}
+nav small{padding:4px 10px 8px;font-size:10px;letter-spacing:1.2px;text-transform:uppercase;font-weight:800;color:var(--muted)}
+nav button{display:flex;align-items:center;gap:10px;width:100%;padding:9px 10px;border:0;border-radius:10px;background:transparent;color:var(--ink);
+  font:inherit;font-size:13.5px;font-weight:600;text-align:left;cursor:pointer}
+nav button:hover{background:var(--soft)}
+nav button.on{background:var(--lime-soft);color:var(--green)}
+nav button:disabled{opacity:.4;cursor:default;background:transparent}
+nav button i{margin-left:auto;font-style:normal;font-size:11.5px;font-weight:700;color:var(--muted)}
+.ico{width:18px;height:18px;flex:none;fill:none;stroke:var(--green-2);stroke-width:1.9;stroke-linecap:round;stroke-linejoin:round}
+.group{margin-bottom:30px;scroll-margin-top:86px}
+.group h2{display:flex;align-items:center;gap:12px;margin:0 0 12px;padding:12px 16px;border-radius:13px;background:#dcefc0;
+  font-size:19px;font-weight:800;letter-spacing:-.2px;color:var(--green)}
+.group h2 .gi{display:grid;place-items:center}
+.group h2 .gi .ico{width:22px;height:22px;stroke:var(--green);stroke-width:2.1}
+.group h2 em{margin-left:auto;font-style:normal;font-size:12px;font-weight:700;color:var(--green);background:#ffffffb3;border-radius:999px;padding:3px 10px}
+details{margin-bottom:9px;border:1px solid var(--line);border-radius:13px;background:#fff;scroll-margin-top:96px;transition:border-color .2s,box-shadow .2s}
+details:hover{border-color:#cbd8bf}
+summary{list-style:none;display:flex;align-items:center;gap:12px;padding:14px 18px;cursor:pointer;font-weight:700;font-size:15px;color:#0f2a19;
+  background:#f0f8e3;border-radius:12px}
+summary:hover{background:#e7f3d3}
+details[open] summary{border-radius:12px 12px 0 0;border-bottom:1px solid #dbe9c6}
+.answer{padding-top:14px!important}
+summary::-webkit-details-marker{display:none}
+summary::after{content:"";flex:none;width:8px;height:8px;margin-left:auto;border-right:2px solid #7d8e81;border-bottom:2px solid #7d8e81;transform:rotate(45deg);transition:transform .2s}
+details[open]{border-color:#9fc23a;box-shadow:0 4px 14px #003d180d}
+details[open] summary{color:var(--green)}
+details[open] summary::after{transform:rotate(225deg);border-color:#5f8f12}
+details.flash{box-shadow:0 0 0 3px #afd03780}
+.answer{padding:0 18px 16px;color:#33463a;font-size:14px;line-height:1.65}
+.answer b{color:var(--green)}
+mark{background:#e6f5a8;color:var(--ink);border-radius:3px;padding:0 1px}
+.none{padding:34px;text-align:center;color:var(--muted);border:1px dashed #cdd8c4;border-radius:14px}
+.none b{color:var(--ink)}
+footer{margin-top:10px;color:var(--muted);font-size:12px;text-align:center}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;scroll-behavior:auto!important}}
+</style></head>
+<body>
+<header><a class="brand" href="/" title="Voltar ao NexxusDoc">Nexxus<i>Doc</i></a><span class="sep"></span><span class="crumb">Dúvidas frequentes</span></header>
+<main>
+  <section class="hero">
+    <span class="hero-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.4 9.4a2.7 2.7 0 0 1 5.2 1c0 1.8-2.6 2.3-2.6 4"/><path d="M12 17.6v.2"/></svg></span>
+    <div><div class="eyebrow">Ajuda</div><h1>Dúvidas frequentes</h1><p>As principais dúvidas sobre o uso do NexxusDoc. Não achou o que procura? Pergunte ao agente em <b>Chat Nexxus › Consultas gerais</b> ou veja o tour e a documentação em <b>Configurações › Ajuda</b>.</p></div>
+    <label class="search"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/></svg><input id="q" type="search" autocomplete="off" placeholder="Buscar nas dúvidas…" aria-label="Buscar nas dúvidas"></label>
+  </section>
+  <div class="layout"><nav id="index" aria-label="Temas"></nav><div id="list"><div class="none">Carregando…</div></div></div>
+  <footer id="foot"></footer>
+</main>
+<script>
+const $=id=>document.getElementById(id);
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const fold=s=>String(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');
+const I={key:'<circle cx="8" cy="15" r="4"/><path d="m11 12 8.5-8.5M16 7l2.5 2.5M14 9l2 2"/>',
+  doc:'<path d="M7 3.5h7l4 4V19a1.5 1.5 0 0 1-1.5 1.5h-9A1.5 1.5 0 0 1 6 19V5a1.5 1.5 0 0 1 1-1.5Z"/><path d="M14 3.5V8h4M9 12.5h6M9 16h4"/>',
+  upload:'<path d="M12 15V4.5m0 0-4 4m4-4 4 4"/><path d="M5 14.5V19h14v-4.5"/>',
+  check:'<circle cx="12" cy="12" r="8.5"/><path d="m8 12.3 2.8 2.8L16.2 9.5"/>',
+  list:'<path d="M9 6.5h11M9 12h11M9 17.5h11"/><circle cx="4.5" cy="6.5" r="1"/><circle cx="4.5" cy="12" r="1"/><circle cx="4.5" cy="17.5" r="1"/>',
+  chat:'<path d="M4 6a2.5 2.5 0 0 1 2.5-2.5h11A2.5 2.5 0 0 1 20 6v7.5a2.5 2.5 0 0 1-2.5 2.5H10l-4.5 4v-4h-1"/>',
+  bolt:'<path d="M13.5 2.5 5 13.5h6l-1.5 8 9-11.5h-6z"/>',
+  help:'<circle cx="12" cy="12" r="9"/><path d="M9.4 9.4a2.7 2.7 0 0 1 5.2 1c0 1.8-2.6 2.3-2.6 4"/><path d="M12 17.6v.2"/>'};
+const ico=k=>`<svg class="ico" viewBox="0 0 24 24" aria-hidden="true">${I[k]||I.help}</svg>`;
+let DATA=null,GROUP='';
+// Marca os termos (sem acento e sem diferença de maiúsculas) só no texto, nunca dentro das etiquetas.
+function mark(html,terms){if(!terms.length)return html;
+  return html.split(/(<[^>]+>)/).map(part=>{if(part.startsWith('<'))return part;const f=fold(part),hit=new Array(part.length).fill(false);
+    terms.forEach(t=>{let i=f.indexOf(t);while(t&&i>=0){for(let k=i;k<i+t.length;k++)hit[k]=true;i=f.indexOf(t,i+t.length)}});
+    let out='',on=false;[...part].forEach((ch,k)=>{if(hit[k]&&!on){out+='<mark>';on=true}if(!hit[k]&&on){out+='</mark>';on=false}out+=ch});return out+(on?'</mark>':'')}).join('')}
+const rich=(s,terms)=>mark(esc(s).replace(/\*\*(.+?)\*\*/g,'<b>$1</b>'),terms);
+function render(){
+  const q=$('q').value.trim(),terms=fold(q).split(/\s+/).filter(Boolean);
+  const match=x=>terms.every(t=>fold(x.p+' '+x.r.replace(/\*\*/g,'')).includes(t));
+  const groups=DATA.grupos.map(g=>({...g,itens:g.perguntas.map((x,i)=>({...x,i})).filter(match)}));
+  $('index').innerHTML='<small>Temas</small>'+groups.map(g=>`<button type="button" data-g="${esc(g.id)}"${g.itens.length?'':' disabled'}${GROUP===g.id?' class="on"':''}>${ico(g.icone)}<span>${esc(g.titulo)}</span><i>${g.itens.length}</i></button>`).join('');
+  const shown=groups.filter(g=>g.itens.length);
+  $('list').innerHTML=shown.length?shown.map(g=>`<section class="group" id="g-${esc(g.id)}"><h2><span class="gi">${ico(g.icone)}</span>${esc(g.titulo)}<em>${g.itens.length} ${g.itens.length===1?'pergunta':'perguntas'}</em></h2>
+    ${g.itens.map(x=>`<details id="${esc(g.id)}-${x.i}"${terms.length?' open':''}><summary><span>${rich(x.p,terms)}</span></summary><div class="answer">${rich(x.r,terms)}</div></details>`).join('')}</section>`).join('')
+    :`<div class="none"><b>Nenhuma dúvida encontrada para "${esc(q)}".</b><br>Tente outras palavras ou pergunte ao agente em Chat Nexxus › Consultas gerais.</div>`}
+// Link direto para uma pergunta (a busca global do sistema abre esta página com #tema-n).
+function openHash(){const id=decodeURIComponent(location.hash.slice(1));if(!id)return;const el=document.getElementById(id);if(!el)return;
+  el.open=true;el.scrollIntoView({behavior:'smooth',block:'center'});el.classList.add('flash');setTimeout(()=>el.classList.remove('flash'),1800)}
+$('q').addEventListener('input',()=>{GROUP='';render()});
+$('index').addEventListener('click',e=>{const b=e.target.closest('[data-g]');if(!b)return;GROUP=b.dataset.g;
+  document.querySelectorAll('#index button').forEach(x=>x.classList.toggle('on',x===b));document.getElementById('g-'+GROUP)?.scrollIntoView({behavior:'smooth',block:'start'})});
+window.addEventListener('hashchange',openHash);
+fetch('faq.json',{cache:'no-cache'}).then(r=>{if(!r.ok)throw new Error();return r.json()}).then(d=>{DATA=d;render();
+  const n=d.grupos.reduce((a,g)=>a+g.perguntas.length,0);$('foot').textContent=`${n} dúvidas em ${d.grupos.length} temas · NexxusDoc · Sua Area`;openHash()})
+  .catch(()=>{$('list').innerHTML='<div class="none"><b>Não foi possível carregar as dúvidas.</b><br>Abra de novo pelo botão Dúvidas do NexxusDoc.</div>'});
+</script>
+</body></html>

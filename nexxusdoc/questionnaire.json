@@ -1,0 +1,326 @@
+{
+  "version": 1,
+  "title": "Levantamento de normas e procedimentos operacionais",
+  "sections": [
+    {
+      "id": "identificacao",
+      "title": "1. Identificação e responsabilidade",
+      "questions": [
+        {
+          "id": "area",
+          "label": "Área / departamento",
+          "type": "text",
+          "required": true
+        },
+        {
+          "id": "processo",
+          "label": "Nome do processo ou procedimento",
+          "type": "text",
+          "required": true
+        },
+        {
+          "id": "unidade_negocio",
+          "label": "Unidade de negócio (Logística Internacional: Fisia, Centauro ou as duas)",
+          "type": "text",
+          "required": false,
+          "suggestions": [
+            "Fisia",
+            "Centauro",
+            "Fisia e Centauro"
+          ]
+        },
+        {
+          "id": "responsavel",
+          "label": "Responsável pelo conteúdo (preenchido automaticamente pelo cadastro)",
+          "type": "text",
+          "required": true
+        },
+        {
+          "id": "aprovador",
+          "label": "Aprovador (owner ou administrador escolhido na lista do NexxusDoc)",
+          "type": "text",
+          "required": true
+        },
+        {
+          "id": "vigencia",
+          "label": "Data de vigência desejada",
+          "type": "date",
+          "required": false
+        }
+      ]
+    },
+    {
+      "id": "finalidade",
+      "title": "2. Finalidade, escopo e gatilhos",
+      "questions": [
+        {
+          "id": "objetivo",
+          "label": "Qual é o objetivo do processo e que resultado deve produzir?",
+          "type": "textarea",
+          "required": true
+        },
+        {
+          "id": "escopo",
+          "label": "O que está incluído e excluído? Quais unidades, equipes ou transações abrange?",
+          "type": "textarea",
+          "required": true
+        },
+        {
+          "id": "gatilho",
+          "label": "O que inicia o processo? Com que frequência ou prazo?",
+          "type": "textarea",
+          "required": true,
+          "suggestions": [
+            "Diário",
+            "Semanal",
+            "Mensal",
+            "Trimestral",
+            "Sob demanda / por evento"
+          ]
+        },
+        {
+          "id": "entradas",
+          "label": "Quais informações, documentos ou pré-requisitos são necessários? Indique origem e formato.",
+          "type": "textarea",
+          "required": true
+        },
+        {
+          "id": "saidas",
+          "label": "Quais entregáveis, registros ou decisões resultam do processo? Para quem são enviados?",
+          "type": "textarea",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "execucao",
+      "title": "3. Execução detalhada",
+      "questions": [
+        {
+          "id": "passos",
+          "label": "Descreva cada etapa em ordem. Para cada uma: responsável, ação, sistema/tela, dados usados, critério de conclusão e evidência gerada.",
+          "type": "textarea",
+          "required": true
+        },
+        {
+          "id": "papeis",
+          "label": "Quais cargos ou papéis participam? O que cada um pode executar, revisar ou aprovar?",
+          "type": "textarea",
+          "required": true,
+          "suggestions": [
+            "Analista / executor",
+            "Revisor independente",
+            "Aprovador",
+            "Gestor da área",
+            "Controles Internos"
+          ]
+        },
+        {
+          "id": "prestador_terceirizado",
+          "label": "Alguma etapa é executada por prestador terceirizado (ex.: PGL – despachante, agente de carga ou transportadora)? Quais etapas, com qual SLA e por qual canal?",
+          "type": "textarea",
+          "required": false,
+          "suggestions": [
+            "PGL: despacho aduaneiro",
+            "PGL: transporte rodoviário",
+            "Não há prestador terceirizado"
+          ]
+        },
+        {
+          "id": "sistemas",
+          "label": "Quais sistemas, planilhas, pastas ou equipamentos são usados? Informe acessos e dependências (sem incluir senhas).",
+          "type": "textarea",
+          "required": true,
+          "suggestions": [
+            "SAP",
+            "Excel / planilha",
+            "Pasta compartilhada do Drive",
+            "ServiceNow",
+            "Portal ou sistema interno"
+          ]
+        },
+        {
+          "id": "transacoes_sap",
+          "label": "Transações SAP usadas no processo (código e nome, uma por linha; ex.: MIRO – Registrar fatura). Se o processo não usa SAP, responda \"Não usa SAP\".",
+          "type": "textarea",
+          "required": false,
+          "suggestions": [
+            "Não usa SAP"
+          ]
+        },
+        {
+          "id": "base_conhecimento",
+          "label": "Base de conhecimento: quais planilhas (Excel/Google Planilhas), documentos (Word/Google Docs), sistemas internos, relatórios, pastas e links fazem parte do processo e devem ficar vinculados ao documento? Informe nome, onde fica (link ou caminho) e para que serve.",
+          "type": "textarea",
+          "required": false,
+          "suggestions": [
+            "Planilha de apoio (Excel/Google Planilhas)",
+            "Documento Word/Google Docs",
+            "Sistema interno ou ERP",
+            "Pasta compartilhada no Drive",
+            "Não há material de apoio"
+          ]
+        },
+        {
+          "id": "regras",
+          "label": "Quais regras de negócio, cálculos, limites, prazos ou critérios precisam ser aplicados?",
+          "type": "textarea",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "controles",
+      "title": "4. Controles, exceções e continuidade",
+      "questions": [
+        {
+          "id": "controles",
+          "label": "Quais conferências, aprovações, conciliações ou segregações de função são obrigatórias?",
+          "type": "textarea",
+          "required": true,
+          "suggestions": [
+            "Conferência por segunda pessoa",
+            "Aprovação formal",
+            "Conciliação",
+            "Segregação de funções",
+            "Registro de evidência"
+          ]
+        },
+        {
+          "id": "excecoes",
+          "label": "Quais erros ou exceções podem ocorrer? Para cada um, descreva detecção, ação corretiva, escalonamento e evidência.",
+          "type": "textarea",
+          "required": true,
+          "suggestions": [
+            "Dado de entrada incompleto ou incorreto",
+            "Divergência na conferência",
+            "Sistema indisponível",
+            "Prazo não cumprido",
+            "Escalonar ao gestor da área"
+          ]
+        },
+        {
+          "id": "riscos",
+          "label": "O que pode dar errado ou causar perda, atraso, impacto financeiro, regulatório ou operacional?",
+          "type": "textarea",
+          "required": true
+        },
+        {
+          "id": "contingencia",
+          "label": "Como manter o processo funcionando se o responsável, sistema ou fornecedor estiver indisponível? Inclua substitutos e recuperação.",
+          "type": "textarea",
+          "required": true,
+          "suggestions": [
+            "Acionar substituto designado",
+            "Executar controle manual temporário",
+            "Escalonar para a liderança",
+            "Retomar e reconciliar quando o sistema voltar"
+          ]
+        },
+        {
+          "id": "registros",
+          "label": "Onde guardar registros e evidências, quem pode acessá-los e por quanto tempo?",
+          "type": "textarea",
+          "required": true
+        }
+      ]
+    },
+    {
+      "id": "automacao",
+      "title": "5. Potencial de automação",
+      "questions": [
+        {
+          "id": "tempo_volume",
+          "type": "textarea",
+          "required": true,
+          "label": "Esforço do processo: tempo por execução, execuções por mês, volume e pessoas envolvidas (ex.: 90 min por execução, 22 vezes/mês, 2 analistas; se não souber, uma estimativa)"
+        },
+        {
+          "id": "tarefas_manuais",
+          "type": "textarea",
+          "required": false,
+          "label": "Quais etapas são manuais e repetitivas (digitação, copiar e colar entre sistemas, conferências, downloads/uploads, envio de e-mails)?",
+          "suggestions": [
+            "Digitação de dados",
+            "Copiar e colar entre sistemas",
+            "Conferência manual",
+            "Download/upload de arquivos",
+            "Envio de e-mails/relatórios"
+          ]
+        },
+        {
+          "id": "dados_formatos",
+          "type": "textarea",
+          "required": false,
+          "label": "De onde vêm os dados e em que formato (planilha, PDF, e-mail, SAP, sistema com API)? Há acesso para integração?",
+          "suggestions": [
+            "Planilha Excel/Google",
+            "PDF",
+            "E-mail",
+            "SAP",
+            "Sistema com API"
+          ]
+        },
+        {
+          "id": "natureza_regras",
+          "type": "textarea",
+          "required": false,
+          "label": "As decisões seguem regras objetivas ou dependem de julgamento? Dê exemplos.",
+          "suggestions": [
+            "Regras objetivas",
+            "Parte objetiva, parte julgamento",
+            "Depende de julgamento"
+          ]
+        },
+        {
+          "id": "excecoes_retrabalho",
+          "type": "textarea",
+          "required": false,
+          "label": "Com que frequência ocorrem exceções, erros ou retrabalho?"
+        },
+        {
+          "id": "dores",
+          "type": "textarea",
+          "required": false,
+          "label": "Quais as maiores dores e gargalos do processo hoje?"
+        }
+      ]
+    },
+    {
+      "id": "validacao",
+      "title": "6. Indicadores e validação do documento",
+      "questions": [
+        {
+          "id": "indicadores",
+          "label": "Como medir prazo, qualidade e conclusão? Informe fórmula, meta, fonte e responsável, se aplicável.",
+          "type": "textarea",
+          "required": false,
+          "suggestions": [
+            "Prazo de conclusão",
+            "Taxa de erro / retrabalho",
+            "Volume processado",
+            "Pendências em aberto"
+          ]
+        },
+        {
+          "id": "referencias",
+          "label": "Quais políticas, normas, contratos, manuais ou procedimentos relacionados devem ser referenciados?",
+          "type": "textarea",
+          "required": false
+        },
+        {
+          "id": "lacunas",
+          "label": "O que ainda está incerto, depende de confirmação ou mudou recentemente?",
+          "type": "textarea",
+          "required": false
+        },
+        {
+          "id": "observacoes",
+          "label": "Outras informações úteis para alguém novo executar o processo sem ajuda informal.",
+          "type": "textarea",
+          "required": false
+        }
+      ]
+    }
+  ]
+}

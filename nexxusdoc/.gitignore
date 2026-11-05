@@ -1,0 +1,14 @@
+.venv/
+__pycache__/
+*.py[cod]
+.env
+levantamentos.sqlite3
+levantamentos/*
+!levantamentos/.gitkeep
+entrevistas/*
+!entrevistas/.gitkeep
+access_control.json
+access_control.tmp
+documentos_gerados/*
+!documentos_gerados/.gitkeep
+tmp/

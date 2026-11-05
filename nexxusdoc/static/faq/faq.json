@@ -1,0 +1,99 @@
+{
+  "titulo": "Dúvidas frequentes",
+  "atualizado_em": "2026-11-05",
+  "observacao": "Conteúdo fixo (sem edição pela tela), aprovado pelo usuário em 05/11/2026. Atualizar junto com as mudanças do sistema. Usado pela página Dúvidas frequentes (static/faq/index.html, aberta em outra aba pelo botão Dúvidas do topo) e pelo agente das Consultas gerais. Nunca usar travessão.",
+  "grupos": [
+    {
+      "id": "acesso",
+      "titulo": "Acesso e instalação",
+      "icone": "key",
+      "perguntas": [
+        {"p": "Como instalo o NexxusDoc?", "r": "Peça o instalador ao owner da sua área ou ao administrador master (eles baixam em **Configurações › Instalador**). Extraia o arquivo INSTALAR_NEXXUSDOC.zip e execute o INSTALAR_NEXXUSDOC: a janela do instalador faz tudo e, no fim, abre o sistema. Depois, use o atalho **NexxusDoc** da Área de Trabalho."},
+        {"p": "Preciso reinstalar quando sai uma versão nova?", "r": "Não. Quando o administrador publica uma versão nova, aparece o botão **Atualizar** no topo do NexxusDoc (e um aviso do Windows). Um clique e a tela volta em poucos segundos, já atualizada. Se preferir, é só fechar e abrir pelo atalho: ele também atualiza sozinho ao abrir."},
+        {"p": "Por que o sistema abre no Chrome?", "r": "O NexxusDoc abre sempre no Google Chrome quando ele está instalado, porque é no Chrome que fica a sua conta Google do Grupo SBF, usada pela foto do avatar e pela conexão com o Google Drive. Sem o Chrome, ele abre no navegador padrão do Windows."},
+        {"p": "O sistema diz que a VPN está desligada. O que faço?", "r": "Ligue a VPN GlobalProtect. Sem ela, o agente (entrevistas, consultas e revisões), os e-mails e a consulta ao BigQuery não respondem. O resto do sistema continua funcionando: você pode ver documentos, a PGL e o Mapa de automação."},
+        {"p": "Não tenho o Google Drive para computador. O sistema funciona?", "r": "Sim, no modo nuvem. Na primeira abertura ele prepara os dados do Google Drive (cerca de 1 minuto, com o andamento na tela) e depois sincroniza sozinho, em segundo plano. Use o Chrome com a sua conta @example.com conectada."},
+        {"p": "Qual a diferença entre master, owner e usuário?", "r": "O **master** administra todo o sistema. O **owner da área** aprova os documentos da própria área (menos os que ele mesmo montou) e vê quem tem acesso a ela; cadastrar, revogar e mudar perfis é só com o master. O **usuário** cria, envia e consulta documentos. Seu perfil aparece em **Configurações › Meu perfil**."}
+      ]
+    },
+    {
+      "id": "criar",
+      "titulo": "Criar e revisar documentos",
+      "icone": "doc",
+      "perguntas": [
+        {"p": "Como crio um POP?", "r": "Vá em **Chat Nexxus › Criar procedimento**. O agente faz uma entrevista com você sobre o processo e, no fim, gera o documento em PDF. Não existe formulário manual: tudo vem da conversa."},
+        {"p": "Preciso informar meu nome, cargo e e-mail na entrevista?", "r": "Não. Esses dados vêm do seu cadastro, e o agente não pergunta."},
+        {"p": "Posso colar prints na entrevista?", "r": "Sim. Copie a imagem e use **Ctrl+V** no campo de resposta: o print aparece numa miniatura (até 5 por vez) e vai junto com a próxima resposta. Ele entra no documento logo depois do passo certo, com legenda."},
+        {"p": "Não sei responder uma pergunta. E agora?", "r": "Responda \"não sei\": a pergunta vira uma pendência do documento. O documento não pode ser gerado com campo essencial em branco ou com mais de 40% das respostas como \"não sei\"; nesse caso, o agente pede o que falta."},
+        {"p": "Por que o agente pergunta transação SAP, tempo e volume?", "r": "Essas respostas alimentam o **Mapa de automação** (tempo, volume e etapas manuais viram oportunidades) e a análise das **Transações SAP**. Quanto mais precisas, melhores as oportunidades levantadas."},
+        {"p": "Posso parar a entrevista e continuar depois?", "r": "Sim. A entrevista fica salva e aparece no **sino** como \"em andamento\"; é só abrir por lá ou pelo Chat Nexxus para continuar de onde parou."},
+        {"p": "Como atualizo um documento que já existe no NexxusDoc?", "r": "Em **Documentos**, use **Editar** na linha do documento. O agente revisa com você e gera uma nova versão, mantendo tudo o que já estava nele e acrescentando o que falta."},
+        {"p": "O sistema diz que o documento já existe. Por quê?", "r": "Para não duplicar, o NexxusDoc confere o mesmo arquivo, o mesmo código ou um título muito parecido em tudo o que já está no sistema (documentos do NexxusDoc, manuais oficiais, enviados e localizados). Se for o mesmo processo, atualize o existente; se for outro, confirme que é outro documento para seguir."}
+      ]
+    },
+    {
+      "id": "enviar",
+      "titulo": "Enviar documento que eu já tenho",
+      "icone": "upload",
+      "perguntas": [
+        {"p": "Como envio um documento que já tenho?", "r": "Vá em **Chat Nexxus › Enviar documento** e junte até 5 arquivos (PDF, Word, Excel, PowerPoint, TXT ou MD, até 10 MB cada) com **Adicionar documentos**: pode adicionar de pastas diferentes, um de cada vez, ou arrastar para o quadro; cada um sai pelo X. Depois clique em **Enviar documentos** e, para cada um, escolha **Só guardar**, **Revisar com o agente** ou **Não enviar**. O sistema lê as datas de revisão e mostra se o documento já está no sistema."},
+        {"p": "Qual a diferença entre \"Só guardar\" e \"Revisar com o agente\"?", "r": "**Só guardar** registra o documento como ele está, com a data da última e da próxima revisão (você recebe o aviso quando vencer). **Revisar com o agente** leva o documento para o padrão do NexxusDoc, preservando todo o conteúdo original e acrescentando o que falta."},
+        {"p": "Marquei vários para revisar. Como o agente faz?", "r": "Eles formam uma **fila**: a revisão é um documento por vez. O primeiro abre na hora; quando você gera o documento e salva no Drive, o próximo abre sozinho. Também dá para usar **Revisar o próximo**. Se parar no meio, a fila fica guardada em **Enviar documento** e cada um continua em **Documentos** (origem Enviados) com o botão **Revisar**."},
+        {"p": "Por que a opção \"Só guardar\" ficou bloqueada?", "r": "Porque o documento já existe no sistema (como manual oficial, documento enviado ou localizado) e guardar de novo duplicaria. Para atualizá-lo, use **Revisar com o agente**. Se for mesmo outro documento, marque \"É outro documento\"."}
+      ]
+    },
+    {
+      "id": "aprovacao",
+      "titulo": "Aprovação e revisão periódica",
+      "icone": "check",
+      "perguntas": [
+        {"p": "Quem aprova o meu documento?", "r": "O owner da área do documento ou o administrador master, direto na página **Documentos** (botão **Aprovar** na linha). O owner não aprova um documento que ele mesmo montou. Todo documento nasce como rascunho."},
+        {"p": "Como sei que meu documento foi aprovado?", "r": "Pelo **sino**, por uma notificação do Windows e por um e-mail enviado pelo Vektor (admin@example.com)."},
+        {"p": "De quanto em quanto tempo o documento é revisado?", "r": "O padrão é a cada 12 meses, com aviso 30 dias antes do vencimento (no sino e por e-mail, para o autor e os owners da área). O prazo é definido em **Configurações › Revisão e e-mails**."},
+        {"p": "Onde fica salvo o PDF?", "r": "Na pasta de documentos definida em **Configurações** para você (por padrão, Sua Area › Nexxus › Docs, na subpasta POP, ou REVISÕES quando veio de Enviar documento). O sistema escolhe a pasta e você só confirma: não há como salvar ou mover para outra pasta. Para mudar a pasta, o administrador altera o seu cadastro em Configurações › Acessos."}
+      ]
+    },
+    {
+      "id": "documentos",
+      "titulo": "Página Documentos",
+      "icone": "list",
+      "perguntas": [
+        {"p": "Por que vejo documentos que não foram feitos no NexxusDoc?", "r": "A página mostra também os documentos **enviados** (guardados pelas pessoas da área) e os **mapeados** (manuais oficiais da área). Use o filtro **Origem** para ver só os do NexxusDoc, só os enviados ou só os mapeados."},
+        {"p": "Como baixo a lista mestra?", "r": "No botão **Lista mestra (Excel)**, no topo da página Documentos: ela traz código, versão, status, aprovação, próxima revisão e local no Drive de cada documento."},
+        {"p": "O que é o Fluxo As Is?", "r": "É o fluxograma de como o processo é feito hoje, com raias por papel, decisões, retrabalho e pontos de melhoria. Existe para os POPs criados ou revisados no NexxusDoc: use o botão **Fluxo As Is** na linha do documento. Dá para baixar em imagem (PNG) e em BPMN (Bizagi, Visio)."}
+      ]
+    },
+    {
+      "id": "consultas",
+      "titulo": "Chat Nexxus · Consultas gerais",
+      "icone": "chat",
+      "perguntas": [
+        {"p": "O que posso perguntar nas Consultas gerais?", "r": "Perguntas sobre os processos, os documentos e os manuais oficiais da área (por exemplo, o passo a passo de um procedimento) e sobre o próprio NexxusDoc (como usar, onde fica cada função). O agente mostra de onde tirou cada resposta."},
+        {"p": "A resposta está demorando. Posso cancelar?", "r": "Sim. Use o botão **Cancelar**, ao lado de Enviar. A resposta que chegar depois é descartada e você pode perguntar de novo."}
+      ]
+    },
+    {
+      "id": "automacao",
+      "titulo": "Automação e SAP",
+      "icone": "bolt",
+      "perguntas": [
+        {"p": "De onde vêm as oportunidades do Mapa de automação?", "r": "Dos POPs criados ou revisados no NexxusDoc. Na entrevista, o agente levanta tempo, volume, etapas manuais, dados e dores; com isso, cada procedimento traz as oportunidades de automação, priorizadas por impacto e esforço (ganho rápido, estratégico, melhoria pontual e baixa prioridade)."},
+        {"p": "O que é o robô ao lado de cada oportunidade?", "r": "É o **Resumo executivo** da automação: situação atual, como funcionaria, ganhos, esforço e próximos passos. Só o administrador master gera o resumo, e todos veem. O anel girando em volta do robô indica que o resumo está sendo gerado; o robô aceso com selo ✓ indica que ele está pronto."},
+        {"p": "O que significa o selo \"Script SAP GUI\"?", "r": "Indica uma etapa no SAP que extrai um relatório ou arquivo, ou que digita dados repetidos a partir de uma planilha, e que pode ser automatizada gravando a navegação do SAP em um script (.vbs) e rodando por macro do Excel ou Python. Ele aparece só nesses casos específicos."},
+        {"p": "Por que não consigo verificar as transações no BigQuery?", "r": "A consulta ao BigQuery é restrita: o administrador master libera em **Configurações › Acessos por área** (\"Pode consultar o BigQuery (SAP)\"). Sem a liberação, os botões aparecem bloqueados; a ficha técnica e o Excel continuam disponíveis para todos."}
+      ]
+    },
+    {
+      "id": "ajuda",
+      "titulo": "Notificações, Budget e ajuda",
+      "icone": "help",
+      "perguntas": [
+        {"p": "Como ligo ou desligo as notificações do Windows?", "r": "Em **Configurações › Notificações**: você liga ou desliga todas, o som e cada tipo de aviso (documentos para aprovar, aprovados, revisões, respostas do agente, documento gerado e VPN desligada), e pode enviar uma notificação de teste."},
+        {"p": "Por que não vejo os números da página Budget?", "r": "A página Budget aparece para todos, mas os números, as premissas e as versões do orçamento são só para o administrador master e os owners."},
+        {"p": "Como revejo o tour guiado?", "r": "Em **Configurações › Ajuda › Tour guiado**: o passeio mostra cada página do sistema, passo a passo."},
+        {"p": "Onde está a documentação técnica do sistema?", "r": "Em **Configurações › Ajuda › Documentação**: a Especificação Técnica completa, com busca por palavra."},
+        {"p": "Algo não está funcionando. Quem procuro?", "r": "Primeiro, veja o **Health System** (Configurações), que mostra a situação da VPN, do agente (n8n) e do Google Drive. Se o problema continuar, fale com o administrador master (Rodrigo Lisboa)."}
+      ]
+    }
+  ]
+}
