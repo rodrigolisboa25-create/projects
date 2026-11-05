@@ -6,7 +6,7 @@ Repositório de projetos desenvolvidos para automatizar processos, organizar dad
 
 ### 🧩 NexxusDoc
 
-Aplicação local para Windows que transforma entrevistas guiadas em procedimentos operacionais. O agente de IA **NexxusDoc** organiza respostas, referências, controles e exceções; o sistema gera o PDF, coordena revisão e aprovação e mantém um acervo consultável. Esta pasta inclui o código e a documentação em uma versão pública sanitizada.
+Aplicação local para Windows que transforma entrevistas guiadas em procedimentos operacionais. O agente de IA **NexxusDoc** organiza respostas, referências, controles e exceções; o sistema gera o PDF, coordena revisão e aprovação e conecta o acervo a um universo visual de procedimentos. Essa base ajuda a encontrar automações direcionadas por etapa, sistema e evidência. Esta pasta inclui o código e a documentação em uma versão pública sanitizada.
 
 > 🤖 **Agente em destaque:** o workflow n8n usa um AI Agent com o modelo configurado como `gemini-3.6-flash` por um endpoint compatível com OpenAI. A API local prepara contexto de cada rodada, valida campos essenciais e controla a geração. O modelo ajuda a perguntar e redigir; a pessoa responsável revisa e aprova o conteúdo.
 
@@ -22,7 +22,9 @@ Documentar um processo a partir de conversas e arquivos dispersos dificulta iden
 4. A prévia mostra as respostas; o backend impede a geração com lacunas essenciais.
 5. O sistema monta o PDF com sumário, passos, papéis, riscos, evidências e fontes.
 6. Um aprovador habilitado aprova ou solicita ajustes; versões e decisões ficam registradas.
-7. A consulta ao acervo cita fontes e o mapa de automação reúne oportunidades por esforço e impacto.
+7. O REF. DOCS mostra relações entre processos, documentos, prestador, transações SAP e controles.
+8. A consulta ao acervo cita fontes e o mapa reúne oportunidades por etapa, esforço e impacto.
+9. Com permissão e integração configuradas, o BigQuery oferece agregados das transações SAP para análise técnica de melhorias.
 
 ```mermaid
 flowchart TB
@@ -42,13 +44,48 @@ O backend controla a sessão e prepara os dados necessários para o workflow. O 
 
 O roteiro cobre objetivo, escopo, gatilhos, entradas e saídas, etapas, sistemas, responsáveis, riscos, controles, exceções, evidências, indicadores e potencial de automação. Na revisão, o agente aproveita o documento existente e pergunta apenas o que falta. A arquitetura e os limites estão em [nexxusdoc/docs/ia-e-fluxos.md](nexxusdoc/docs/ia-e-fluxos.md).
 
+#### 🪐 Universo de procedimentos e orquestração
+
+O **REF. DOCS**, acessado pela Visão geral, apresenta as fases da jornada como galáxias e os processos como estrelas. Ao redor de cada processo aparecem POPs, manuais, etapas do prestador, transações SAP e controles. O sistema liga processos que compartilham esses elementos e permite abrir fontes ou iniciar a documentação de uma lacuna. Na versão atual, a visualização usa o catálogo curado da Logística Internacional; as bases reais não estão na publicação.
+
+A entrevista reúne volume, frequência, tempo, tarefas manuais, dados, regras e exceções. O agente associa oportunidades às etapas; o **Fluxo As Is** expõe raias, decisões e pontos de melhoria; o **Mapa de Automação** consolida prioridades, impacto, esforço, pré-requisitos e riscos. O n8n orquestra as chamadas de IA e integrações. As automações propostas ainda exigem avaliação, implementação e validação humana: o mapa não as executa sozinho.
+
+```mermaid
+flowchart TB
+    P["Procedimento e anexos"] --> K["Base de conhecimento"]
+    K --> U["REF. DOCS: relações"]
+    K --> F["Fluxo As Is"]
+    U --> M["Mapa de automação"]
+    F --> M
+    M --> S["BigQuery e análise SAP"]
+    S --> V["Validação técnica"]
+```
+
+#### 🔎 BigQuery e análise técnica SAP
+
+Para transações registradas no procedimento, uma pessoa autorizada pode consultar pelo n8n os agregados dos últimos 30 dias na **BKPF**, com verificação de presença na **BSEG** e **ACDOCA**. A tela permite ajustar campos, datas e filtros, conferir o SQL gerado e refazer uma consulta de leitura. A IA combina esse resultado com o contexto do POP e prepara uma ficha que compara recursos padrão, jobs, BAPIs, IDocs, Fiori, workflow, carga em massa, scripts SAP GUI em casos específicos, ABAP e alternativas fora do SAP. A ficha pode ser exportada para Excel e deve ser validada pelo time de Tech SAP. Transações sem documento contábil podem não aparecer nessas três tabelas.
+
+#### 🖥️ Páginas do sistema
+
+| Página | Função |
+| --- | --- |
+| **Visão geral / REF. DOCS** | Pendências, jornada e relações entre processos. |
+| **Chat Nexxus** | Criar, revisar e consultar procedimentos com fontes. |
+| **Documentos** | Biblioteca, PDF, versões, aprovação e Fluxo As Is. |
+| **Automação** | Matriz de oportunidades, BigQuery, análise SAP e exportações. |
+| **PGL** | Processos do prestador, fontes, SLA e situação documental. |
+| **Budget** | Orçamento e cenários para perfis habilitados. |
+| **Configurações** | Perfil, áreas, permissões, workflow e diagnóstico. |
+
 #### 🧩 Principais recursos
 
 - Entrevista guiada, anexos, referências, prévia e validação de campos essenciais.
 - PDF com sumário navegável, histórico, links e documentos relacionados.
 - Revisão de procedimentos existentes, alerta de duplicidade e consulta ao acervo com fontes.
 - Workflow de aprovação por owner ou administrador, com retorno para ajustes.
-- Mapa de automação por impacto e esforço, com exportação para Excel.
+- Mapa de automação por impacto e esforço, consultas autorizadas ao BigQuery e ficha técnica SAP exportável.
+- REF. DOCS para explorar relações entre procedimentos, manuais, prestador, transações e controles.
+- Fluxo As Is com etapas, decisões, raias e pontos de melhoria.
 - Instalação por usuário, atualização assinada, auditoria e diagnóstico de VPN e sincronização.
 
 #### 🛠️ Tecnologias
@@ -73,6 +110,7 @@ nexxusdoc/
 
 - [Código, funcionamento e adaptação](nexxusdoc/README.md)
 - [Arquitetura da IA e fluxos](nexxusdoc/docs/ia-e-fluxos.md)
+- [Conhecimento, REF. DOCS, BigQuery e automação](nexxusdoc/docs/conhecimento-e-automacao.md)
 - [Workflow n8n e configuração](nexxusdoc/workflows/README.md)
 - [Escopo da versão pública e dados excluídos](nexxusdoc/docs/seguranca.md)
 

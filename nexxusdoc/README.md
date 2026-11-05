@@ -2,7 +2,7 @@
 
 **Python · FastAPI · HTML/CSS/JavaScript · n8n · Gemini via endpoint compatível com OpenAI · Google Drive · PDF**
 
-Aplicação local para Windows que transforma entrevistas guiadas em procedimentos operacionais (POPs). O agente de IA **NexxusDoc** conversa com quem executa o processo, coleta etapas, controles e evidências, ajuda a identificar lacunas e produz um documento para revisão humana. A aplicação administra versões, aprovações, consulta ao acervo e oportunidades de automação.
+Aplicação local para Windows que transforma entrevistas guiadas em procedimentos operacionais (POPs). O agente de IA **NexxusDoc** conversa com quem executa o processo, coleta etapas, controles e evidências, ajuda a identificar lacunas e produz um documento para revisão humana. A aplicação conecta esse conhecimento em um universo visual de processos e usa as informações reunidas para identificar automações direcionadas. Também administra versões, aprovações e consultas ao acervo.
 
 > Versão pública sanitizada. Credenciais, cadastros, documentos e referências corporativas reais não estão neste repositório. Integrações e bases específicas precisam ser configuradas para outra implantação.
 
@@ -21,6 +21,8 @@ Procedimentos costumam ser descritos em conversas, planilhas e arquivos disperso
 7. O acervo sustenta consultas posteriores com indicação das fontes.
 8. As entrevistas alimentam um mapa de oportunidades de automação por impacto e esforço.
 
+**A ideia central:** cada procedimento registra mais do que um texto final. Ele passa a relacionar etapas, sistemas, pessoas, controles, evidências, manuais e outros processos. Essa base de conhecimento dá contexto para o agente fazer perguntas melhores e permite descobrir onde uma automação realmente se encaixa, quais dados ela precisa, o que pode ser integrado e quais validações humanas devem continuar.
+
 ```mermaid
 flowchart TB
     U["Usuário no navegador"] --> A["FastAPI local"]
@@ -33,6 +35,45 @@ flowchart TB
     R --> D
     D --> A
 ```
+
+## 🪐 REF. DOCS: universo dos procedimentos
+
+Na Visão geral, o **REF. DOCS** apresenta um mapa interativo da jornada de processos. As fases aparecem como galáxias; cada processo é uma estrela; documentos, etapas do prestador, transações SAP e controles aparecem ao redor. Processos são ligados quando compartilham elementos identificados pelo sistema. É possível abrir o procedimento, o manual ou uma fonte vinculada e iniciar a documentação de um processo ainda sem POP.
+
+Na implementação atual, esse universo usa o catálogo curado da **Logística Internacional** e os procedimentos criados no NexxusDoc. Cruza títulos e palavras-chave, documentos existentes, referências e vínculos operacionais. O mapa depende dessas bases internas, excluídas da cópia pública; sem elas, a visualização não representa o universo real da área.
+
+```mermaid
+flowchart TB
+    P["Processo"] --> E["Etapas e papéis"]
+    P --> D["POP e manuais"]
+    P --> S["Sistemas e transações"]
+    P --> C["Controles e evidências"]
+    E --> O["Oportunidade por etapa"]
+    D --> O
+    S --> O
+    C --> O
+    O --> M["Mapa de automação"]
+```
+
+## ⚙️ Da base de conhecimento à automação
+
+A entrevista pede volume, frequência, tempo gasto, tarefas manuais, formatos dos dados, regras e exceções. O agente usa essas respostas para propor oportunidades por etapa, com tipo de solução, economia estimada, complexidade, pré-requisitos, riscos e controles. O **Mapa de Automação** reúne as oportunidades, permite filtrar por área e unidade, mostra uma matriz de impacto × esforço e exporta a análise para Excel. Há também uma visão de transações SAP e consultas técnicas quando as integrações da implantação estão configuradas.
+
+O sistema **orquestra a descoberta e a preparação**: reúne fontes, liga processos, mantém o contexto da entrevista, produz o diagnóstico e encaminha o trabalho para análise e decisão. O n8n orquestra as chamadas do agente e alguns fluxos de integração e notificação. **As automações sugeridas não são implantadas ou executadas automaticamente pelo Mapa**; cada proposta precisa de validação técnica, acesso aprovado, implementação e medição do resultado.
+
+O **Fluxo As Is** pode representar etapas, decisões, raias, sistemas e pontos de melhoria a partir do procedimento. Isso ajuda a localizar gargalos e dependências antes de desenhar um fluxo futuro. Veja [como o conhecimento alimenta a automação](docs/conhecimento-e-automacao.md).
+
+### 🔎 Transações SAP e dados no BigQuery
+
+Quando o procedimento registra transações SAP, a página **Automação** pode consultar dados do lake por meio do n8n e do BigQuery, desde que o usuário tenha a permissão e a integração esteja configurada. A consulta padrão olha os **últimos 30 dias**: identifica documentos por transação na **BKPF** e verifica a presença correspondente na **BSEG** e na **ACDOCA**. A tela mostra contagens e datas agregadas, não linhas financeiras individuais; os resultados por transação são reaproveitados em cache por até sete dias.
+
+Em **Ajustar consulta**, a pessoa autorizada escolhe colunas, campo de data, período e filtros disponíveis, visualiza o SQL montado pelo servidor e refaz uma consulta somente de leitura. Isso ajuda a verificar volume e disponibilidade de dados no lake antes de propor integrações. Uma transação que não gera documento contábil pode não aparecer nessas três tabelas; ausência de resultado **não significa** ausência de dados no SAP.
+
+### 🧠 Análise técnica de melhorias no SAP
+
+O NexxusDoc cruza a função da transação no procedimento com os agregados disponíveis e pede ao agente uma ficha técnica para cada transação: módulo, uso no processo, tabelas relevantes, pré-requisitos, riscos, controles e perguntas para validação. A análise compara alternativas como recursos padrão do SAP, jobs com variante, BAPIs, interfaces/IDocs, apps Fiori, workflow, carga em massa, desenvolvimento ABAP, script SAP GUI em casos específicos e automações fora do SAP com dados do BigQuery. A ficha pode ser exportada para Excel e levada ao time de **Tech SAP**.
+
+Essas opções são **hipóteses técnicas**, não soluções ativadas pelo sistema. Objetos SAP e ganhos precisam ser confirmados no ambiente, com atenção a autorização, segregação de funções, rastreabilidade e impacto fiscal. Veja [o fluxo completo entre conhecimento, BigQuery e melhorias](docs/conhecimento-e-automacao.md).
 
 ## 🤖 NexxusDoc: agente de IA
 
@@ -97,6 +138,20 @@ O aprovador deve ser um owner ou administrador ativo. O modo obrigatório ou opc
 - Mapa de automação com exportação para Excel.
 - Instalador por usuário, atualização assinada, backup de cadastro, diagnóstico de VPN e sincronização.
 
+## 🖥️ Páginas do sistema
+
+| Página | O que a pessoa encontra |
+| --- | --- |
+| **Visão geral** | Pendências, atalhos e acesso ao REF. DOCS, o universo visual dos procedimentos. |
+| **Chat Nexxus** | Criar procedimento, enviar/revisar documento existente e fazer consultas gerais com fontes. |
+| **Documentos** | Biblioteca, versões, PDFs, aprovação, lista mestra e Fluxo As Is. |
+| **Automação** | Oportunidades por processo, matriz impacto × esforço, consultas autorizadas ao BigQuery, análise técnica das transações SAP e exportação. |
+| **PGL** | Catálogo de processos do prestador na jornada de importação, com documentos e situação de cada processo. |
+| **Budget** | Cenários e análises de orçamento, conforme permissão do usuário. |
+| **Configurações** | Perfil, notificações, áreas, acessos, aprovação, saúde do sistema e instalador, conforme o perfil. |
+
+O REF. DOCS abre como uma visualização na Visão geral. O fluxo de aprovação é acessado a partir dos documentos; alguns recursos aparecem somente para perfis autorizados. O catálogo PGL e as visualizações da jornada dependem dos dados específicos da implantação.
+
 ## 🛠️ Componentes
 
 | Arquivo | Responsabilidade |
@@ -144,6 +199,6 @@ nexxusdoc/
 
 A pasta original no Drive não foi alterada. Chaves privadas, assinaturas, usuários, entrevistas, logs, backups, PDFs e conhecimento corporativo real foram excluídos. E-mails, URLs internas, IDs e projetos de dados foram substituídos na cópia publicada. A autenticação pelo UPN pressupõe um Windows gerenciado e requer avaliação na implantação.
 
-Leia [arquitetura da IA](docs/ia-e-fluxos.md) e [escopo da versão pública](docs/seguranca.md).
+Leia [arquitetura da IA](docs/ia-e-fluxos.md), [conhecimento e automação](docs/conhecimento-e-automacao.md) e [escopo da versão pública](docs/seguranca.md).
 
 Desenvolvido por [Rodrigo Lisboa](https://github.com/rodrigolisboa25-create).
