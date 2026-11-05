@@ -42,6 +42,8 @@ flowchart TB
 
 O backend controla a sessão e prepara os dados necessários para o workflow. O n8n entrega prompt e contexto ao agente, recebe a pergunta seguinte ou a síntese e devolve o resultado à API. O fluxo usa um endereço de retomada para consultas assíncronas, evitando o limite de duração do proxy da instalação original. O modelo pode sugerir perguntas, apontar lacunas e apoiar consultas; a validação do documento e a autorização de acesso permanecem na aplicação.
 
+Além do modelo usado no n8n, o sistema utiliza **Qwen3.5:4b via Ollama local** para redigir o resumo executivo de cada oportunidade no Mapa de Automação. Só o master inicia essa geração. A inferência ocorre na máquina dele, sem n8n ou VPN; o texto resultante fica na pasta compartilhada para consulta. Os números vêm da análise documentada e precisam de conferência humana.
+
 O roteiro cobre objetivo, escopo, gatilhos, entradas e saídas, etapas, sistemas, responsáveis, riscos, controles, exceções, evidências, indicadores e potencial de automação. Na revisão, o agente aproveita o documento existente e pergunta apenas o que falta. A arquitetura e os limites estão em [nexxusdoc/docs/ia-e-fluxos.md](nexxusdoc/docs/ia-e-fluxos.md).
 
 #### 🪐 Universo de procedimentos e orquestração
@@ -90,7 +92,7 @@ Para transações registradas no procedimento, uma pessoa autorizada pode consul
 
 #### 🛠️ Tecnologias
 
-**Python** · **FastAPI** · **HTML/CSS/JavaScript** · **n8n** · **Gemini** · **Google Drive** · **PDF** · **openpyxl**
+**Python** · **FastAPI** · **HTML/CSS/JavaScript** · **n8n** · **Gemini** · **Qwen local/Ollama** · **Google Drive** · **BigQuery** · **PDF** · **openpyxl**
 
 #### 📁 Estrutura
 
@@ -110,7 +112,7 @@ nexxusdoc/
 
 - [Código, funcionamento e adaptação](nexxusdoc/README.md)
 - [Arquitetura da IA e fluxos](nexxusdoc/docs/ia-e-fluxos.md)
-- [Conhecimento, REF. DOCS, BigQuery e automação](nexxusdoc/docs/conhecimento-e-automacao.md)
+- [Conhecimento, REF. DOCS, BigQuery, automação e Qwen local](nexxusdoc/docs/conhecimento-e-automacao.md)
 - [Workflow n8n e configuração](nexxusdoc/workflows/README.md)
 - [Escopo da versão pública e dados excluídos](nexxusdoc/docs/seguranca.md)
 
