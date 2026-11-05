@@ -109,6 +109,7 @@ O aprovador deve ser um owner ou administrador ativo. O modo obrigatório ou opc
 | [`instalador_nexus.py`](instalador_nexus.py) e [`nexus_launcher.pyw`](nexus_launcher.pyw) | Instalação, atualização e inicialização. |
 | [`assinatura.py`](assinatura.py) | Verificação de publicações e cadastro assinados. |
 | [`modelos_referencias_por_area.json`](modelos_referencias_por_area.json) | Modelos de referência iniciais. |
+| [`tools/build_manuais.py`](tools/build_manuais.py) | Geração de catálogo a partir de manifesto privado configurável. |
 
 ## 📁 Estrutura
 

@@ -4,11 +4,11 @@ Esta pasta foi produzida a partir de uma cópia separada. A origem no Drive corp
 
 ## Incluído
 
-Código Python, HTML, CSS e JavaScript da aplicação e do instalador; questionário; modelos iniciais de referências; recursos visuais próprios; workflow n8n sem vínculos de credenciais; prompt e instruções gerais.
+Código Python, HTML, CSS e JavaScript da aplicação e do instalador; questionário; modelos iniciais de referências; recursos visuais próprios; workflow n8n sem vínculos de credenciais; prompt e gerador de catálogo de manuais com manifesto parametrizado.
 
 ## Excluído
 
-Cadastros e assinaturas de acesso, chaves de publicação, configurações de conexão, identificadores de recursos internos, entrevistas, procedimentos reais, bases de conhecimento, manuais corporativos, planilhas, relatórios, logs, backups, arquivos temporários e documentos gerados. O utilitário de construção do catálogo de manuais foi omitido porque continha caminhos e IDs de documentos reais.
+Cadastros e assinaturas de acesso, chaves de publicação, configurações de conexão, identificadores de recursos internos, entrevistas, procedimentos reais, bases de conhecimento, manuais corporativos, planilhas, relatórios, logs, backups, arquivos temporários e documentos gerados. A lista original de manuais e IDs do Drive foi retirada do utilitário e substituída por um manifesto externo de exemplo.
 
 ## Substituições na cópia
 

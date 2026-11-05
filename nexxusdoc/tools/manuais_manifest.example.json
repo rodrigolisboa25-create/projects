@@ -1,0 +1,12 @@
+{
+  "manuais": [
+    [
+      "Procedimento de exemplo",
+      "2026",
+      "procedimento",
+      ["Área de exemplo"],
+      "procedimentos/exemplo.docx",
+      "CONFIGURE_DRIVE_FILE_ID"
+    ]
+  ]
+}
