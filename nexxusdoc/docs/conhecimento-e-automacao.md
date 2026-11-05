@@ -47,6 +47,14 @@ O n8n coordena o webhook, a chamada ao modelo e ramificações de integração. 
 
 As bases corporativas que tornam o REF. DOCS e as consultas reais possíveis não foram publicadas. Para outra área, é necessário configurar o catálogo, as fontes, as permissões e as integrações autorizadas.
 
+## 🖥️ Resumo executivo com LLM local
+
+O Mapa de Automação permite ao **administrador master** gerar um texto executivo para cada oportunidade. A aplicação monta um JSON curto com o processo, a etapa, a solução proposta, o esforço, a economia estimada, os pré-requisitos e os riscos já documentados. Envia esse contexto ao **Qwen3.5:4b** pelo **Ollama na própria máquina**, usando a API local de chat. O modelo redige o resumo para gestores e não deve criar números ou fatos ausentes.
+
+Essa redação local não passa pelo workflow n8n e não requer VPN. O endereço do Ollama é limitado a `127.0.0.1` ou `localhost`. Somente o master pode iniciar a geração, mas o texto produzido é guardado em `resumos_executivos/` na pasta compartilhada e fica disponível para leitura dos demais usuários. Se o Ollama ou o modelo não estiverem disponíveis, a geração informa o motivo. O resumo é marcado como desatualizado quando os dados da oportunidade mudam.
+
+O papel da Qwen aqui é **comunicar uma oportunidade já levantada**. A entrevista, a redação dos POPs e a análise técnica SAP usam o fluxo de IA orquestrado pelo n8n. Antes de apresentar uma estimativa à gestão, é preciso conferir tanto os dados de origem quanto a redação final.
+
 ## BigQuery e análise das transações SAP
 
 ```mermaid
