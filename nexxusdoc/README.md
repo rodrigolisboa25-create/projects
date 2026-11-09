@@ -159,7 +159,7 @@ O aprovador deve ser um owner ou administrador ativo. O modo obrigatório ou opc
 | **Chat Nexxus** | Criar procedimento, enviar/revisar documento existente e fazer consultas gerais com fontes. |
 | **Documentos** | Biblioteca, versões, PDFs, aprovação, lista mestra e Fluxo As Is. |
 | **Automação** | Oportunidades por processo, matriz impacto × esforço, consultas autorizadas ao BigQuery, análise técnica das transações SAP e exportação. |
-| **PGL** | Catálogo de processos do prestador na jornada de importação, com documentos e situação de cada processo. |
+| **Query Console** | Relaciona procedimentos, documentos e tabelas do BigQuery; exibe campos e SQL sugerido. O master pode editar, simular custo e executar consultas de leitura autorizadas. |\n| **PGL** | Catálogo de processos do prestador na jornada de importação, com documentos e situação de cada processo. |
 | **Budget** | Cenários e análises de orçamento, conforme permissão do usuário. |
 | **Configurações** | Perfil, notificações, áreas, acessos, aprovação, saúde do sistema e instalador, conforme o perfil. |
 
@@ -188,9 +188,9 @@ nexxusdoc/
 ├── assinatura.py                # verificação de assinaturas
 ├── instalador_nexus.py          # instalação e atualização
 ├── nexus_launcher.pyw           # inicialização
-├── questionnaire.json           # entrevista
+├── query_console.json           # catálogo ilustrativo da Query Console\n├── questionnaire.json           # entrevista
 ├── modelos_referencias_por_area.json
-├── static/                      # interface e recursos visuais
+├── static/                      # interface e recursos visuais, inclusive Query Console e abertura
 ├── workflows/                   # agente e prompt
 ├── tools/                       # utilitário de documentação
 ├── docs/                        # arquitetura e segurança
@@ -205,9 +205,9 @@ nexxusdoc/
 3. Importe o workflow no n8n e configure suas próprias credenciais de modelo, Gmail, Drive e BigQuery conforme os nós usados.
 4. Configure o identificador da pasta sincronizada no instalador e a ponte do Drive quando necessários.
 5. Para habilitar o resumo executivo local, instale o Ollama e o modelo Qwen no computador do master; os parâmetros opcionais são `NEXUS_LLM_URL` e `NEXUS_LLM_MODEL`.
-6. Providencie cadastros e bases curadas específicos em ambiente restrito; eles foram excluídos desta cópia.
+6. Providencie cadastros e bases curadas específicos em ambiente restrito; eles foram excluídos desta cópia. O `query_console.json` publicado contém apenas um exemplo fictício; substitua pelo catálogo autorizado na sua implantação.
 
-**A cópia pública não é um pacote de produção pronto.** Caminhos, IDs, projeto de dados e endereços foram substituídos por exemplos. Sua implantação precisa preencher esses parâmetros e validar permissões.
+**Atualização de novembro de 2026:** a interface ganhou abertura visual, a Query Console e avisos para documentos que não parecem procedimentos, políticas ou manuais operacionais. A Query Console associa documentos novos a procedimentos, mostra o contexto das tabelas e limita a execução ao perfil master, com simulação e teto de leitura.\n\n**A cópia pública não é um pacote de produção pronto.** Caminhos, IDs, projeto de dados e endereços foram substituídos por exemplos. Sua implantação precisa preencher esses parâmetros e validar permissões.
 
 ## 🔐 Segurança
 

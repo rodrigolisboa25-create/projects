@@ -37,6 +37,7 @@ FILES = (
     "conhecimento_interno_por_area.json",
     "pgl_processos.json",
     "base_manuais.json",
+    "query_console.json",    # pagina Query Console: tabelas do BigQuery por procedimento (catalogo curado)
     "requirements.txt",
     "README.md",
     ".env.example",

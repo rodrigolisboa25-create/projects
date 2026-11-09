@@ -1,0 +1,104 @@
+{
+  "versao": 1,
+  "levantamento": "Exemplo fictício; substitua pelo catálogo autorizado",
+  "projeto_cobranca": "your-gcp-project",
+  "fases": [
+    {
+      "id": "demonstracao",
+      "nome": "Demonstração",
+      "cor": "#3B82F6"
+    }
+  ],
+  "tabelas": {
+    "bkpf": {
+      "id": "bkpf",
+      "caminho": "your-gcp-project.sample_sap.bkpf",
+      "nome": "Cabeçalho de documento contábil (exemplo)",
+      "descricao": "Estrutura ilustrativa para demonstrar a consulta por procedimento.",
+      "origem": "SAP (exemplo)",
+      "total_colunas": 3,
+      "linhas": 0,
+      "gb": 0,
+      "particao": "",
+      "particao_tipo": "",
+      "atualizada_em": "",
+      "conferida": false,
+      "colunas": [
+        {
+          "nome": "BUKRS",
+          "tipo": "STRING",
+          "descricao": "Empresa",
+          "exemplo": "0001"
+        },
+        {
+          "nome": "BELNR",
+          "tipo": "STRING",
+          "descricao": "Documento",
+          "exemplo": "0000000001"
+        },
+        {
+          "nome": "GJAHR",
+          "tipo": "STRING",
+          "descricao": "Exercício",
+          "exemplo": "2026"
+        }
+      ],
+      "todas_colunas": [
+        [
+          "BUKRS",
+          "STRING"
+        ],
+        [
+          "BELNR",
+          "STRING"
+        ],
+        [
+          "GJAHR",
+          "STRING"
+        ]
+      ]
+    }
+  },
+  "procedimentos": [
+    {
+      "id": "consulta-documentos-exemplo",
+      "fase": "demonstracao",
+      "titulo": "Consulta de documentos SAP (exemplo)",
+      "unidades": [],
+      "documentos": [],
+      "processo": "Exemplo ilustrativo",
+      "hoje": "Consulta de documentos contábeis autorizados.",
+      "serve": "Ilustrar a relação entre procedimento, tabela e SQL.",
+      "cobre": [
+        "Busca por empresa e exercício"
+      ],
+      "facilita": [
+        "Identificar campos necessários"
+      ],
+      "fora": [
+        "Execução sem credenciais e dados autorizados"
+      ],
+      "tabelas": [
+        {
+          "id": "bkpf",
+          "uso": "Exemplo de cabeçalho",
+          "colunas": [
+            "BUKRS",
+            "BELNR",
+            "GJAHR"
+          ]
+        }
+      ],
+      "ligacao": [
+        "Procedimento",
+        "Tabela SAP",
+        "Consulta de leitura"
+      ],
+      "sql": "SELECT BUKRS, BELNR, GJAHR FROM `your-gcp-project.sample_sap.bkpf` LIMIT 100",
+      "conferido": false,
+      "gb_estimado": 0
+    }
+  ],
+  "sem_uso": [],
+  "ignorar_documentos": []
+}

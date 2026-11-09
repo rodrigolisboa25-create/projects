@@ -6617,6 +6617,238 @@ BU_DOCUMENT_REQUIREMENT = (
 
 
 # ---------------------------------------------------------------------------
+# Query Console (06/11/2026, pedido do usuario): pagina com as tabelas do BigQuery que automatizam cada procedimento
+# da area (levantamento de 05-06/11/2026). Todos veem o catalogo; so o master gera consultas. O catalogo curado fica
+# em query_console.json (gerado da estrutura real das tabelas, distribuido com o codigo assinado). Os documentos do
+# sistema (manuais, NexxusDoc, enviados) sao ligados a cada procedimento na hora: documento novo aparece sozinho no
+# procedimento certo; o que nao casar com nenhum vai para "a mapear". A verificacao SAP do Mapa de automacao continua.
+# ---------------------------------------------------------------------------
+QUERY_CONSOLE_PATH = _curated("query_console.json")
+
+
+def _query_catalogue() -> dict[str, Any]:
+    try:
+        data = json.loads(QUERY_CONSOLE_PATH.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def _query_doc_match(proc: dict[str, Any], title: str) -> bool:
+    """O documento e deste procedimento: titulo citado no catalogo, titulo parecido com o processo ou palavra-chave."""
+    name = _norm(title)
+    if not name:
+        return False
+    if any(name.startswith(_norm(doc)) or _norm(doc).startswith(name) for doc in proc.get("documentos") or []):
+        return True
+    if max(_title_like(title, proc.get("processo")), _title_like(title, proc.get("titulo"))) >= 0.6:
+        return True
+    return any(_norm(word) and _norm(word) in name for word in proc.get("palavras") or [])
+
+
+@app.get("/api/query-console")
+def query_console(user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    catalogue = _query_catalogue()
+    if not catalogue:
+        raise HTTPException(503, "O catálogo da Query Console não está nesta instalação. Atualize o NexxusDoc.")
+    skip = set(catalogue.get("ignorar_documentos") or [])
+    docs: list[dict[str, Any]] = []
+    for manual in _manuals():
+        if manual.get("enviado"):
+            continue
+        docs.append({"titulo": manual.get("titulo", ""), "origem": "Documento localizado" if manual.get("localizado") else "Manual da área",
+                     "detalhe": f"rev. {manual['revisao']}" if manual.get("revisao") else "", "link": manual.get("link", ""),
+                     "oficial": _official_manual(manual), "nexxus": False})
+    for record in _load_records():
+        if record.get("id") in skip:
+            continue
+        title = (record.get("document") or {}).get("title") or record.get("process", "")
+        docs.append({"titulo": title, "origem": "NexxusDoc", "detalhe": f"{record.get('doc_code', '')} · {STATUS_LABELS.get(record.get('status'), '')}".strip(" ·"),
+                     "link": f"/api/documents/{record['id']}/pdf", "oficial": True, "nexxus": True})
+    for doc in _sent_docs():
+        docs.append({"titulo": doc.get("titulo", ""), "origem": "Documento enviado", "detalhe": "", "link": f"/api/envios/{doc['id']}/arquivo",
+                     "oficial": True, "nexxus": True})
+    procs, used = [], set()
+    for proc in catalogue.get("procedimentos") or []:
+        found = [d for d in docs if _query_doc_match(proc, d["titulo"])]
+        used.update(id(d) for d in found)
+        procs.append({**proc, "docs_sistema": found[:8], "documentado": bool(found)})
+    loose = [d for d in docs if d["nexxus"] and id(d) not in used]   # entrou no sistema e ainda nao tem consulta mapeada
+    return {**{k: v for k, v in catalogue.items() if k not in ("procedimentos", "ignorar_documentos")},
+            "procedimentos": procs, "a_mapear": loose[:20], "pode_gerar": user.get("role") == "master"}
+
+
+# Gerar consulta (so o master, pedido do usuario): roda SO a consulta do catalogo (nunca SQL livre), pela API do
+# BigQuery com o login do Google Cloud CLI (gcloud) da conta do Windows de quem abriu o NexxusDoc. Sempre em duas
+# etapas: simulacao (dry run: projeto cobrado e GB lidos) e execucao com confirmacao, com teto de bytes cobrados.
+QC_MAX_GB = 25            # teto por consulta (a maior do catalogo le ~20 GB)
+QC_MAX_ROWS = 500         # linhas mostradas na tela
+QC_TIMEOUT_SECONDS = 300
+QC_TOKEN: dict[str, Any] = {"value": "", "until": 0.0}
+BQ_API = "https://bigquery.googleapis.com/bigquery/v2/projects"
+
+
+def _gcloud_token() -> str:
+    """Token de acesso do gcloud desta conta do Windows (vale ~1 h; guardado por 45 min)."""
+    if QC_TOKEN["value"] and time.time() < QC_TOKEN["until"]:
+        return QC_TOKEN["value"]
+    exe = Path(os.environ.get("LOCALAPPDATA", "")) / "Google" / "Cloud SDK" / "google-cloud-sdk" / "bin" / "gcloud.cmd"
+    if not exe.is_file():
+        raise HTTPException(503, "O Google Cloud CLI (gcloud) não está instalado neste computador. Instale e rode "
+                                 "\"gcloud auth login\" com a conta do Grupo SBF.")
+    try:
+        done = subprocess.run([str(exe), "auth", "print-access-token"], capture_output=True, text=True, timeout=40,
+                              creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0))
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise HTTPException(503, f"Não consegui falar com o gcloud: {exc}")
+    token = (done.stdout or "").strip().splitlines()[-1:] or [""]
+    if done.returncode or not token[0].startswith("ya29."):
+        raise HTTPException(401, "O login do Google Cloud expirou ou não foi feito neste computador. Rode "
+                                 "\"gcloud auth login\" e tente de novo.")
+    QC_TOKEN.update(value=token[0], until=time.time() + 45 * 60)
+    return token[0]
+
+
+def _qc_proc(proc_id: str) -> tuple[dict[str, Any], dict[str, Any]]:
+    catalogue = _query_catalogue()
+    proc = next((p for p in catalogue.get("procedimentos") or [] if p.get("id") == proc_id), None)
+    if not proc or not proc.get("sql"):
+        raise HTTPException(404, "Procedimento não encontrado no catálogo da Query Console.")
+    return catalogue, proc
+
+
+async def _bq_call(project: str, sql: str, dry: bool, max_bytes: int) -> dict[str, Any]:
+    token = await asyncio.to_thread(_gcloud_token)
+    headers = {"Authorization": f"Bearer {token}"}
+    body = {"query": sql, "useLegacySql": False, "dryRun": dry, "maxResults": QC_MAX_ROWS, "timeoutMs": 60000,
+            "maximumBytesBilled": str(max_bytes)}
+    async with httpx.AsyncClient(timeout=httpx.Timeout(90.0)) as client:
+        response = await client.post(f"{BQ_API}/{project}/queries", headers=headers, json=body)
+        data = response.json() if response.content else {}
+        deadline = time.monotonic() + QC_TIMEOUT_SECONDS
+        while response.status_code < 400 and not dry and not data.get("jobComplete") and time.monotonic() < deadline:
+            job = data.get("jobReference") or {}
+            response = await client.get(f"{BQ_API}/{project}/queries/{job.get('jobId')}", headers=headers,
+                                        params={"location": job.get("location", ""), "maxResults": QC_MAX_ROWS, "timeoutMs": 30000})
+            data = response.json() if response.content else {}
+    if response.status_code == 401:
+        QC_TOKEN.update(value="", until=0.0)
+        raise HTTPException(401, "O login do Google Cloud expirou. Rode \"gcloud auth login\" e tente de novo.")
+    if response.status_code >= 400:
+        message = ((data.get("error") or {}).get("message") or response.text)[:400]
+        if "bytesBilledLimitExceeded" in response.text or "billed limit" in message.casefold():
+            message = "A consulta leria mais do que o limite autorizado. Simule de novo antes de executar."
+        raise HTTPException(502, f"O BigQuery recusou a consulta: {message}")
+    if not dry and not data.get("jobComplete"):
+        raise HTTPException(504, "A consulta passou de 5 minutos no BigQuery. Tente de novo mais tarde.")
+    return data
+
+
+def _bq_rows(data: dict[str, Any]) -> tuple[list[str], list[list[str]]]:
+    fields = [f.get("name", "") for f in ((data.get("schema") or {}).get("fields") or [])]
+    def cell(value: Any) -> str:
+        value = value.get("v") if isinstance(value, dict) else value
+        if isinstance(value, list):
+            return ", ".join(cell(v) for v in value)
+        return "" if value is None else str(value)
+    return fields, [[cell(c) for c in (row.get("f") or [])] for row in (data.get("rows") or [])[:QC_MAX_ROWS]]
+
+
+# Consulta editada pelo master (06/11/2026, pedido do usuario: incluir/retirar colunas antes de gerar). Travas: so
+# SELECT (o dry run do BigQuery diz o tipo; script, DML e DDL sao recusados), so tabelas dos projetos de dados abaixo,
+# teto de leitura e, na execucao, so a MESMA consulta simulada nos ultimos 15 minutos (o servidor guarda os bytes).
+QC_ALLOWED_PROJECTS = {"your-gcp-project", "your-gcp-project", "your-gcp-project"}
+QC_SQL_MAX = 20000
+QC_SIMS: dict[str, dict[str, Any]] = {}
+
+
+async def _bq_dry_job(project: str, sql: str) -> dict[str, Any]:
+    """Dry run pelo jobs.insert: devolve o tipo da consulta (statementType), as tabelas lidas e os bytes."""
+    token = await asyncio.to_thread(_gcloud_token)
+    body = {"configuration": {"dryRun": True, "query": {"query": sql, "useLegacySql": False}}}
+    async with httpx.AsyncClient(timeout=httpx.Timeout(90.0)) as client:
+        response = await client.post(f"{BQ_API}/{project}/jobs", headers={"Authorization": f"Bearer {token}"}, json=body)
+    data = response.json() if response.content else {}
+    if response.status_code == 401:
+        QC_TOKEN.update(value="", until=0.0)
+        raise HTTPException(401, "O login do Google Cloud expirou. Rode \"gcloud auth login\" e tente de novo.")
+    if response.status_code >= 400:
+        raise HTTPException(422, f"O BigQuery recusou a consulta: {((data.get('error') or {}).get('message') or response.text)[:400]}")
+    stats = data.get("statistics") or {}
+    query = stats.get("query") or {}
+    return {"tipo": query.get("statementType", ""), "bytes": int(stats.get("totalBytesProcessed") or query.get("totalBytesProcessed") or 0),
+            "tabelas": [f"{t.get('projectId')}.{t.get('datasetId')}.{t.get('tableId')}" for t in query.get("referencedTables") or []]}
+
+
+class QuerySql(BaseModel):
+    sql: Annotated[str, StringConstraints(max_length=QC_SQL_MAX)] = ""
+
+
+class QueryRun(QuerySql):
+    confirmado: bool = False
+    bytes_simulados: int = Field(default=0, ge=0)   # so informativo: o servidor usa o que ele mesmo simulou
+
+
+def _qc_sql(proc: dict[str, Any], sql: str) -> str:
+    text = (sql or "").strip() or proc["sql"]
+    if ";" in text.rstrip(";"):
+        raise HTTPException(422, "Uma consulta por vez: tire o ponto e vírgula do meio do texto.")
+    return text.rstrip(";").strip()
+
+
+@app.post("/api/query-console/{proc_id}/simular")
+async def query_console_simulate(proc_id: Annotated[str, StringConstraints(pattern=r"^[a-z0-9-]{2,60}$")],
+                                 payload: QuerySql | None = None,
+                                 user: dict[str, Any] = Depends(require_master)) -> dict[str, Any]:
+    catalogue, proc = _qc_proc(proc_id)
+    project = catalogue.get("projeto_cobranca") or "your-gcp-project"
+    sql = _qc_sql(proc, payload.sql if payload else "")
+    dry = await _bq_dry_job(project, sql)
+    if dry["tipo"] != "SELECT":
+        raise HTTPException(422, f"Só consultas de leitura (SELECT). O BigQuery identificou esta como {dry['tipo'] or 'outro tipo'}.")
+    outside = [t for t in dry["tabelas"] if t.split(".")[0] not in QC_ALLOWED_PROJECTS]
+    if outside:
+        raise HTTPException(422, "A consulta lê tabelas fora dos projetos de dados liberados: " + ", ".join(outside[:5]))
+    size, edited = dry["bytes"], sql != proc["sql"].strip()
+    digest = hashlib.sha256(sql.encode("utf-8")).hexdigest()
+    now = time.time()
+    for key in [k for k, v in QC_SIMS.items() if v["ate"] < now]:
+        QC_SIMS.pop(key, None)
+    QC_SIMS[digest] = {"bytes": size, "ate": now + 15 * 60, "email": user["email"], "proc": proc_id}
+    _audit(user["email"], "query_console_simulada", procedimento=proc_id, bytes=size, projeto=project, editada=edited,
+           **({"sql": sql[:3000]} if edited else {}))
+    return {"projeto": project, "bytes": size, "gb": round(size / 1e9, 3), "limite_gb": QC_MAX_GB, "editada": edited,
+            "tabelas": dry["tabelas"], "acima_do_limite": size > QC_MAX_GB * 10**9}
+
+
+@app.post("/api/query-console/{proc_id}/executar")
+async def query_console_run(proc_id: Annotated[str, StringConstraints(pattern=r"^[a-z0-9-]{2,60}$")], payload: QueryRun,
+                            user: dict[str, Any] = Depends(require_master)) -> dict[str, Any]:
+    if not payload.confirmado:
+        raise HTTPException(409, "Simule a consulta e confirme antes de executar.")
+    catalogue, proc = _qc_proc(proc_id)
+    project = catalogue.get("projeto_cobranca") or "your-gcp-project"
+    sql = _qc_sql(proc, payload.sql)
+    sim = QC_SIMS.get(hashlib.sha256(sql.encode("utf-8")).hexdigest())
+    if not sim or sim["ate"] < time.time() or sim["email"] != user["email"] or sim["proc"] != proc_id:
+        raise HTTPException(409, "Simule esta consulta de novo antes de executar (a simulação vale 15 minutos e para o mesmo texto).")
+    if sim["bytes"] > QC_MAX_GB * 10**9:
+        raise HTTPException(413, f"A consulta leria mais de {QC_MAX_GB} GB, o limite da Query Console.")
+    # teto cobrado = o simulado + 20% (a tabela cresce entre a simulacao e a execucao), minimo de 50 MB
+    limit = min(QC_MAX_GB * 10**9, max(50 * 10**6, int(sim["bytes"] * 1.2)))
+    started = time.monotonic()
+    data = await _bq_call(project, sql, False, limit)
+    columns, rows = _bq_rows(data)
+    processed, billed = int(data.get("totalBytesProcessed") or 0), int(data.get("totalBytesBilled") or 0)
+    edited = sql != proc["sql"].strip()
+    _audit(user["email"], "query_console_executada", procedimento=proc_id, projeto=project, bytes=processed,
+           cobrados=billed, linhas=int(data.get("totalRows") or 0), editada=edited, **({"sql": sql[:3000]} if edited else {}))
+    return {"projeto": project, "colunas": columns, "linhas": rows, "total_linhas": int(data.get("totalRows") or 0),
+            "mostradas": len(rows), "gb_processados": round(processed / 1e9, 3), "gb_cobrados": round(billed / 1e9, 3),
+            "cache": bool(data.get("cacheHit")), "segundos": round(time.monotonic() - started, 1)}
+
+
+# ---------------------------------------------------------------------------
 # PGL: processos executados pelo prestador terceirizado
 # ---------------------------------------------------------------------------
 PGL_PATH = _curated("pgl_processos.json")
@@ -8208,6 +8440,59 @@ DUPLICATE_CREATE_REQUIREMENT = (
     "a diferenca no escopo. Nao repita o aviso depois que a pessoa responder.")
 
 
+# Enviar documento so aceita DOCUMENTO OPERACIONAL (05/11/2026, pedido do usuario: um plano de transferencia de outro
+# projeto e uma especificacao de sistema foram aceitos; "caso seja identificado que algum documento nao e devido, deve
+# ser informado para que o usuario descarte, ate pq o usuario pode enviar por engano"). Quem decide e o agente (na mesma
+# leitura das datas); sem o agente, _sent_nature pelos sinais do titulo e da estrutura. Nao operacional = comeca em
+# "Nao enviar", com o motivo; para enviar mesmo assim a pessoa confirma que e operacional (o servidor confere).
+SENT_NATURE_REQUIREMENT = (
+    "CLASSIFICACAO (documento_operacional): o Enviar documento so aceita DOCUMENTOS OPERACIONAIS da area, isto e, que "
+    "descrevem como uma atividade ou processo e executado ou regrado: procedimento, POP, SOP, politica, norma, manual "
+    "de procedimento, instrucao de trabalho, fluxo do processo, checklist operacional, regras de um processo. NAO sao "
+    "operacionais (documento_operacional=false): plano de projeto, de transferencia ou de acao; especificacao ou "
+    "documentacao tecnica de sistema, codigo, requisitos; relatorio, analise, estudo, apresentacao de resultados; "
+    "proposta, contrato, orcamento, planilha de dados, nota fiscal, fatura, comprovante; ata, e-mail, curriculo, documento "
+    "pessoal ou qualquer arquivo sem relacao com o processo. Na duvida (parece um procedimento, mesmo incompleto), "
+    "considere operacional. Em natureza, diga o que o arquivo e (ex.: 'plano de transferencia de projeto'); em motivo, "
+    "uma frase curta e objetiva para a pessoa entender por que.")
+_NATURE_OPER_TITLE = re.compile(r"\b(procedimentos?|pop|sop|politicas?|normas?|manual|manuais|instrucao (?:de trabalho|normativa)"
+                                r"|passo a passo|checklist|fluxo|fluxograma|rotina|regras? (?:de|do|da))\b")
+_NATURE_NOT_TITLE = re.compile(r"\b(plano de (?:transferencia|acao|projeto|trabalho|negocio|implantacao)|especificacao|"
+                               r"modulo|requisitos|proposta|relatorio|ata de reuniao|contrato|nota fiscal|fatura|invoice|"
+                               r"curriculo|boleto|comprovante|extrato|orcamento|business case|roadmap|cronograma)\b")
+_NATURE_SECTIONS = ("objetivo", "escopo", "abrangencia", "responsabilidades", "definicoes", "descricao das atividades",
+                    "descricao do processo", "procedimento", "etapas", "passo a passo", "historico de revis",
+                    "controle de revis", "elaborador", "aprovador", "documentos de referencia", "fluxograma")
+
+
+def _sent_nature(title: str, text: str) -> tuple[bool | None, str]:
+    """Sem o agente: True (operacional), False (nao operacional, com o motivo) ou None (nao da para dizer: nao bloqueia)."""
+    name, body = _norm(title), _norm(text[:20000])
+    if _NATURE_OPER_TITLE.search(name):
+        return True, ""
+    code = len(re.findall(r"```|^\s*(?:def |function |class |import |const |param\(|\$[a-z]+\s*=)", text[:60000], re.M))
+    if m := _NATURE_NOT_TITLE.search(name):
+        return False, f"O título indica {m.group(1)}, não um procedimento, política ou manual da área."
+    if code >= 6:
+        return False, "O arquivo tem trechos de código de sistema, não descreve como um processo da área é feito."
+    if sum(1 for s in _NATURE_SECTIONS if s in body) >= 3:
+        return True, ""
+    return None, ""
+
+
+def _sent_operational(agent: dict[str, Any], title: str, text: str) -> tuple[bool, str, str]:
+    """(nao_operacional, natureza, motivo): o agente decide quando respondeu; senao, os sinais do titulo e da estrutura."""
+    flag = agent.get("documento_operacional")
+    if isinstance(flag, str):
+        flag = {"true": True, "sim": True, "false": False, "nao": False, "não": False}.get(flag.strip().casefold())
+    clean = lambda v, n: " ".join(str(v or "").split())[:n]  # noqa: E731
+    if isinstance(flag, bool):
+        return (not flag, clean(agent.get("natureza"), 80),
+                clean(agent.get("motivo"), 240) if not flag else "")
+    found, why = _sent_nature(title, text)
+    return found is False, "", why
+
+
 async def _agent_dates(filename: str, text: str, found: dict[str, Any]) -> dict[str, Any]:
     """O agente le so a identificacao e o controle de revisao do documento (nada de reescrever o conteudo)."""
     lines = [line.strip() for line in text.splitlines()
@@ -8228,10 +8513,13 @@ async def _agent_dates(filename: str, text: str, found: dict[str, Any]) -> dict[
                   "Datas em dd/mm/aaaa (01/mm/aaaa quando o documento so tiver mes e ano). Nunca invente data: sem a "
                   "informacao, devolva string vazia (e 0 na periodicidade). system_candidates e o que a leitura automatica "
                   "achou, so como pista.",
+                  SENT_NATURE_REQUIREMENT,
                   "Retorne exatamente este objeto JSON, sem bloco de codigo ou texto fora dele: {\"titulo\": \"\", "
                   "\"codigo\": \"\", \"versao\": \"\", \"autor\": \"quem elaborou, se o documento informar\", "
                   "\"ultima_revisao\": \"\", \"proxima_revisao\": \"\", "
-                  "\"periodicidade_meses\": 0, \"tipo\": \"procedimento\", \"trecho\": \"frase curta do documento com a data\"}"]}
+                  "\"periodicidade_meses\": 0, \"tipo\": \"procedimento\", \"trecho\": \"frase curta do documento com a data\", "
+                  "\"documento_operacional\": true, \"natureza\": \"o que o arquivo e, em 2 a 5 palavras\", "
+                  "\"motivo\": \"frase curta explicando a classificacao\"}"]}
     result = _unwrap_output(await asyncio.wait_for(_send_n8n(prompt, f"envio-{uuid.uuid4().hex}"), SENT_AGENT_SECONDS))
     return result if isinstance(result, dict) else {}
 
@@ -8306,13 +8594,14 @@ async def sent_analyze(files: list[UploadFile] = File(...), user: dict[str, Any]
         kind = "procedure"  # criacao de politica retirada (05/11/2026): tudo entra como procedimento
         due, matches = dates["proxima_revisao"], _mapped_matches(title, code, sha)
         author = " ".join(str(agent.get("autor") or "").split())[:80] or _doc_author(text)
-        if author:
-            meta_path = SENT_PENDING_DIR / _file_key(user["email"]) / f"{item['token']}.json"
-            try:
-                meta = json.loads(meta_path.read_text(encoding="utf-8"))
-                meta_path.write_text(json.dumps({**meta, "autor": author}, ensure_ascii=False), encoding="utf-8")
-            except (OSError, ValueError):
-                pass
+        not_oper, nature, why = _sent_operational(agent, title, text) if text else (False, "", "")
+        meta_path = SENT_PENDING_DIR / _file_key(user["email"]) / f"{item['token']}.json"
+        try:
+            meta = json.loads(meta_path.read_text(encoding="utf-8"))
+            meta_path.write_text(json.dumps({**meta, "autor": author, "nao_operacional": not_oper,
+                                             "motivo_nao_operacional": why}, ensure_ascii=False), encoding="utf-8")
+        except (OSError, ValueError):
+            pass
         item.update({"legivel": bool(text), "titulo": title, "codigo": code, "autor": author,
                      "versao": " ".join(str(agent.get("versao") or "").split())[:30], "tipo": kind,
                      "ultima_revisao": dates["ultima_revisao"].isoformat() if dates["ultima_revisao"] else "",
@@ -8320,7 +8609,10 @@ async def sent_analyze(files: list[UploadFile] = File(...), user: dict[str, Any]
                      "trecho": " ".join(str(agent.get("trecho") or "").split())[:160],  # so a frase do agente (texto original)
                      "vencida": due < today, "dias": (due - today).days, "mapeados": matches,
                      "ja_guardado": any(m["exato"] and m["origem"] == "Documento enviado" for m in matches),
-                     "duplicado": _sent_duplicate(matches)})
+                     "duplicado": _sent_duplicate(matches), "nao_operacional": not_oper,
+                     "natureza": nature if not_oper else "",
+                     "motivo_nao_operacional": why or ("Não parece um procedimento, política ou manual da área."
+                                                       if not_oper else "")})
         items.append(item)
     return {"area": _user_area(user), "meses_revisao": months, "agente": use_agent, "itens": items}
 
@@ -8336,6 +8628,7 @@ class SentChoice(BaseModel):
     proxima_revisao: Annotated[str, StringConstraints(max_length=10)] = ""
     fonte_datas: Annotated[str, StringConstraints(max_length=20)] = ""
     outro_documento: bool = False   # a pessoa confirmou que nao e o documento ja mapeado (regra de duplicidade 1c)
+    operacional: bool = False       # a pessoa confirmou que e documento operacional (o agente achou que nao era)
 
 
 def _sent_duplicate(matches: list[dict[str, Any]]) -> str:
@@ -8369,6 +8662,10 @@ def _sent_blocked(choice: SentChoice, meta: dict[str, Any]) -> str:
     """Regra de duplicidade 1, conferida de novo no servidor ao gravar: motivo do bloqueio ou '' (pode gravar)."""
     if (SENT_DIR / f"{meta['sha256'][:20]}.json").is_file():
         return ""   # mesmo arquivo ja guardado: segue como "ja_guardado" (nao grava de novo)
+    if meta.get("nao_operacional") and not choice.operacional:
+        return ("Não é um documento operacional (" + (meta.get("motivo_nao_operacional") or "não parece um procedimento, "
+                "política ou manual da área").rstrip(".") + "). Se foi por engano, não envie; se for um documento "
+                "operacional, marque “É um documento operacional”.")
     acao = choice.acao if meta.get("texto") else "guardar"
     title = " ".join(choice.titulo.split()) or _guess_title(meta.get("texto", ""), meta["arquivo"])
     matches = _mapped_matches(title, choice.codigo, meta["sha256"])
@@ -8610,7 +8907,7 @@ CLOUD_IGNORE = tuple(f"NexxusDoc/{name}" for name in (
 CLOUD_CODE_DIRS = ("static", "assets", "workflows")
 CLOUD_CODE_FILES = {"publicacao.json", "publicacao.sig", "n8n_acesso.json", "nuvem_acesso.json", "questionnaire.json",
                     "policy_questionnaire.json", "modelos_referencias_por_area.json", "conhecimento_interno_por_area.json",
-                    "pgl_processos.json", "base_manuais.json", "requirements.txt", ".env.example",
+                    "pgl_processos.json", "base_manuais.json", "query_console.json", "requirements.txt", ".env.example",
                     "NEXXUSDOC_PASTA_COMPARTILHADA.txt", "PASTA_MOVIDA.json"}
 CLOUD_CODE_SUFFIXES = (".py", ".pyw", ".bat", ".md", ".docx", ".sig")
 CLOUD_MAX_BYTES = 25 * 1024 * 1024
