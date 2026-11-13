@@ -149,7 +149,10 @@ O aprovador deve ser um owner ou administrador ativo. O modo obrigatório ou opc
 - Revisão de POPs existentes, consulta assistida e alerta de duplicidade.
 - Aprovação com segregação de papéis, retorno para ajustes e auditoria.
 - Mapa de automação com exportação para Excel.
-- Instalador por usuário, atualização assinada, backup de cadastro, diagnóstico de VPN e sincronização.
+- Instalador por usuário, atualização assinada e automática, backup, diagnóstico de VPN e sincronização.
+- Agenda de revisão com ajuste autorizado da data, alertas e histórico de notificações.
+- Consultas BigQuery com simulação de custo, limite de leitura e biblioteca por procedimento.
+- Roteiros assistidos de evidências de auditoria, matriz de risco e acompanhamento de solicitações.
 
 ## 🖥️ Páginas do sistema
 
@@ -159,7 +162,10 @@ O aprovador deve ser um owner ou administrador ativo. O modo obrigatório ou opc
 | **Chat Nexxus** | Criar procedimento, enviar/revisar documento existente e fazer consultas gerais com fontes. |
 | **Documentos** | Biblioteca, versões, PDFs, aprovação, lista mestra e Fluxo As Is. |
 | **Automação** | Oportunidades por processo, matriz impacto × esforço, consultas autorizadas ao BigQuery, análise técnica das transações SAP e exportação. |
-| **Query Console** | Relaciona procedimentos, documentos e tabelas do BigQuery; exibe campos e SQL sugerido. O master pode editar, simular custo e executar consultas de leitura autorizadas. |\n| **PGL** | Catálogo de processos do prestador na jornada de importação, com documentos e situação de cada processo. |
+| **Query Console** | Procedimentos, biblioteca de consultas, perguntas em linguagem natural e catálogo de tabelas e colunas. O master pode editar SQL, simular custo e executar leitura autorizada. |
+| **Levantamento** | Pontos, participantes e oportunidades registrados nas reuniões de entendimento, conforme os dados disponíveis. |
+| **Auditoria** | Solicitações, matriz de risco e roteiro assistido para localizar e conferir evidências; acesso restrito. |
+| **PGL** | Catálogo de processos do prestador na jornada de importação, com documentos e situação de cada processo. |
 | **Budget** | Cenários e análises de orçamento, conforme permissão do usuário. |
 | **Configurações** | Perfil, notificações, áreas, acessos, aprovação, saúde do sistema e instalador, conforme o perfil. |
 
@@ -178,6 +184,8 @@ O REF. DOCS abre como uma visualização na Visão geral. O fluxo de aprovação
 | [`assinatura.py`](assinatura.py) | Verificação de publicações e cadastro assinados. |
 | [`modelos_referencias_por_area.json`](modelos_referencias_por_area.json) | Modelos de referência iniciais. |
 | [`tools/build_manuais.py`](tools/build_manuais.py) | Geração de catálogo a partir de manifesto privado configurável. |
+| [`tools/build_bigquery_conhecimento.py`](tools/build_bigquery_conhecimento.py) | Monta contexto do agente a partir de fontes externas autorizadas e manifesto privado. |
+| [`workflows/nexxusdoc_auditoria_n8n.json`](workflows/nexxusdoc_auditoria_n8n.json) | Fluxo de auditoria sem credenciais e com referências mascaradas. |
 
 ## 📁 Estrutura
 
@@ -188,11 +196,13 @@ nexxusdoc/
 ├── assinatura.py                # verificação de assinaturas
 ├── instalador_nexus.py          # instalação e atualização
 ├── nexus_launcher.pyw           # inicialização
-├── query_console.json           # catálogo ilustrativo da Query Console\n├── questionnaire.json           # entrevista
+├── query_console.json           # catálogo ilustrativo da Query Console
+├── novidades.json               # resumo de versões
+├── questionnaire.json           # entrevista
 ├── modelos_referencias_por_area.json
-├── static/                      # interface e recursos visuais, inclusive Query Console e abertura
+├── static/                      # páginas, abertura, Query Console, auditoria e levantamento
 ├── workflows/                   # agente e prompt
-├── tools/                       # utilitário de documentação
+├── tools/                       # geradores com manifestos privados externos
 ├── docs/                        # arquitetura e segurança
 ├── .env.example                 # parâmetros de exemplo
 └── requirements.txt
@@ -205,9 +215,12 @@ nexxusdoc/
 3. Importe o workflow no n8n e configure suas próprias credenciais de modelo, Gmail, Drive e BigQuery conforme os nós usados.
 4. Configure o identificador da pasta sincronizada no instalador e a ponte do Drive quando necessários.
 5. Para habilitar o resumo executivo local, instale o Ollama e o modelo Qwen no computador do master; os parâmetros opcionais são `NEXUS_LLM_URL` e `NEXUS_LLM_MODEL`.
-6. Providencie cadastros e bases curadas específicos em ambiente restrito; eles foram excluídos desta cópia. O `query_console.json` publicado contém apenas um exemplo fictício; substitua pelo catálogo autorizado na sua implantação.
+6. Providencie cadastros e bases curadas específicos em ambiente restrito; eles foram excluídos desta cópia. `query_console.json` e `tools/consultas_prontas_area.json` são exemplos fictícios. O gerador de conhecimento do BigQuery lê um manifesto privado; veja [`tools/bigquery_manifest.example.json`](tools/bigquery_manifest.example.json).
+7. Configure o fluxo de auditoria e as fontes autorizadas separadamente. A versão pública inclui apenas um prompt genérico e nenhum controle, evidência ou solicitação real.
 
-**Atualização de novembro de 2026:** a interface ganhou abertura visual, a Query Console e avisos para documentos que não parecem procedimentos, políticas ou manuais operacionais. A Query Console associa documentos novos a procedimentos, mostra o contexto das tabelas e limita a execução ao perfil master, com simulação e teto de leitura.\n\n**A cópia pública não é um pacote de produção pronto.** Caminhos, IDs, projeto de dados e endereços foram substituídos por exemplos. Sua implantação precisa preencher esses parâmetros e validar permissões.
+**Atualização de novembro de 2026:** a interface ganhou abertura visual, Query Console ampliada, levantamento de reuniões e uma página de auditoria com matriz de risco e roteiro de evidências. O catálogo do BigQuery pode ser atualizado no ambiente autorizado; a biblioteca de consultas e as perguntas em português aproveitam esse contexto. Avisos de revisão, histórico de notificações e atualização automática também evoluíram. O agente de auditoria prepara orientações para a equipe, sem entregar evidências ao sistema externo.
+
+**A cópia pública não é um pacote de produção pronto.** Caminhos, IDs, projeto de dados e endereços foram substituídos por exemplos. Sua implantação precisa preencher esses parâmetros e validar permissões.
 
 ## 🔐 Segurança
 

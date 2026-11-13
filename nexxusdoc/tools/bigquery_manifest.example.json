@@ -1,0 +1,15 @@
+{
+  "projeto_cobranca": "example-retail-project",
+  "projetos": {
+    "example-sap-project.sample_sap": "Tabelas SAP autorizadas para demonstração"
+  },
+  "transacoes_sap": {
+    "FB03 (exemplo)": [
+      "BKPF"
+    ]
+  },
+  "fatos": [
+    "Dados e regras específicos devem vir de fonte autorizada."
+  ],
+  "consultas_selecionadas": {}
+}

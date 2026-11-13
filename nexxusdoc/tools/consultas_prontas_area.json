@@ -1,0 +1,17 @@
+{
+  "observacao": "Exemplo fictício. Consultas operacionais são privadas.",
+  "consultas": [
+    {
+      "id": "exemplo-consulta",
+      "titulo": "Documentos contábeis (exemplo)",
+      "fase": "demonstracao",
+      "descricao": "Ilustra uma consulta de leitura sem dados reais.",
+      "sql": "SELECT BUKRS, BELNR, GJAHR FROM `example-sap-project.sample_sap.bkpf` LIMIT 100",
+      "tags": [
+        "exemplo"
+      ],
+      "origem": "Consulta de demonstração",
+      "observacao": "Configuração necessária."
+    }
+  ]
+}

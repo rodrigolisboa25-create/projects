@@ -144,6 +144,9 @@ Monte o fluxo As Is (como o processo é feito hoje) do procedimento em `document
 # TAREFA: extract_document_dates
 Leia apenas as datas de controle do documento enviado (última revisão, próxima revisão, periodicidade, autor) e devolva no formato JSON de `requirements`. Não reescreva o documento e não use pesquisa web.
 
+# TAREFA: build_query_sql
+Transforme a pergunta (`pergunta`, em português) numa consulta SQL do BigQuery (GoogleSQL) para a Query Console da Logística Internacional. Use SOMENTE as tabelas e colunas de `bigquery` (resumo, regras_lake, inbound, transacoes_sap, tabelas_relacionadas_a_pergunta) e de `exemplos`; nunca invente tabela ou coluna. Uma única instrução SELECT (pode usar WITH), sem ponto e vírgula, endereço completo entre crases. Sempre filtre a partição das tabelas grandes (kafka_arrival_timestamp nas tabelas do SAP) e leia só as colunas necessárias; sem período na pergunta, use os últimos 30 dias e registre em `premissas`. Se vier `sql_atual`, ajuste essa consulta; se vier `erro_anterior`, corrija o erro. Não use pesquisa web. Responda somente o JSON pedido em `requirements` ({sql, titulo, explicacao, tabelas, premissas, fora_do_lake}), sem travessão.
+
 # FORMATO DE SAÍDA PARA DOCUMENTOS
 Para `create_operational_procedure` e `create_operational_policy`, retorne exatamente um objeto JSON neste formato, sem markdown ou comentários fora do JSON:
 `{ "title": "...", "document_code": "...", "version": "...", "purpose": "...", "scope": "...", "sections": [{ "title": "...", "content": "..." }], "roles": [], "references": [], "open_questions": [] }`

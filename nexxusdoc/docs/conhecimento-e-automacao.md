@@ -73,3 +73,27 @@ O sistema extrai até 15 códigos de transação informados ou identificados no 
 A IA usa o contexto do POP e os agregados para comparar opções de melhoria: recurso padrão, job com variante, BAPI, IDoc/interface, Fiori, workflow, carga em massa, script SAP GUI quando houver repetição de tela documentada, desenvolvimento ABAP ou integração fora do SAP. A ficha pede objetos envolvidos, pré-requisitos, esforço, ganhos esperados, riscos, controles e perguntas para o time de Tech SAP. Pode ser exportada em Excel.
 
 BKPF, BSEG e ACDOCA não cobrem todas as transações: uma operação sem documento contábil pode ter seus dados em outras tabelas. A análise deve indicar essa limitação e nunca concluir que não há dados apenas por não encontrar lançamentos nessas três fontes. Nomes de objetos, viabilidade e ganhos estimados exigem validação técnica e operacional antes de qualquer implementação.
+
+## Novos fluxos de novembro de 2026
+
+A Query Console reúne procedimentos, biblioteca de consultas e catálogo de tabelas e colunas. O master pode formular uma pergunta em português ou editar SQL; o servidor confere as tabelas autorizadas, simula a leitura e pede confirmação antes da execução. No repositório público, as consultas e os projetos são apenas exemplos.
+
+```mermaid
+flowchart TD
+  P["Procedimento ou pergunta"] --> C["Catálogo e regras autorizados"]
+  C --> S["SQL de leitura"]
+  S --> D["Simulação de custo"]
+  D --> E["Confirmação e execução"]
+```
+
+A página de Auditoria acompanha solicitações e recomendações, calcula uma matriz de risco e pode pedir ao agente um roteiro para encontrar evidências. A preparação e a conferência são da equipe; o fluxo não envia evidências ao Connect.
+
+```mermaid
+flowchart TD
+  A["Solicitação"] --> B["Controle e acervo"]
+  B --> R["Roteiro e matriz de risco"]
+  R --> H["Conferência humana"]
+  H --> X["Entrega pelo canal da área"]
+```
+
+O levantamento registra os pontos e oportunidades trazidos nas reuniões de entendimento. Dados reais dessas reuniões e controles de auditoria foram excluídos da publicação.

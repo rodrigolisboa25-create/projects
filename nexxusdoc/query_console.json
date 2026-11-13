@@ -1,7 +1,7 @@
 {
   "versao": 1,
   "levantamento": "Exemplo fictício; substitua pelo catálogo autorizado",
-  "projeto_cobranca": "your-gcp-project",
+  "projeto_cobranca": "example-retail-project",
   "fases": [
     {
       "id": "demonstracao",
@@ -12,7 +12,7 @@
   "tabelas": {
     "bkpf": {
       "id": "bkpf",
-      "caminho": "your-gcp-project.sample_sap.bkpf",
+      "caminho": "example-sap-project.sample_sap.bkpf",
       "nome": "Cabeçalho de documento contábil (exemplo)",
       "descricao": "Estrutura ilustrativa para demonstrar a consulta por procedimento.",
       "origem": "SAP (exemplo)",
@@ -94,7 +94,7 @@
         "Tabela SAP",
         "Consulta de leitura"
       ],
-      "sql": "SELECT BUKRS, BELNR, GJAHR FROM `your-gcp-project.sample_sap.bkpf` LIMIT 100",
+      "sql": "SELECT BUKRS, BELNR, GJAHR FROM `example-sap-project.sample_sap.bkpf` LIMIT 100",
       "conferido": false,
       "gb_estimado": 0
     }

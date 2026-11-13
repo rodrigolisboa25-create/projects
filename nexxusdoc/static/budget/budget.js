@@ -7,7 +7,8 @@ const S = {home: null, cur: null, data: null, tab: 'painel', draft: null, sim: n
            view: (() => { try { return localStorage.getItem('nexus.budget.vista') || 'orcamento'; } catch { return 'orcamento'; } })()};
 const root = () => document.getElementById('page-budget');
 const E = s => (typeof esc === 'function' ? esc(s) : String(s ?? '').replace(/[&<>"]/g, c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c])));
-const nf = (v, d = 0) => (Number.isFinite(v) ? v : 0).toLocaleString('pt-BR', {minimumFractionDigits: d, maximumFractionDigits: d});
+// Usuario comum (09/11/2026): a pagina aparece com os numeros mascarados (S.mask); os valores reais nem chegam a tela.
+const nf = (v, d = 0) => S.mask ? '••••' : (Number.isFinite(v) ? v : 0).toLocaleString('pt-BR', {minimumFractionDigits: d, maximumFractionDigits: d});
 const mi = (v, d = 1) => `R$ ${nf(v / 1e6, d)} mi`;
 const auto = v => { const a = Math.abs(v || 0); if (a < 0.5) return '–'; if (a >= 999500) return `R$ ${nf(v / 1e6, 2)} mi`; if (a >= 500) return `R$ ${nf(v / 1e3, 1)} mil`; return `R$ ${nf(v, 2)}`; };
 const sig = (v, f) => (v > 0 ? '+' : v < 0 ? '-' : '') + f(Math.abs(v));
@@ -58,9 +59,21 @@ function lockedHtml() {
         <div>${IC.sliders}<span><b>Premissas</b>câmbio, tarifas, volumes e reajustes, com recálculo na hora</span></div>
         <div>${IC.down}<span><b>Excel</b>planilha MODELO com gráficos e filtro Orçamento, Budget e Forecast</span></div></div></div>`;
 }
+// Sem acesso aos numeros: mesma pagina (painel, resumo mensal e comparativo) com os valores mascarados. O servidor manda
+// so uma estrutura com numeros sorteados (/api/budget/mascarado); edicao, versoes, upload e Excel ficam fora.
+async function openMasked(r) {
+  if (!S.mask) {
+    r.innerHTML = '<div class="bg-loading">Carregando o Budget…</div>';
+    try { const m = await api('/api/budget/mascarado'); S.home = m.home; S.data = m.dados; S.cur = 'mascarado'; S.mask = true; S.tab = 'painel'; }
+    catch { r.innerHTML = lockedHtml(); return; }
+  }
+  render();
+}
 async function open() {
   const r = root(); if (!r) return;
-  if (!allowed()) { r.innerHTML = lockedHtml(); return; }
+  r.classList.toggle('bg-masked', !allowed());
+  if (!allowed()) { await openMasked(r); return; }
+  if (S.mask) { S.mask = false; S.home = null; S.data = null; S.cache = {}; S.tab = 'painel'; }
   if (!S.home) {
     r.innerHTML = '<div class="bg-loading">Carregando o Budget…</div>';
     try { await loadHome(); } catch (e) { r.innerHTML = `<div class="notice error"><div class="grow">${E(e.message)}</div></div>`; return; }
@@ -79,22 +92,26 @@ function render() {
   <div class="bg-hero">
     <div><div class="eyebrow">ORÇAMENTO INBOUND · FISIA · LOGÍSTICA INTERNACIONAL</div>
       <h1>Budget ${E(ano)}</h1>
-      <p><b>${E(v.nome)}</b> · ${E(v.ciclo)} · ${originLabel(v)} por ${E(v.criado_por_nome || v.criado_por)} em ${new Date(v.criado_em).toLocaleString('pt-BR')}</p></div>
-    <div class="bg-actions">
+      <p>${S.mask ? 'Painel, resumo mensal e comparativo com o ano anterior, com os números mascarados.'
+        : `<b>${E(v.nome)}</b> · ${E(v.ciclo)} · ${originLabel(v)} por ${E(v.criado_por_nome || v.criado_por)} em ${new Date(v.criado_em).toLocaleString('pt-BR')}`}</p></div>
+    ${S.mask ? `<div class="bg-actions"><span class="bg-mask-badge">${svgI('<rect x="5" y="11" width="14" height="9.5" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>')}Números ocultos</span></div>` : `<div class="bg-actions">
       <select id="bg-version" aria-label="Versão do orçamento">${opts}</select>
       <a class="secondary" href="/api/budget/versoes/${S.cur}/excel" download title="Baixar a planilha MODELO com as premissas desta versão (abre e recalcula no Excel)">${IC.down}Baixar Excel</a>
       <button class="primary" type="button" id="bg-upload">${IC.up}Enviar planilha</button>
-    </div>
+    </div>`}
   </div>
+  ${S.mask ? `<div class="bg-mask-note">${IC.info}<span>Os valores do orçamento ficam disponíveis só para o administrador master e os owners das áreas. Aqui você vê como o Budget é organizado, com os números mascarados. Se precisar consultar os valores, peça ao owner da sua área.</span></div>` : ''}
   <div id="bg-kpis">${kpisHtml()}</div>
   <nav class="bg-tabs" role="tablist">
     ${tab('painel', IC.chart, 'Painel')}${tab('mensal', IC.table, 'Resumo mensal')}${tab('comparativo', IC.scale, `Comparativo ${ano - 1}`)}
-    ${tab('premissas', IC.sliders, 'Premissas')}${tab('alertas', IC.alert, `Alertas <span class="bg-count${altas ? '' : ' zero'}">${al.length}</span>`)}
-    ${tab('historico', IC.hist, 'Histórico de versões')}
+    ${S.mask ? '' : `${tab('premissas', IC.sliders, 'Premissas')}${tab('alertas', IC.alert, `Alertas <span class="bg-count${altas ? '' : ' zero'}">${al.length}</span>`)}
+    ${tab('historico', IC.hist, 'Histórico de versões')}`}
   </nav>
   <div id="bg-body"></div>`;
-  r.querySelector('#bg-version').onchange = e => loadVersion(e.target.value);
-  r.querySelector('#bg-upload').onclick = () => uploadModal();
+  if (!S.mask) {
+    r.querySelector('#bg-version').onchange = e => loadVersion(e.target.value);
+    r.querySelector('#bg-upload').onclick = () => uploadModal();
+  }
   r.querySelectorAll('[data-bgtab]').forEach(b => b.onclick = () => { S.tab = b.dataset.bgtab; render(); });
   body();
 }

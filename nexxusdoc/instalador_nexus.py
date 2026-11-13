@@ -38,6 +38,12 @@ FILES = (
     "pgl_processos.json",
     "base_manuais.json",
     "query_console.json",    # pagina Query Console: tabelas do BigQuery por procedimento (catalogo curado)
+    "bigquery_conhecimento.json",  # 12/11/2026: tabelas do BigQuery para o agente das Consultas gerais
+    "bigquery_colunas.json",       # 13/11/2026: todas as colunas das tabelas (ficha do Catálogo da Query Console)
+    "query_biblioteca.json",       # 12/11/2026: consultas prontas da Query Console (biblioteca do text_sql, só a área)
+    "auditoria_base.json",   # pagina Auditoria: controles, recomendacoes e solicitacoes (retrato da planilha de CI)
+    "auditoria_conhecimento.json",  # Auditoria: base de estudo do agente (ciclo, chaves SAP, receitas por controle)
+    "novidades.json",        # o que muda em cada publicacao (mostrado ao clicar em Atualizar)
     "requirements.txt",
     "README.md",
     ".env.example",
@@ -53,7 +59,8 @@ MARKER = "NEXXUSDOC_PASTA_COMPARTILHADA.txt"
 PACKAGE_DIR = "pacote"
 PACKAGE_INFO = "instalacao.json"
 DRIVE_ROOTS = ("Meu Drive", "My Drive", "Drives compartilhados", "Shared drives")
-# Onde a pasta costuma ficar quando a pessoa adiciona o atalho da SeuProjeto ao "Meu Drive".
+# Onde a pasta costuma ficar: no drive compartilhado Sua Area (oficial) ou num atalho no "Meu Drive". Os caminhos
+# da SeuProjeto sao do plano antigo (out/2026, abandonado) e ficam so como busca de reserva para instalacoes antigas.
 KNOWN_RELATIVE = (Path("Sua Area") / "Nexxus" / "NexxusDoc", Path("Nexxus") / "NexxusDoc",
                   Path("SeuProjeto") / "NexxusDoc", Path("NexxusDoc"))
 # O Google Drive para computador guarda o conteudo de atalhos ("Adicionar atalho ao Drive") em
@@ -191,13 +198,14 @@ def ask_shared_root() -> Path | None:
     root.attributes("-topmost", True)
     try:
         for _ in range(3):
-            chosen = filedialog.askdirectory(title="Selecione a pasta NexxusDoc no Google Drive (SeuProjeto > NexxusDoc)")
+            chosen = filedialog.askdirectory(title="Selecione a pasta do NexxusDoc no Google Drive (Sua Area > Nexxus > NexxusDoc)")
             if not chosen:
                 return None
             if is_shared_root(Path(chosen)):
                 return Path(chosen)
             messagebox.showwarning("NexxusDoc", "Esta não é a pasta do NexxusDoc (o arquivo "
-                                   f"{MARKER} não foi encontrado nela). Escolha a pasta NexxusDoc dentro da SeuProjeto.")
+                                   f"{MARKER} não foi encontrado nela). Escolha a pasta NexxusDoc, em "
+                                   "Drives compartilhados > Sua Area > Nexxus.")
     finally:
         root.destroy()
     return None
@@ -224,7 +232,7 @@ def resolve_shared_root(here: Path, package: Path, ask=None) -> Path | None:
         hints.append(json.loads((package / PACKAGE_INFO).read_text(encoding="utf-8")).get("pasta_compartilhada", ""))
     except (OSError, ValueError):
         pass
-    _say("Procurando a pasta NexxusDoc no Google Drive...")
+    _say("Procurando a pasta do NexxusDoc no Google Drive (Sua Area > Nexxus > NexxusDoc)...")
     cloud_ready = (package / CLOUD_ACCESS).is_file()
     shared = locate_shared_root(hints)
     if not shared and cloud_ready and not drive_bases():
@@ -236,9 +244,11 @@ def resolve_shared_root(here: Path, package: Path, ask=None) -> Path | None:
         return None
     if not shared:
         raise RuntimeError(
-            "A pasta NexxusDoc do Google Drive não foi encontrada neste computador.\n"
+            "A pasta do NexxusDoc no Google Drive não foi encontrada neste computador.\n"
             "1) Confirme que o Google Drive para computador está aberto e sincronizando;\n"
-            "2) no navegador, abra a pasta SeuProjeto, clique com o botão direito > Organizar > Adicionar atalho > Meu Drive;\n"
+            "2) confirme que você tem acesso à pasta Drives compartilhados > Sua Area > Nexxus > NexxusDoc "
+            "(se recebeu acesso só à pasta Nexxus: no navegador, Compartilhados comigo > botão direito na Nexxus > "
+            "Organizar > Adicionar atalho > Meu Drive);\n"
             "3) aguarde a pasta aparecer no Explorador de Arquivos e execute o instalador novamente.")
     return shared
 
@@ -529,8 +539,20 @@ def main(progress=None, ask=None) -> Path:
         raise RuntimeError("Os componentes foram instalados, mas a verificação final falhou.\n" + check.stderr[-600:])
     _say(f"NexxusDoc instalado em: {install}")
     _say(f"Dados compartilhados em: {shared}")
-    report("final", 100, "Pronto!")
+    # Codigo da versao = o da publicacao assinada (o mesmo que o botao Atualizar mostra no sistema).
+    code = package_version(package)
+    if code:
+        _say(f"Versão instalada: {code}")
+    report("final", 100, f"Pronto! Versão {code}" if code else "Pronto!")
     return install
+
+
+def package_version(package: Path) -> str:
+    """Codigo da publicacao do pacote (publicacao.json), ex.: 20261111T165842Z; vazio se nao houver."""
+    try:
+        return str(json.loads((package / "publicacao.json").read_text(encoding="utf-8")).get("versao") or "")
+    except (OSError, ValueError, AttributeError):
+        return ""
 
 
 # ---------------------------------------------------------------------------
@@ -705,7 +727,7 @@ class InstallerWindow:
                 elif kind == "ask":
                     data()
                 elif kind == "done":
-                    self._finish_ok()
+                    self._finish_ok(data or "")
                 elif kind == "error":
                     self._finish_error(data)
         except queue.Empty:
@@ -741,7 +763,7 @@ class InstallerWindow:
         def show() -> None:
             from tkinter import filedialog, messagebox
             for _ in range(3):
-                chosen = filedialog.askdirectory(parent=self.root, title="Selecione a pasta NexxusDoc no Google Drive")
+                chosen = filedialog.askdirectory(parent=self.root, title="Selecione a pasta do NexxusDoc no Google Drive (Sua Area > Nexxus > NexxusDoc)")
                 if not chosen:
                     break
                 if is_shared_root(Path(chosen)):
@@ -769,7 +791,7 @@ class InstallerWindow:
         def work() -> None:
             try:
                 main(self.progress, self.ask_folder)
-                self.events.put(("done", None))
+                self.events.put(("done", package_version(package_source(Path(__file__).resolve().parent))))
             except Exception as exc:
                 log = install_dir() / "logs" / "instalador.log"
                 try:
@@ -782,11 +804,12 @@ class InstallerWindow:
 
         threading.Thread(target=work, daemon=True).start()
 
-    def _finish_ok(self) -> None:
+    def _finish_ok(self, code: str = "") -> None:
         self.state = "concluido"
         for key, _ in STEPS:
             self._mark(key, "feito")
-        self.status.configure(text="Instalado. O atalho está na Área de Trabalho.", fg=BRAND["lime"])
+        # Codigo da versao instalada: o mesmo que o botao Atualizar mostra dentro do sistema.
+        self.status.configure(text="Instalado. O atalho está na Área de Trabalho." + (f"\nVersão {code}" if code else ""), fg=BRAND["lime"])
         self.action.configure(state="normal", text="Abrir o NexxusDoc", bg=BRAND["lime"], command=self.open_app)
         self.close_btn.configure(state="normal")
 

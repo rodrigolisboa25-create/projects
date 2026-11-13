@@ -9,10 +9,14 @@
 <!-- Fluxo As Is (static/fluxo): mudou o .css ou o .js, suba o ?v= (o servidor manda cache imutável para arquivos com ?v=). -->
 <link rel="stylesheet" href="/static/fluxo/fluxo_as_is.css?v=3">
 <script src="/static/fluxo/fluxo_as_is.js?v=3" defer></script>
-<link rel="stylesheet" href="/static/budget/budget.css?v=3">
-<script src="/static/budget/budget.js?v=2" defer></script>
-<link rel="stylesheet" href="/static/query/query.css?v=2">
-<script src="/static/query/query.js?v=2" defer></script>
+<link rel="stylesheet" href="/static/budget/budget.css?v=4">
+<script src="/static/budget/budget.js?v=3" defer></script>
+<link rel="stylesheet" href="/static/query/query.css?v=11">
+<script src="/static/query/query.js?v=14" defer></script>
+<link rel="stylesheet" href="/static/levantamento/levantamento.css?v=3">
+<script src="/static/levantamento/levantamento.js?v=3" defer></script>
+<link rel="stylesheet" href="/static/auditoria/auditoria.css?v=4">
+<script src="/static/auditoria/auditoria.js?v=4" defer></script>
 <script src="/static/intro/abertura.js?v=3" defer></script>
 <style>
 :root{
@@ -37,15 +41,13 @@ header.top{position:sticky;top:0;z-index:15;background:#f4f7ef;border-bottom:1px
 .brand b{display:block;color:#0f2d1a;font-size:32px;line-height:1;letter-spacing:-.9px;font-weight:800}
 .brand b i{font-style:normal;color:#6f9114}
 .brand small{display:block;color:#5f6f64;font-size:11px;margin-top:3px;letter-spacing:.3px}
+/* Versão e data da última atualização abaixo do nome (12/11/2026, pedido do usuário: saber se está atualizado) */
+.brand-stack{display:flex;flex-direction:column;gap:1px}
+.brand-ver{font-size:7.5px;line-height:1.1;color:#a3ada6;letter-spacing:0;white-space:nowrap}
+.brand-ver code{font-family:ui-monospace,Consolas,monospace;font-size:7.5px;color:#9aa59d}
+.brand-ver:empty{display:none}
 .account{justify-self:end}
 .pagesel{position:relative;justify-self:center}
-.pagesel-btn{display:flex;align-items:center;gap:10px;min-width:280px;border:1px solid #d3dccb;background:#fff;color:#14261b;border-radius:14px;
-  padding:5px 14px 5px 5px;font-weight:700;font-size:15px;box-shadow:0 1px 3px #00000014;transition:background .15s,border-color .15s,box-shadow .15s}
-.pagesel-btn:hover,.pagesel.open .pagesel-btn{border-color:#a9bb98;box-shadow:0 3px 10px #0000001f}
-.pagesel-btn .cur{display:flex;align-items:center;gap:10px;flex:1;min-width:0}
-.pagesel-btn .chev{width:16px;height:16px;fill:none;stroke:#3d5045;stroke-width:2;stroke-linecap:round;stroke-linejoin:round;transition:transform .15s}
-.pagesel.open .pagesel-btn .chev{transform:rotate(180deg)}
-.pagesel-btn kbd{font:inherit;font-size:10.5px;color:#5f6f64;border:1px solid #d3dccb;border-radius:5px;padding:1px 5px;background:#f6f8f3}
 /* lado direito do topo sobre o fundo claro */
 header.top .top-icon,header.top .logout{border-color:#cdd7c5;background:#fff;color:#22352a}
 header.top .top-icon:hover,header.top .top-icon[aria-expanded="true"],header.top .logout:hover{background:#eef3e7;border-color:#a9bb98}
@@ -53,40 +55,74 @@ header.top .search-open kbd{color:#5f6f64;border-color:#d3dccb;background:#f6f8f
 header.top .avatar{background:#0f2d1a;color:#eef3d3}
 header.top .bell-badge{box-shadow:0 0 0 2px #f4f7ef}
 header.top .account-email{color:#4b5d51}
-.nav.pagesel-menu{display:none;position:absolute;top:calc(100% + 10px);left:50%;transform:translateX(-50%);width:360px;z-index:40;
-  background:#fbfcf8;border:1px solid #e1e8da;border-radius:16px;box-shadow:0 22px 50px #0007;padding:8px;flex-direction:column;gap:2px}
-.pagesel.open .nav.pagesel-menu{display:flex}
-.nav button{border:1px solid transparent;background:transparent;color:#1d2a23;padding:8px 10px;border-radius:12px;display:flex;align-items:center;gap:12px;
-  font-weight:700;font-size:14px;white-space:nowrap;text-align:left;width:100%}
+/* Barra de ícones (09/11/2026, pedido do usuário: trocar de página com 1 clique). Os ícones ficam lado a lado no centro
+   do topo; o nome aparece numa dica ao passar o mouse e, na página atual, ao lado do ícone, em forma de pílula.
+   Ícones e fonte do nome iguais aos do seletor anterior. */
+/* Sem tremida na troca (09/11/2026): a barra tem largura fixa (a da maior pílula, calculada em fixPageBar) e os ícones
+   ficam alinhados à esquerda, então ela não se recentraliza; a pílula aparece de uma vez, sem animar a largura. */
+.nav.pagesel-menu{display:flex;flex-direction:row;align-items:center;justify-content:flex-start;gap:6px}
+.nav button{position:relative;border:1px solid transparent;background:transparent;color:#1d2a23;padding:0;border-radius:999px;display:flex;
+  align-items:center;gap:0;font-weight:700;font-size:14px;white-space:nowrap;text-align:left;flex:none}
 .nav button.hidden{display:none}
-.nav button:hover{background:#eef3e7;color:#0f1a14}
-.nav button.active{background:#ffffff;border-color:var(--pc);color:#0f1a14;box-shadow:0 2px 8px #0000000f}
+.nav button>span{display:none}
 .nav button .nav-label{display:block}
-.nav button .nav-desc{display:block;font-size:11.5px;font-weight:500;color:#66766c;white-space:normal;margin-top:2px}
+.nav button .nav-desc{display:none}
+.nav button.active{background:#ffffff;color:#0f1a14;gap:12px;padding:5px 16px 5px 5px;box-shadow:0 2px 8px #0000001a}
+.nav button.active>span{display:block}
+.nav button:focus-visible{outline:2px solid var(--pc);outline-offset:3px}
+/* dica com o nome (instantânea) nos ícones que não são a página atual */
+.nav button:not(.active):hover::after,.nav button:not(.active):focus-visible::after{content:attr(data-tip);position:absolute;top:calc(100% + 9px);left:50%;
+  transform:translateX(-50%);background:#0f2d1a;color:#fff;font-size:12.5px;font-weight:700;padding:6px 11px;border-radius:8px;white-space:nowrap;
+  box-shadow:0 8px 20px #0000004d;pointer-events:none;z-index:60}
+.nav button:not(.active):hover::before,.nav button:not(.active):focus-visible::before{content:"";position:absolute;top:calc(100% + 4px);left:50%;
+  transform:translateX(-50%);border:5px solid transparent;border-top:0;border-bottom-color:#0f2d1a;pointer-events:none;z-index:60}
 /* cor de cada página (ícone colorido; fica cheio e com brilho na página ativa) */
-.nav button[data-page="home"],.pagesel-btn[data-page="home"]{--pc:#2F8FE8;--pd:#1D6FC0;--ps:rgba(47,143,232,.16);--pg:rgba(47,143,232,.45)}
-.nav button[data-page="chat"],.pagesel-btn[data-page="chat"]{--pc:#8B6CF0;--pd:#6A4BD6;--ps:rgba(139,108,240,.16);--pg:rgba(139,108,240,.45)}
-.nav button[data-page="docs"],.pagesel-btn[data-page="docs"],.pagesel-btn[data-page="revise"]{--pc:#E7A21A;--pd:#C48208;--ps:rgba(231,162,26,.16);--pg:rgba(231,162,26,.45)}
-.nav button[data-page="automation"],.pagesel-btn[data-page="automation"]{--pc:#19B07A;--pd:#0E8C5F;--ps:rgba(25,176,122,.16);--pg:rgba(25,176,122,.45)}
-.nav button[data-page="query"],.pagesel-btn[data-page="query"]{--pc:#3B82F6;--pd:#1D4ED8;--ps:rgba(59,130,246,.16);--pg:rgba(59,130,246,.45)}
-.nav button[data-page="pgl"],.pagesel-btn[data-page="pgl"]{--pc:#0FA9C9;--pd:#0A87A2;--ps:rgba(15,169,201,.16);--pg:rgba(15,169,201,.45)}
-.nav button[data-page="budget"],.pagesel-btn[data-page="budget"]{--pc:#F07A2A;--pd:#CF5C10;--ps:rgba(240,122,42,.16);--pg:rgba(240,122,42,.45)}
-.nav button[data-page="config"],.pagesel-btn[data-page="config"]{--pc:#6E9A12;--pd:#557A0A;--ps:rgba(110,154,18,.16);--pg:rgba(110,154,18,.45)}
+.nav button[data-page="home"]{--pc:#2F8FE8;--pd:#1D6FC0;--ps:rgba(47,143,232,.16);--pg:rgba(47,143,232,.45)}
+.nav button[data-page="chat"]{--pc:#8B6CF0;--pd:#6A4BD6;--ps:rgba(139,108,240,.16);--pg:rgba(139,108,240,.45)}
+.nav button[data-page="docs"]{--pc:#E7A21A;--pd:#C48208;--ps:rgba(231,162,26,.16);--pg:rgba(231,162,26,.45)}
+.nav button[data-page="automation"]{--pc:#19B07A;--pd:#0E8C5F;--ps:rgba(25,176,122,.16);--pg:rgba(25,176,122,.45)}
+.nav button[data-page="query"]{--pc:#3B82F6;--pd:#1D4ED8;--ps:rgba(59,130,246,.16);--pg:rgba(59,130,246,.45)}
+.nav button[data-page="pgl"]{--pc:#0FA9C9;--pd:#0A87A2;--ps:rgba(15,169,201,.16);--pg:rgba(15,169,201,.45)}
+.nav button[data-page="budget"]{--pc:#F07A2A;--pd:#CF5C10;--ps:rgba(240,122,42,.16);--pg:rgba(240,122,42,.45)}
+.nav button[data-page="audit"]{--pc:#6F8790;--pd:#4F656D;--ps:rgba(111,135,144,.16);--pg:rgba(111,135,144,.45)}
+.nav button .nav-lock{position:absolute;left:25px;top:23px;width:16px;height:16px;border-radius:50%;background:#f4f7ef;border:1px solid #c9d2c4;display:grid;place-items:center;pointer-events:none}
+.nav button .nav-lock svg{width:10px;height:10px;fill:none;stroke:#3d4b45;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round}
+.nav button.active .nav-lock{display:none}
+.nav button[data-page="config"]{--pc:#6E9A12;--pd:#557A0A;--ps:rgba(110,154,18,.16);--pg:rgba(110,154,18,.45)}
 header.top .faq-open span{font-weight:600}
-/* Versão nova publicada (05/11/2026): botão no topo; um clique reinicia já atualizado, sem reinstalar */
-header.top .update-pill{display:inline-flex;align-items:center;gap:8px;height:36px;padding:0 14px 0 10px;border-radius:999px;
-  border:1px solid #7fa81f;background:linear-gradient(180deg,#c8e65a,#a9cc35);color:#0f2d1a;font-weight:700;font-size:13px;
-  box-shadow:0 3px 12px rgba(127,168,31,.35);cursor:pointer;white-space:nowrap}
-header.top .update-pill:hover{filter:brightness(1.05)}
-header.top .update-pill svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
-header.top .update-pill i{width:8px;height:8px;border-radius:50%;background:#0f6b2e;box-shadow:0 0 0 0 rgba(15,107,46,.6);animation:upd-pulse 1.8s infinite}
-@keyframes upd-pulse{70%{box-shadow:0 0 0 8px rgba(15,107,46,0)}100%{box-shadow:0 0 0 0 rgba(15,107,46,0)}}
-.update-screen{position:fixed;inset:0;z-index:9999;display:grid;place-items:center;background:rgba(10,18,16,.82);backdrop-filter:blur(3px)}
-.update-screen>div{background:#f4f7ef;color:#0f2d1a;border-radius:16px;padding:28px 34px;max-width:440px;text-align:center;box-shadow:0 20px 60px #0008}
-.update-screen h2{margin:14px 0 6px;font-size:20px}
-.update-screen p{margin:0;color:#3f5547;font-size:14px;line-height:1.5}
-.update-screen .upd-spin{width:44px;height:44px;margin:0 auto;border-radius:50%;border:4px solid #d5e4b8;border-top-color:#6E9A12;animation:upd-spin 1s linear infinite}
-@keyframes upd-spin{to{transform:rotate(360deg)}}
+/* Atualização automática (11/11/2026): sem botão; quadro escuro e técnico, sem exagero (pedido do usuário):
+   rótulo monoespaçado, barra fina de progresso em lima, resumo do que muda e o código da versão */
+.update-screen{position:fixed;inset:0;z-index:9999;display:grid;place-items:center;background:rgba(5,10,8,.84);backdrop-filter:blur(4px)}
+.update-screen .upd-card{position:relative;width:min(470px,calc(100vw - 32px));overflow:hidden;color:#e8f0ea;text-align:left;
+  padding:22px 26px 20px;border-radius:14px;border:1px solid rgba(175,208,55,.26);
+  background:linear-gradient(rgba(175,208,55,.035) 1px,transparent 1px) 0 0/22px 22px,linear-gradient(90deg,rgba(175,208,55,.035) 1px,transparent 1px) 0 0/22px 22px,linear-gradient(160deg,#122219,#0b1510 70%);
+  box-shadow:0 24px 70px rgba(0,0,0,.6),inset 0 1px 0 rgba(255,255,255,.05)}
+.update-screen .upd-top{display:flex;align-items:center;gap:9px;font:600 11px/1 ui-monospace,Consolas,monospace;letter-spacing:.14em;text-transform:uppercase;color:#AFD037}
+.update-screen .upd-dot{width:7px;height:7px;border-radius:50%;background:#AFD037;box-shadow:0 0 0 0 rgba(175,208,55,.55);animation:upd-pulse 1.6s infinite}
+@keyframes upd-pulse{70%{box-shadow:0 0 0 7px rgba(175,208,55,0)}100%{box-shadow:0 0 0 0 rgba(175,208,55,0)}}
+.update-screen h2{margin:12px 0 4px;font-size:20px;font-weight:700;color:#fff;letter-spacing:-.01em}
+.update-screen .upd-body{margin:0;color:#a9bcae;font-size:13.5px;line-height:1.5}
+.update-screen .upd-list{list-style:none;margin:14px 0 4px;padding:12px 14px;font-size:13.5px;line-height:1.45;color:#d4e2d8;
+  background:rgba(0,0,0,.22);border:1px solid rgba(255,255,255,.07);border-radius:9px}
+.update-screen .upd-list li{position:relative;padding-left:16px;margin-bottom:5px}
+.update-screen .upd-list li:last-child{margin-bottom:0}
+.update-screen .upd-list li::before{content:"";position:absolute;left:0;top:.55em;width:6px;height:6px;border-radius:1px;background:#AFD037}
+.update-screen .upd-bar{height:3px;margin:16px 0 12px;border-radius:3px;background:rgba(175,208,55,.13);overflow:hidden}
+.update-screen .upd-bar i{display:block;width:34%;height:100%;border-radius:3px;background:linear-gradient(90deg,transparent,#AFD037);animation:upd-run 1.4s ease-in-out infinite}
+@keyframes upd-run{from{transform:translateX(-100%)}to{transform:translateX(300%)}}
+.update-screen .upd-foot{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;font-size:12px;color:#8aa093}
+.update-screen .upd-foot code{font:600 11.5px ui-monospace,Consolas,monospace;color:#cfe3a0;background:rgba(175,208,55,.08);border:1px solid rgba(175,208,55,.2);border-radius:5px;padding:3px 7px}
+@media (prefers-reduced-motion:reduce){.update-screen .upd-bar i,.update-screen .upd-dot{animation:none}}
+/* Servidor local encerrado (10/11/2026): aviso fixo que trava a tela até abrir o NexxusDoc pelo atalho */
+.offline-screen{position:fixed;inset:0;z-index:20000;display:grid;place-items:center;padding:24px;background:rgba(6,12,10,.88);backdrop-filter:blur(5px);animation:tour-fade .3s ease}
+.offline-screen>div{background:#f4f7ef;color:#0f2d1a;border-radius:18px;padding:30px 34px 26px;max-width:500px;text-align:center;box-shadow:0 24px 70px #000a;border:1px solid #d3dccb}
+.offline-screen .off-ico{width:58px;height:58px;margin:0 auto 6px;border-radius:16px;display:grid;place-items:center;background:#fde9e6;color:#b4382c}
+.offline-screen .off-ico svg{width:30px;height:30px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.offline-screen h2{margin:10px 0 8px;font-size:21px}
+.offline-screen p{margin:0;color:#3f5547;font-size:14px;line-height:1.5}
+.offline-screen ol{text-align:left;margin:16px auto 10px;padding:12px 16px 12px 36px;max-width:380px;background:#fff;border:1px solid #dfe8d6;border-radius:12px;font-size:14px;line-height:1.7}
+.offline-screen .off-note{font-size:12.5px;color:#6b7a70}
+body.offline-lock{overflow:hidden}
 /* Cabeçalho adaptável: nada some em telas menores, o menu só fica mais compacto */
 @media(max-width:1700px){.account-email{display:none}.nav-long{display:none}}
 @media(max-width:1380px){.brand small{display:none}header.top{gap:12px}}
@@ -98,7 +134,6 @@ header.top .update-pill i{width:8px;height:8px;border-radius:50%;background:#0f6
   stroke:currentColor;fill:none;stroke-width:2.1;stroke-linecap:round;stroke-linejoin:round;transition:box-shadow .15s,transform .15s}
 .nav button:hover .navicon{transform:translateY(-1px)}
 .nav button.active .navicon{box-shadow:0 0 0 3px #fff,0 0 0 5px var(--pc),0 6px 14px var(--pg)}
-.pagesel-btn .cur .navicon{box-shadow:0 3px 8px var(--pg)}
 .account{display:flex;align-items:center;gap:10px;white-space:nowrap}
 .account-email{color:#d9e8c4;font-size:12px}
 .avatar{width:30px;height:30px;border-radius:50%;display:grid;place-items:center;background:#eef3d3;color:var(--brand);font-weight:800;font-size:11px}
@@ -482,11 +517,16 @@ svg.flag{flex:none;width:27px;height:18px;border-radius:3px;box-shadow:0 0 0 1px
   color:var(--c);background:var(--bg);border:2px solid var(--c);box-shadow:0 0 0 5px var(--bg),0 0 14px color-mix(in srgb,var(--c) 45%,transparent);margin-bottom:4px}
 .timeline b{color:#fff;font-size:13.5px}
 .tl-text{color:#9fb0ab;font-size:12px;line-height:1.45;max-width:300px}
-.metrics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin-bottom:16px}
-.metric{padding:16px 18px;display:flex;align-items:center;gap:14px}
-.metricicon{width:48px;height:48px}
+/* 4 cards na mesma linha (09/11/2026: entrou "Vencidos para revisão"); os 3 de antes ficaram um pouco menores */
+.metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:16px}
+.metric{padding:14px 16px;display:flex;align-items:center;gap:12px;min-width:0}
+.metric>div:last-child{min-width:0}
+.metric small{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.metric-link{cursor:pointer;transition:transform .15s,box-shadow .15s}
+.metric-link:hover,.metric-link:focus-visible{transform:translateY(-2px);box-shadow:0 0 0 1px var(--c),0 10px 26px #0005;outline:none}
+.metricicon{width:44px;height:44px;flex:none}
 .metric small{display:block;color:#d3dfdc;font-size:12px;font-weight:600}
-.metric strong{display:block;font-size:28px;color:#fff;font-weight:800;line-height:1.15;letter-spacing:-.3px}
+.metric strong{display:block;font-size:26px;color:#fff;font-weight:800;line-height:1.15;letter-spacing:-.3px;white-space:nowrap}
 .metric strong span{font-size:13px;font-weight:600;color:#c3cfcc;margin:0 8px 0 5px}
 .metric em{display:block;font-style:normal;font-size:11.5px;font-weight:600;color:var(--c)}
 .side-card.glow h3{display:flex;align-items:center;gap:10px;font-size:14px;color:#fff;margin-bottom:14px}
@@ -557,6 +597,10 @@ button.flow-btn .flow-ok path{fill:none;stroke:#fff;stroke-width:2.6;stroke-line
 .sources{align-self:flex-start;margin-left:42px;max-width:80%;padding:10px 14px;border:1px solid #48575a;border-radius:8px;background:var(--surface-2);font-size:11px}
 .sources b{display:block;color:var(--lime);font-size:9px;letter-spacing:.6px;margin-bottom:4px}
 .sources .src-tag{color:var(--muted);font-size:9.5px}
+/* Histórico das consultas: separador de dia (Hoje, Ontem, dd/mm/aaaa) */
+.chat-day{align-self:center;display:flex;align-items:center;gap:10px;width:100%;color:var(--muted);font-size:11.5px;font-weight:700;letter-spacing:.4px;margin:6px 0}
+.chat-day::before,.chat-day::after{content:"";flex:1;height:1px;background:var(--line)}
+.chat-day.note{font-weight:400;font-style:italic;letter-spacing:0}
 .chatcontext{margin:0 18px 14px;padding:11px 15px;border:1px solid #48575a;border-radius:8px;background:var(--surface-2);color:#dce4e1;font-size:12px}
 .chatcontext b{display:block;color:var(--lime);font-size:9px;letter-spacing:.6px;margin-bottom:4px}
 .chatcontext ul{margin:0;padding-left:18px}
@@ -615,6 +659,14 @@ button.flow-btn .flow-ok path{fill:none;stroke:#fff;stroke-width:2.6;stroke-line
 .dt-export svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 .doc-meta{display:block;margin-top:4px;font-size:11.5px;color:var(--muted)}
 .doc-meta.warn{color:#f6c66a}.doc-meta.bad{color:var(--danger)}.doc-meta.ok{color:var(--lime)}
+/* Data da próxima revisão trocada em Documentos (09/11/2026) */
+.review-edit{display:inline-block;margin-top:3px;border:0;background:none;padding:0;color:var(--lime-2);font-size:11.5px;font-weight:600;
+  text-decoration:underline;text-underline-offset:2px;cursor:pointer}
+.review-edit:hover{color:#fff}
+.review-manual{color:var(--muted);font-weight:500}
+.review-form{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin-top:6px}
+.review-form input{width:138px;padding:4px 8px;font-size:12px;color-scheme:dark}
+.review-form button{padding:4px 10px;font-size:12px;min-height:0}
 .code-warn{display:inline-block;margin:0 0 4px 4px;padding:1px 6px;border-radius:5px;border:1px solid #f4b74066;color:#f6c66a;font-size:10.5px;font-weight:700}
 .ack-btn{border-color:#afd03780!important;color:#dff0a8!important}
 .picker-dest{display:flex;align-items:center;gap:12px;margin:4px 0 12px;padding:12px 14px;border:1px solid var(--line);border-radius:8px;background:var(--field)}
@@ -734,8 +786,12 @@ button.flow-btn .flow-ok path{fill:none;stroke:#fff;stroke-width:2.6;stroke-line
 @keyframes tour-pulse{0%{opacity:.9;transform:scale(1)}100%{opacity:0;transform:scale(1.05)}}
 .tour-card{position:fixed;left:50%;top:50%;width:400px;max-width:calc(100vw - 32px);pointer-events:auto;border-radius:18px;padding:18px 20px 15px;color:#e6efeb;
   background:radial-gradient(circle at 100% 0,#b5dc3c33,transparent 45%),linear-gradient(150deg,#12201b,#183028 65%,#1d3a2f);box-shadow:0 26px 64px #000a,inset 0 1px 0 #ffffff1f;border:1px solid #ffffff22;
-  transition:left .65s cubic-bezier(.65,0,.35,1),top .65s cubic-bezier(.65,0,.35,1)}
-.tour-card.swap .tour-body{animation:tour-in .55s cubic-bezier(.2,.8,.2,1)}
+  transition:left .35s cubic-bezier(.65,0,.35,1),top .35s cubic-bezier(.65,0,.35,1),opacity .18s ease}
+.tour-card.swap .tour-body{animation:tour-in .3s cubic-bezier(.2,.8,.2,1)}
+/* Troca de página no tour (09/11/2026): quadro e destaque somem juntos, a página troca por baixo da camada escura e os
+   dois voltam juntos já no lugar (antes a página aparecia, depois o destaque deslizava e só no fim o quadro chegava). */
+.tour-spot{transition:opacity .18s ease}
+.tour-root.tour-moving .tour-card,.tour-root.tour-moving .tour-spot{opacity:0}
 @keyframes tour-in{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:none}}
 .tour-top{display:flex;align-items:center;gap:12px;margin-bottom:10px}
 .tour-icon{width:40px;height:40px;border-radius:12px;display:grid;place-items:center;flex:none;background:linear-gradient(135deg,#b5dc3c,#d8ff6a);color:#15321e;box-shadow:0 6px 18px #b5dc3c55}
@@ -1504,7 +1560,7 @@ td.rx-col{text-align:center}
 <div id="login-layer" class="login-layer hidden">
   <canvas id="login-map" class="login-map" aria-hidden="true"></canvas>
   <div class="login-stack">
-  <img class="login-brand" src="/static/assets/grupo_sbf_logo_branco.png?v=4" alt="Grupo SBF">
+  <img class="login-brand" src="/static/assets/nexxusdoc.png?v=4" alt="Grupo SBF">
   <div class="login-card">
     <img class="login-avatar" src="/static/assets/nexxusdoc.svg" alt="">
     <div class="eyebrow">Acesso corporativo</div>
@@ -1523,10 +1579,9 @@ td.rx-col{text-align:center}
 
 <div id="app-shell" class="hidden">
 <header class="top">
-  <div class="brand"><b>Nexxus<i>Doc</i></b></div>
+  <div class="brand"><div class="brand-stack"><b>Nexxus<i>Doc</i></b><span class="brand-ver" id="brand-ver" title="Versão instalada neste computador e quando ela entrou"></span></div></div>
   <div class="pagesel" id="pagesel">
-  <button type="button" class="pagesel-btn" id="pagesel-btn" aria-haspopup="true" aria-expanded="false" title="Escolher a página (Ctrl+.)"><span class="cur" id="pagesel-cur"></span><kbd>Ctrl .</kbd><svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></button>
-  <nav class="nav pagesel-menu" id="pagesel-menu" aria-label="Menu principal">
+  <nav class="nav pagesel-menu" id="pagesel-menu" aria-label="Páginas do NexxusDoc">
     <button data-page="home" class="active"><svg class="navicon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="3.5" width="7" height="7" rx="1.6"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.6"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.6"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.6"/></svg>Visão geral</button>
     <button data-page="chat"><svg class="navicon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6a2.5 2.5 0 0 1 2.5-2.5h11A2.5 2.5 0 0 1 20 6v7.5a2.5 2.5 0 0 1-2.5 2.5H10l-4.5 4v-4h-1A.5.5 0 0 1 4 15.5z"/><path d="M8.5 8.5h7M8.5 11.5h4.5"/></svg><span class="nav-label">Chat Nexxus</span></button>
     <button data-page="docs"><svg class="navicon" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 16.5h4"/></svg>Documentos</button>
@@ -1534,11 +1589,11 @@ td.rx-col{text-align:center}
     <button data-page="query" id="nav-query"><svg class="navicon" viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="5.5" rx="7" ry="2.6"/><path d="M5 5.5v6c0 1.4 3.1 2.6 7 2.6s7-1.2 7-2.6v-6"/><path d="M5 11.5v5.5c0 1.4 3.1 2.6 7 2.6"/><path d="m15.5 16 2.5 2.2-2.5 2.3M19.5 20.5h1.5"/></svg>Query Console</button>
     <button data-page="pgl"><svg class="navicon" viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 7h11v9h-11z"/><path d="M13.5 10h4l3 3.2V16h-7z"/><circle cx="7" cy="17.5" r="2"/><circle cx="17" cy="17.5" r="2"/></svg>PGL</button>
     <button data-page="budget" id="nav-budget"><svg class="navicon" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="11" width="4" height="9" rx="1"/><rect x="10" y="5" width="4" height="15" rx="1"/><rect x="16" y="13" width="4" height="7" rx="1"/></svg>Budget</button>
+    <button data-page="audit" id="nav-audit"><svg class="navicon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 5 6v5.5c0 4.2 2.9 7.9 7 9.5 4.1-1.6 7-5.3 7-9.5V6z"/><path d="m9 12 2.2 2.2L15.5 10"/></svg>Auditoria</button>
     <button data-page="config" id="nav-config" class="hidden"><svg class="navicon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2.3"/><circle cx="9" cy="17" r="2.3"/></svg>Configurações</button>
   </nav>
   </div>
   <div class="account">
-    <button class="update-pill hidden" id="update-pill" type="button" title="Uma versão nova do NexxusDoc foi publicada. Clique para atualizar (leva poucos segundos, sem reinstalar)."><i aria-hidden="true"></i><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 0 0-14.3-4.9L4 8"/><path d="M4 4v4h4"/><path d="M4 13a8 8 0 0 0 14.3 4.9L20 16"/><path d="M20 20v-4h-4"/></svg>Atualizar</button>
     <button class="top-icon faq-open" id="faq-open" type="button" title="Dúvidas frequentes (abre em outra aba)"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.4 9.4a2.7 2.7 0 0 1 5.2 1c0 1.8-2.6 2.3-2.6 4"/><path d="M12 17.6v.2"/></svg><span>Dúvidas</span></button>
     <button class="top-icon search-open" id="search-open" type="button" title="Buscar em todo o sistema (Ctrl+K)"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/></svg><span>Buscar</span><kbd>Ctrl K</kbd></button>
     <div class="bell-wrap"><button class="top-icon bell-btn" id="bell-open" type="button" title="Notificações" aria-haspopup="dialog" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 16.5V11a6 6 0 0 1 12 0v5.5l1.5 2h-15z"/><path d="M10 20.5a2 2 0 0 0 4 0"/></svg><span class="bell-badge hidden" id="bell-badge">0</span></button>
@@ -1573,6 +1628,7 @@ td.rx-col{text-align:center}
     <div class="metric" style="--c:#4cc9f0"><div class="metricicon"><svg viewBox="0 0 24 24"><path d="M8.5 5V4a1 1 0 0 1 1-1h6.5L20 7v9a1 1 0 0 1-1 1h-1.5"/><path d="M5.5 7h7.5l3 3v9.5A1.5 1.5 0 0 1 14.5 21h-9A1.5 1.5 0 0 1 4 19.5v-11A1.5 1.5 0 0 1 5.5 7Z"/></svg></div><div><small>Documentos registrados</small><strong id="metric-total">0</strong><em id="metric-total-hint">&nbsp;</em></div></div>
     <div class="metric" style="--c:#b5dc3c"><div class="metricicon"><svg viewBox="0 0 24 24"><path d="M3 21h18M5 21V8l7-4 7 4v13M9 21v-6h6v6"/></svg></div><div><small>Áreas documentadas</small><strong id="metric-areas">0</strong><em id="metric-areas-hint">&nbsp;</em></div></div>
     <div class="metric" style="--c:#f4b740"><div class="metricicon"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg></div><div><small>Aguardando aprovação · vigentes</small><strong id="metric-drafts">0</strong><em id="metric-drafts-hint">&nbsp;</em></div></div>
+    <div class="metric metric-link" style="--c:#ff8a7a" id="metric-overdue-card" role="button" tabindex="0" title="Ver em Documentos os documentos com revisão vencida ou a vencer"><div class="metricicon"><svg viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="15.5" rx="2"/><path d="M3.5 9.5h17M8 3v4M16 3v4M12 12.5v3.2M12 18.2v.1"/></svg></div><div><small>Vencidos para revisão</small><strong id="metric-overdue">0</strong><em id="metric-overdue-hint">&nbsp;</em></div></div>
   </div>
   <div class="home-cards">
     <div class="card side-card glow" style="--c:#b5dc3c"><h3><span class="hc-ico"><svg viewBox="0 0 24 24"><circle cx="12" cy="9" r="3.5"/><path d="M5 20a7 7 0 0 1 14 0"/></svg></span>Minha área</h3><div id="home-area"></div></div>
@@ -1703,7 +1759,7 @@ td.rx-col{text-align:center}
 <section id="page-pgl" class="hidden">
   <div class="pgl-hero">
     <div class="pgl-hero-main">
-      <div class="pgl-brandrow"><div class="pgl-logo"><img src="/static/assets/pgl-logo.png" alt="PGL"></div><span class="pgl-tag"><i class="pgl-live"></i>Prestador terceirizado · atualização automática</span></div>
+      <div class="pgl-brandrow"><div class="pgl-logo"><img src="/static/assets/nexxusdoc.png" alt="PGL"></div><span class="pgl-tag"><i class="pgl-live"></i>Prestador terceirizado · atualização automática</span></div>
       <h1>Processos executados pela PGL</h1>
       <p id="pgl-lead">Carregando…</p>
       <div class="pgl-services" id="pgl-services"></div>
@@ -1743,6 +1799,7 @@ td.rx-col{text-align:center}
 </section>
 
 <section id="page-budget" class="hidden"></section>
+<section id="page-audit" class="hidden"></section>
 <section id="page-query" class="hidden"></section>
 <section id="page-config" class="hidden">
   <div class="pagehead"><div><div class="eyebrow">Preferências e administração</div><h1>Configurações</h1><p id="config-subtitle">Seu perfil, acessos por área e status do sistema.</p></div></div>
@@ -1837,7 +1894,9 @@ td.rx-col{text-align:center}
             <div class="field"><label for="set-review-months">Revisar vigentes a cada (meses)</label><input id="set-review-months" type="number" min="1" max="60" data-setting="review_months"></div>
             <div class="field"><label for="set-review-notice">Avisar antes do vencimento (dias)</label><input id="set-review-notice" type="number" min="1" max="180" data-setting="review_notice_days"></div>
           </div>
-          <div class="option-list"><label class="option-card"><input type="checkbox" id="set-emails"><span><b>Enviar avisos por e-mail</b><br><small>Documento aprovado (a quem montou) e revisão próxima ou vencida (ao autor e aos owners da área). Enviados pelo n8n com a conta Vektor (admin@example.com); exigem a VPN.</small></span></label></div>        </section>
+          <div class="option-list"><label class="option-card"><input type="checkbox" id="set-emails"><span><b>Enviar avisos por e-mail</b><br><small>Documento aprovado (a quem montou) e revisão próxima ou vencida (ao autor ou a quem enviou e a todos os owners da área). Enviados pelo n8n com a conta Vektor (admin@example.com). A data de revisão de cada documento pode ser trocada em Documentos (autor, owner da área ou master).</small></span></label></div>
+          <div class="notice checking" id="review-sender" style="margin:0 18px 16px"><div class="grow">Conferindo o envio automático…</div></div>
+        </section>
       </div>
 
       <div class="settings-pane hidden" id="settings-profile">
@@ -1906,17 +1965,93 @@ const UNKNOWN='Ainda não sei / preciso confirmar';
 async function api(url,options={}){
   let r;
   try{r=await fetch(url,{credentials:'same-origin',...options})}
-  catch(e){if(options.signal?.aborted)throw Object.assign(Error('Cancelado.'),{cancelled:true});throw Error('O servidor local do NexxusDoc não está respondendo. Feche esta aba e abra o NexxusDoc novamente pelo atalho da Área de Trabalho.')}
+  catch(e){if(options.signal?.aborted)throw Object.assign(Error('Cancelado.'),{cancelled:true});window.nexusOffline?.check();throw Error('O servidor local do NexxusDoc não está respondendo. Feche esta aba e abra o NexxusDoc novamente pelo atalho da Área de Trabalho.')}
   let data=null;try{data=await r.json()}catch{}
   if(r.status===401&&!url.startsWith('/api/auth/')){showLogin('Sua sessão expirou. Entre novamente.');throw Error('Sessão expirada.')}
   if(!r.ok){
     const d=data?.detail;
+    if(r.status===503&&/atualizando/i.test(typeof d==='string'?d:''))window.nexusUpdate?.follow();  // reinício da atualização automática
     const err=Error(d?.message?(d.message+(d.missing?.length?' '+d.missing.join('; '):'')):(typeof d==='string'?d:`Erro ${r.status} no servidor local.`));
     err.status=r.status;err.detail=d;throw err;
   }
   return data;
 }
 const postJson=(url,body)=>api(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+
+/* Servidor local encerrado (10/11/2026, pedido do usuário): o servidor fecha sozinho depois de um tempo sem uso (ou com
+   o computador em suspensão) e a tela continuava normal, só falhando no próximo clique (e o F5 caía na página de erro do
+   navegador). Agora a tela confere o servidor a cada 30 s, ao voltar para a aba e quando um pedido falha; confirmada a
+   queda (2 tentativas), mostra um aviso fixo que trava a tela até a pessoa abrir o NexxusDoc pelo atalho. */
+window.nexusOffline=(()=>{
+let shown=false,fails=0,busy=false;
+const ping=async()=>{const c=new AbortController(),t=setTimeout(()=>c.abort(),4000);
+  try{const r=await fetch('/api/health',{cache:'no-store',credentials:'same-origin',signal:c.signal});return r.ok}catch{return false}finally{clearTimeout(t)}};
+// Na atualização automática o servidor reinicia de propósito: aí não é queda. Se a tela já sabia que havia versão
+// nova (ou outra aba começou a atualizar), a queda vira "Atualizando" e a tela espera o servidor voltar.
+const updating=()=>Boolean(document.getElementById('update-screen'));
+async function check(){
+  if(shown||busy||updating())return;busy=true;const ok=await ping();busy=false;
+  if(ok){fails=0;return}
+  if(updating())return;
+  if(window.nexusUpdate?.expected()){window.nexusUpdate.follow();return}
+  if(++fails>=2)show();else setTimeout(check,2500)}
+const PLUG='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3v5M15 3v5M6.5 8h11v3a5.5 5.5 0 0 1-11 0z"/><path d="M12 16.5V21"/><path d="m4 4 16 16"/></svg>';
+function show(){
+  if(shown)return;shown=true;
+  const el=document.createElement('div');el.id='offline-screen';el.className='offline-screen';
+  el.innerHTML=`<div role="alertdialog" aria-modal="true" aria-labelledby="offline-t" aria-describedby="offline-d">
+    <span class="off-ico">${PLUG}</span><h2 id="offline-t">O NexxusDoc foi encerrado</h2>
+    <p id="offline-d">O sistema fecha sozinho depois de um tempo sem uso (ou quando o computador entra em suspensão). Esta tela não funciona mais até você abrir o NexxusDoc de novo.</p>
+    <ol><li>Feche esta aba do navegador.</li><li>Abra o <b>NexxusDoc</b> pelo atalho na Área de Trabalho.</li></ol>
+    <p class="off-note">O atalho abre o NexxusDoc numa aba nova; atualizar esta página (F5) não adianta.</p></div>`;
+  // Sem botão (pedido do usuário): o atalho abre uma aba nova, esta aqui só precisa ser fechada.
+  document.body.appendChild(el);document.body.classList.add('offline-lock');document.activeElement?.blur?.();
+  // Tela travada: nenhuma tecla chega ao sistema; F5/Ctrl+R levariam à página de erro do navegador.
+  addEventListener('keydown',e=>{e.preventDefault();e.stopImmediatePropagation()},true);
+}
+setInterval(()=>{if(!document.hidden)check()},30000);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)check()});
+addEventListener('focus',()=>check());
+return {check,show};
+})();
+
+/* Uma aba só (12/11/2026, pedido do usuário): a aba que abre por último fica ativa e a anterior é desativada na hora
+   (mesmo navegador: BroadcastChannel; outro navegador: consulta ao servidor a cada 2 s). O texto digitado na aba que
+   sai passa para a nova (localStorage) e ela fecha sozinha, ou mostra "aba desativada" se o navegador não deixar
+   fechar. O clique na notificação não abre aba nova: o atalho pede ao servidor e esta aba vai para a página (ir). */
+window.nexusTab=(()=>{
+const ID=Math.random().toString(36).slice(2,14);
+let bc=null,off=false,pending=null;try{bc=new BroadcastChannel('nexxusdoc-aba')}catch{}
+const send=(url,body)=>fetch(url,{method:body?'POST':'GET',cache:'no-store',credentials:'same-origin',
+  headers:body?{'Content-Type':'application/json'}:{},body:body?JSON.stringify(body):undefined});
+async function claim(){try{await send('/api/aba',{aba:ID})}catch{}try{bc?.postMessage({tipo:'nova',id:ID})}catch{}}
+function deactivate(){
+  if(off||document.getElementById('update-screen'))return;off=true;
+  try{window.nexusUpdate?.keep(true)}catch{}   // texto digitado vai para a aba nova
+  try{bc?.close()}catch{}
+  try{window.close()}catch{}
+  setTimeout(()=>location.replace('/static/aba_inativa.html'),200)}
+function go(ir){
+  if(!state.user||!$('boot-loader').classList.contains('hidden')){pending=ir;return}
+  const page=['home','chat','docs','automation','query','pgl','budget','audit','config'].includes(ir.page)?ir.page:'home';
+  if(page==='config'&&ir.pane)state.settingsPane=ir.pane;
+  showPage(page);if(page==='config'&&ir.pane)setSettingsPane(ir.pane);
+  if(page==='query'&&ir.pane)window.nexusQuery?.view(ir.pane)}  // aviso de consulta pronta abre a aba certa
+async function poll(){
+  if(off)return;
+  try{const r=await send('/api/aba/'+ID);if(!r.ok)return;const d=await r.json();
+    if(d.livre)return claim();            // o servidor reiniciou (atualização): esta aba continua a ativa
+    if(d.ativa===false)return deactivate();
+    if(d.ir)go(d.ir)}catch{}}
+bc&&(bc.onmessage=e=>{if(e.data?.tipo==='nova'&&e.data.id!==ID)deactivate()});
+claim();setInterval(poll,2000);
+document.addEventListener('visibilitychange',()=>{if(!document.hidden)poll()});
+addEventListener('focus',()=>poll());
+// Chegou pedido antes de entrar no sistema: aplica quando a tela de carregamento terminar.
+const ready=()=>{if(pending&&state.user&&$('boot-loader').classList.contains('hidden')){const ir=pending;pending=null;go(ir)}};
+setInterval(ready,1000);
+return {id:ID,poll,go};
+})();
 
 /* VPN: o NexxusDoc (n8n) só é acessível com a VPN corporativa conectada */
 const SHIELD='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 4 6v6c0 4.5 3.4 8.3 8 9 4.6-.7 8-4.5 8-9V6z"/>';
@@ -1943,25 +2078,30 @@ setInterval(()=>{if(!$('page-chat').classList.contains('hidden')||!$('page-revis
 
 /* Navegação: rótulos do menu viram <span> (ocultáveis em telas estreitas) e ganham dica ao passar o mouse */
 const PAGE_DESC={home:'Resumo, pendências e REF. DOCS',chat:'Criar, enviar e consultar documentos',docs:'Lista, aprovação e Fluxo As Is',
-  automation:'Potencial de automação e SAP',query:'Tabelas do BigQuery por procedimento',pgl:'Processos do prestador terceirizado',budget:'Orçamento Inbound e cenários',config:'Perfil, acessos e sistema'};
+  automation:'Potencial de automação e SAP',query:'Tabelas do BigQuery por procedimento',pgl:'Processos do prestador terceirizado',budget:'Orçamento Inbound e cenários',audit:'Controles internos e auditoria',config:'Perfil, acessos e sistema'};
 document.querySelectorAll('.nav button').forEach(b=>{
   [...b.childNodes].filter(n=>n.nodeType===3&&n.textContent.trim()).forEach(n=>{const s=document.createElement('span');s.className='nav-label';s.textContent=n.textContent;n.replaceWith(s)});
-  const lab=b.querySelector('.nav-label');b.title=lab?lab.textContent.trim():b.textContent.trim();
+  // Barra de ícones: o nome vai na dica própria (data-tip, aparece na hora) e no aria-label; sem title (dica dupla).
+  const lab=b.querySelector('.nav-label'),name=lab?lab.textContent.trim():b.textContent.trim();b.dataset.tip=name;b.setAttribute('aria-label',name);
   if(lab&&PAGE_DESC[b.dataset.page]){const w=document.createElement('span');lab.replaceWith(w);w.appendChild(lab);w.insertAdjacentHTML('beforeend',`<small class="nav-desc">${PAGE_DESC[b.dataset.page]}</small>`)}
 });
-/* Seletor único de páginas no centro do topo: mostra a página atual; abre a lista ao clicar (ou Ctrl+.) */
+/* Barra de ícones no centro do topo (09/11/2026): 1 clique troca de página; a atual ganha o nome ao lado do ícone. */
 function updatePageSel(){
-  const a=document.querySelector('#pagesel-menu button.active')||document.querySelector('#pagesel-menu button[data-page="home"]');
-  if(!a)return;const btn=$('pagesel-btn');btn.dataset.page=a.dataset.page;
-  $('pagesel-cur').innerHTML=a.querySelector('svg').outerHTML+`<span>${esc(a.querySelector('.nav-label').textContent)}</span>`;
+  document.querySelectorAll('#pagesel-menu button').forEach(b=>b.setAttribute('aria-current',b.classList.contains('active')?'page':'false'));
+  fixPageBar();
 }
-function togglePageSel(open){const sel=$('pagesel'),on=open??!sel.classList.contains('open');sel.classList.toggle('open',on);$('pagesel-btn').setAttribute('aria-expanded',on)}
-$('pagesel-btn').addEventListener('click',e=>{e.stopPropagation();togglePageSel()});
-document.addEventListener('click',e=>{if(!e.target.closest('#pagesel'))togglePageSel(false);else if(e.target.closest('#pagesel-menu [data-page]'))togglePageSel(false)});
-document.addEventListener('keydown',e=>{
-  if(e.key==='Escape'&&$('pagesel').classList.contains('open')){togglePageSel(false);$('pagesel-btn').focus()}
-  if(e.ctrlKey&&e.key==='.'&&!$('app-shell').classList.contains('hidden')){e.preventDefault();togglePageSel(true);document.querySelector('#pagesel-menu button.active')?.focus()}
-});
+// Largura fixa da barra = a maior que ela fica com qualquer página ativa (medida uma vez com a barra visível e de novo se
+// mudar quais páginas a pessoa vê). Assim os ícones não deslizam ao trocar de página.
+function fixPageBar(){
+  const nav=$('pagesel-menu');if(!nav||!nav.offsetParent)return;
+  const btns=[...nav.querySelectorAll('button')].filter(b=>!b.classList.contains('hidden'));
+  const key=btns.map(b=>b.dataset.page).join(',');if(nav.dataset.fixed===key)return;
+  const cur=btns.find(b=>b.classList.contains('active'));nav.style.width='';let max=0;
+  btns.forEach(b=>{btns.forEach(x=>x.classList.toggle('active',x===b));max=Math.max(max,Math.ceil(nav.getBoundingClientRect().width))});
+  btns.forEach(x=>x.classList.toggle('active',x===cur));
+  nav.style.width=max+'px';nav.dataset.fixed=key;
+}
+document.fonts?.ready.then(()=>{const nav=$('pagesel-menu');if(nav){delete nav.dataset.fixed;fixPageBar()}});
 // Área de mensagens ocupa o espaço até o rodapé da janela (telas pequenas ou grandes).
 function fitChat(){
   if($('page-chat').classList.contains('hidden'))return;
@@ -1994,12 +2134,15 @@ if(window.ResizeObserver){
 }
 
 function showPage(name){
-  ['home','chat','docs','automation','query','pgl','revise','budget','config'].forEach(p=>$('page-'+p).classList.toggle('hidden',p!==name));
+  ['home','chat','docs','automation','query','pgl','revise','budget','audit','config'].forEach(p=>$('page-'+p).classList.toggle('hidden',p!==name));
   if(name==='budget')window.nexusBudget?.open();
+  if(name==='audit')window.nexusAudit?.open();
   // Query Console: ambiente claro (pedido do usuário), só nesta página.
   document.body.classList.toggle('page-light',name==='query');
   if(name==='query')window.nexusQuery?.open();
-  if(name==='chat')scheduleFit();
+  if(name==='chat'){scheduleFit();
+    // histórico das consultas carregado com a página escondida: na 1ª vez que aparece, vai para a última mensagem
+    requestAnimationFrame(()=>{const m=$('chat-messages');if(m&&!m.dataset.fim&&m.scrollHeight>m.clientHeight){m.scrollTop=m.scrollHeight;m.dataset.fim='1'}})}
   // O conteúdo já está na tela (carregamento prévio); só atualiza em segundo plano se tiver mais de 20 s.
   if(name==='automation'&&!isFresh('automation'))loadAutomation().then(()=>markLoaded('automation'));
   if(name==='pgl'&&!isFresh('pgl'))loadPgl().then(()=>markLoaded('pgl'));
@@ -2077,12 +2220,34 @@ const unitTags=u=>(u||[]).map(x=>`<span class="tag bu" style="--c:${BU_COLORS[x]
 // Data sem hora (aaaa-mm-dd) não passa pelo fuso: new Date() a leria como meia-noite UTC (dia anterior em Brasília).
 const brDate=v=>!v?'':/^\d{4}-\d{2}-\d{2}$/.test(v)?v.split('-').reverse().join('/'):new Date(v).toLocaleDateString('pt-BR');
 // Revisão periódica do documento vigente (prazo definido pelo master em Configurações).
+// Data (aaaa-mm-dd, em Brasília) para o campo de data.
+const spDay=v=>/^\d{4}-\d{2}-\d{2}$/.test(v)?v:new Date(v).toLocaleDateString('en-CA',{timeZone:'America/Sao_Paulo'});
 function reviewLine(d){
   if(!d.review_due)return '';
-  if(d.review_state==='vencida')return `<small class="doc-meta bad">Revisão vencida em ${brDate(d.review_due)}</small>`;
-  if(d.review_state==='proxima')return `<small class="doc-meta warn">Revisão vence em ${d.review_days} dia(s) · ${brDate(d.review_due)}</small>`;
-  return `<small class="doc-meta">Próxima revisão: ${brDate(d.review_due)}</small>`;
+  // Data trocada a mão (09/11/2026): autor (ou quem enviou), owner da área ou master trocam aqui mesmo.
+  const manual=d.review_changed?' <span class="review-manual" title="Data definida manualmente em Documentos">· definida manualmente</span>':'';
+  const edit=d.can_change_review?`<button type="button" class="review-edit" data-review-edit="${esc(d.id)}" data-due="${esc(spDay(d.review_due))}" title="Trocar a data da próxima revisão (o aviso por e-mail segue a data nova)">Alterar data</button>`:'';
+  if(d.review_state==='vencida')return `<small class="doc-meta bad">Revisão vencida em ${brDate(d.review_due)}${manual}</small>${edit}`;
+  if(d.review_state==='proxima')return `<small class="doc-meta warn">Revisão vence em ${d.review_days} dia(s) · ${brDate(d.review_due)}${manual}</small>${edit}`;
+  return `<small class="doc-meta">Próxima revisão: ${brDate(d.review_due)}${manual}</small>${edit}`;
 }
+document.addEventListener('click',async e=>{
+  const b=e.target.closest('[data-review-edit]');
+  if(b){
+    const today=spDay(new Date().toISOString()),[y,m,dd]=today.split('-'),max=`${+y+5}-${m}-${dd}`;
+    const f=document.createElement('span');f.className='review-form';
+    f.innerHTML=`<input type="date" value="${esc(b.dataset.due<today?today:b.dataset.due)}" min="${today}" max="${max}" aria-label="Nova data da próxima revisão"><button type="button" class="primary" data-review-save="${esc(b.dataset.reviewEdit)}">Salvar</button><button type="button" class="secondary" data-review-cancel>Cancelar</button>`;
+    b.replaceWith(f);f.querySelector('input').focus();return}
+  const s=e.target.closest('[data-review-save]');
+  if(s){
+    const id=s.dataset.reviewSave,inp=s.parentElement.querySelector('input');if(!inp.value)return;
+    const url=id.startsWith('env-')?`/api/envios/${encodeURIComponent(id.slice(4))}/revisao`:`/api/documents/${encodeURIComponent(id)}/revisao`;
+    s.disabled=true;
+    try{await api(url,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({data:inp.value})});state.loadedAt={};await loadDocuments()}
+    catch(err){alert(err.message);s.disabled=false}
+    return}
+  if(e.target.closest('[data-review-cancel]')){$('recent-list').innerHTML=listHtml((state.docs||[]).slice(0,6));renderDocs()}
+});
 // Excluir documento: só o administrador master vê o botão (o servidor também confere).
 document.addEventListener('click',async e=>{
   const b=e.target.closest('[data-delete-doc]');if(!b)return;
@@ -2276,6 +2441,7 @@ const AUTO_ICON={
   baixa_prioridade:'<path d="M5 12h14M5 6.5h14M5 17.5h8"/>'};
 const autoIcon=k=>`<svg viewBox="0 0 24 24" aria-hidden="true">${AUTO_ICON[k]}</svg>`;
 async function loadAutomation(){
+  window.nexusLev?.mount();  // levantamento das reuniões (todos veem; só o master inclui ata)
   const area=$('auto-area').value,unit=$('auto-unit').value;
   const qs=new URLSearchParams({...(area?{area}:{}),...(unit?{unidade:unit}:{})}).toString();
   $('auto-export').href='/api/automation/export'+(qs?'?'+qs:'');
@@ -2896,7 +3062,7 @@ async function openSapQuery(id,{zero=[]}={}){
         <button class="sapq-add" type="button" data-q-add>+ Adicionar filtro</button>
         <div class="sapq-text">${F.texto.map(t=>`<div class="field"><label>${esc(t.label)} contém (${t.id.toUpperCase()})</label><input data-q-contem="${t.id}" maxlength="30" placeholder="Opcional"></div>`).join('')}</div></div>
     </div><div class="sapq-sqlbox"><div class="field"><label>Consulta que será executada (somente leitura)</label></div><pre class="sapq-sql" id="q-sql"></pre>
-      <p class="sapq-note">O SQL é montado pelo NexxusDoc a partir das escolhas ao lado; não dá para digitar SQL livre. Tabelas BKPF, BSEG e ACDOCA (your-gcp-project), com teto de custo por consulta.</p></div></div>
+      <p class="sapq-note">O SQL é montado pelo NexxusDoc a partir das escolhas ao lado; não dá para digitar SQL livre. Tabelas BKPF, BSEG e ACDOCA (example-sap-project), com teto de custo por consulta.</p></div></div>
     <div class="sapq-foot"><span class="status" id="q-status"></span><button class="secondary" type="button" data-q-close>Fechar</button>
       ${item.tcodes_ajustadas&&item.pode_ajustar_transacoes?'<button class="secondary" type="button" data-q-reset>Voltar às transações da entrevista</button>':''}
       <button class="primary" type="button" id="q-run">Refazer consulta</button></div>
@@ -3133,6 +3299,11 @@ async function loadDocuments(){
     $('metric-areas-hint').textContent=areas.length?`mais documentada: ${areas[0][0]}`:'nenhuma área ainda';
     $('metric-drafts').innerHTML=`${waiting}<span>aguardando</span>· ${current}<span>vigentes</span>`;
     $('metric-drafts-hint').textContent=docs.length?`${Math.round(current/docs.length*100)}% dos documentos vigentes`:'-';
+    // Vencidos para revisão: os mesmos que o filtro "Revisão a vencer" de Documentos mostra (NexxusDoc, enviados e mapeados).
+    const tracked=[...docs,...state.extDocs];
+    const overdue=tracked.filter(d=>d.review_state==='vencida').length,soon=tracked.filter(d=>d.review_state==='proxima').length;
+    $('metric-overdue').textContent=overdue;
+    $('metric-overdue-hint').textContent=soon?`${soon} vence${soon>1?'m':''} nos próximos dias`:'nenhum a vencer em breve';
     $('recent-list').innerHTML=listHtml(docs.slice(0,6));
     renderHomeSide();renderDocs();renderChatSide();
   }catch(e){const html=`<div class="empty error-text">${esc(e.message)}</div>`;$('recent-list').innerHTML=html;$('all-list').innerHTML=html}
@@ -3385,6 +3556,38 @@ function thinking(container){
 /* Consulta */
 const CONSULT_GREETING='Olá! Posso explicar como os processos funcionam e detalhar o passo a passo com base nos procedimentos cadastrados no NexxusDoc e nos manuais oficiais da área. Também tiro dúvidas sobre o próprio NexxusDoc: onde fica cada função, como fazer algo e quem pode fazer o quê. Faça uma pergunta para começar.';
 function resetConsult(){state.chatHistory=[];$('chat-messages').innerHTML='';bubble('chat-messages',CONSULT_GREETING,'assistant')}
+// Fontes citadas embaixo da resposta (documentos do NexxusDoc, manuais e páginas da documentação).
+function consultSources(data){
+  const manuals=(data.manual_sources||[]).filter(x=>/^(https:\/\/(drive|docs)\.google\.com\/|\/api\/localizados\/[a-f0-9]{20}\/arquivo$)/.test(x.link||''));
+  const pages=(data.system_sources||[]).filter(x=>Number.isInteger(x.page));
+  if(!(data.sources?.length||manuals.length||pages.length))return;
+  const s=document.createElement('div');s.className='sources';
+  s.innerHTML='<b>FONTES CONSULTADAS</b>'+(data.sources||[]).map(x=>`<div><a href="/api/documents/${encodeURIComponent(x.record_id)}/pdf" target="_blank" rel="noopener">${esc(x.title||'Documento')}${x.area?' · '+esc(x.area):''}${x.version?' (v'+esc(x.version)+')':''}</a></div>`).join('')
+    +manuals.map(x=>`<div><a href="${esc(x.link)}" target="_blank" rel="noopener">${esc(x.title||'Manual')}${x.revision?' · rev. '+esc(x.revision):''}</a> <span class="src-tag">${x.kind==='localizado'?'documento localizado no Drive':'manual da área'}</span></div>`).join('')
+    +pages.map(x=>`<div><a href="/api/docs/pdf#page=${x.page}" target="_blank" rel="noopener">Especificação Técnica · pág. ${x.page}${x.section?' · '+esc(x.section):''}</a> <span class="src-tag">documentação do sistema</span></div>`).join('');
+  $('chat-messages').appendChild(s);
+}
+/* Histórico das Consultas gerais (11/11/2026, pedido do usuário): fica guardado no servidor, por pessoa, com os
+   últimos 3 dias em que houve conversa; volta ao entrar de novo, deslogar ou atualizar a página. */
+function consultDay(d){
+  const today=new Date(),iso=x=>`${x.getFullYear()}-${String(x.getMonth()+1).padStart(2,'0')}-${String(x.getDate()).padStart(2,'0')}`;
+  const y=new Date(today);y.setDate(today.getDate()-1);
+  return d===iso(today)?'Hoje':d===iso(y)?'Ontem':brDate(d);
+}
+async function loadConsultHistory(){
+  let items=[];
+  try{items=(await api('/api/chat/historico')).itens||[]}catch{return}
+  if(!items.length||state.chatHistory.length)return;
+  resetConsult();let day='';
+  for(const it of items){
+    if(it.dia!==day){day=it.dia;const sep=document.createElement('div');sep.className='chat-day';sep.textContent=consultDay(day);$('chat-messages').appendChild(sep)}
+    bubble('chat-messages',it.pergunta,'user');bubble('chat-messages',it.resposta,'assistant');consultSources(it);
+  }
+  state.chatHistory=items.slice(-10).flatMap(it=>[{role:'user',content:it.pergunta},{role:'assistant',content:it.resposta}]);
+  const note=document.createElement('div');note.className='chat-day note';note.textContent='Conversas guardadas dos últimos 3 dias em que você usou as consultas';
+  $('chat-messages').insertBefore(note,$('chat-messages').children[1]||null);
+  $('chat-messages').scrollTop=$('chat-messages').scrollHeight;
+}
 async function sendChat(){
   const box=$('chat-input'),button=$('chat-send'),question=box.value.trim();
   if(!question||button.disabled)return;
@@ -3397,15 +3600,7 @@ async function sendChat(){
       body:JSON.stringify({message:question,history:state.chatHistory.slice(-20)}),signal:ctl.signal});
     wait.remove();bubble('chat-messages',data.answer,'assistant');
     window.nexusNotify?.away('chat','O NexxusDoc respondeu a sua consulta',data.answer,'chat');
-    const manuals=(data.manual_sources||[]).filter(x=>/^(https:\/\/(drive|docs)\.google\.com\/|\/api\/localizados\/[a-f0-9]{20}\/arquivo$)/.test(x.link||''));
-    const pages=(data.system_sources||[]).filter(x=>Number.isInteger(x.page));
-    if(data.sources?.length||manuals.length||pages.length){
-      const s=document.createElement('div');s.className='sources';
-      s.innerHTML='<b>FONTES CONSULTADAS</b>'+(data.sources||[]).map(x=>`<div><a href="/api/documents/${encodeURIComponent(x.record_id)}/pdf" target="_blank" rel="noopener">${esc(x.title||'Documento')}${x.area?' · '+esc(x.area):''}${x.version?' (v'+esc(x.version)+')':''}</a></div>`).join('')
-        +manuals.map(x=>`<div><a href="${esc(x.link)}" target="_blank" rel="noopener">${esc(x.title||'Manual')}${x.revision?' · rev. '+esc(x.revision):''}</a> <span class="src-tag">${x.kind==='localizado'?'documento localizado no Drive':'manual da área'}</span></div>`).join('')
-        +pages.map(x=>`<div><a href="/api/docs/pdf#page=${x.page}" target="_blank" rel="noopener">Especificação Técnica · pág. ${x.page}${x.section?' · '+esc(x.section):''}</a> <span class="src-tag">documentação do sistema</span></div>`).join('');
-      $('chat-messages').appendChild(s);
-    }
+    consultSources(data);
     state.chatHistory.push({role:'user',content:question},{role:'assistant',content:data.answer});
   }catch(e){wait.remove();if(e.cancelled)bubble('chat-messages','Consulta cancelada. Pode enviar outra pergunta.','assistant');else bubble('chat-messages',e.message,'error')}
   finally{state.chatAbort=null;$('chat-cancel').disabled=true;button.disabled=false;box.focus();$('chat-messages').scrollTop=$('chat-messages').scrollHeight}
@@ -3413,7 +3608,11 @@ async function sendChat(){
 $('chat-cancel').addEventListener('click',()=>state.chatAbort?.abort());
 $('chat-form').addEventListener('submit',e=>{e.preventDefault();sendChat()});
 $('chat-input').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendChat()}});
-$('chat-clear').addEventListener('click',()=>{state.chatAbort?.abort();resetConsult()});
+$('chat-clear').addEventListener('click',async()=>{
+  if(!confirm('Limpar a conversa? O histórico guardado das consultas também será apagado.'))return;
+  state.chatAbort?.abort();
+  try{await api('/api/chat/historico',{method:'DELETE'})}catch(e){bubble('chat-messages',e.message,'error');return}
+  resetConsult()});
 
 /* Enviar documento (05/11/2026): os arquivos escolhidos se acumulam (de pastas diferentes, um por vez ou arrastando),
    até 5; antes, escolher de novo substituía os anteriores. */
@@ -3976,7 +4175,7 @@ async function loadInstaller(){
           <a class="primary" href="/api/installer/download" download style="display:inline-flex;text-decoration:none">Baixar INSTALAR_NEXXUSDOC.zip</a>
           <ol class="installer-steps">
             <li><b>Cadastre a pessoa</b> em Acessos por área (e-mail corporativo, área e perfil). Sem cadastro, ela não entra.</li>
-            <li><b>Dê acesso à pasta NexxusDoc</b> no Google Drive (SeuProjeto › NexxusDoc) e peça para ela adicionar a SeuProjeto ao <b>Meu Drive</b>: Compartilhados comigo › botão direito na SeuProjeto › Organizar › Adicionar atalho › Meu Drive.</li>
+            <li><b>Dê acesso de edição à pasta do sistema</b> no Google Drive (Drives compartilhados › Sua Area › Nexxus › NexxusDoc). O mais simples é incluir a pessoa como membro do drive compartilhado <b>Sua Area</b>: a pasta aparece sozinha no computador dela. Se ela tiver acesso só à pasta Nexxus, peça para adicionar um atalho no <b>Meu Drive</b>: Compartilhados comigo › botão direito na pasta Nexxus › Organizar › Adicionar atalho › Meu Drive. Sem o Google Drive para computador, o instalador usa o modo nuvem.</li>
             <li><b>Envie o .zip.</b> A pessoa clica com o botão direito › Extrair tudo e executa <b>INSTALAR_NEXXUSDOC.bat</b> da pasta extraída. O LEIA-ME dentro do pacote traz o passo a passo.</li>
             <li>O atalho <b>NexxusDoc</b> aparece na Área de Trabalho. Depois disso o sistema se atualiza sozinho a cada abertura.</li>
           </ol>
@@ -4002,7 +4201,14 @@ async function loadApprovalSettings(){
   $('approval-readonly').classList.toggle('hidden',master);
   try{const s=await api('/api/settings');state.settings=s;
     document.querySelectorAll('[data-setting]').forEach(i=>{i.value=s[i.dataset.setting];i.disabled=!master});
-    $('set-emails').checked=!!s.email_notifications;$('set-emails').disabled=!master;  }catch(e){$('approval-saved').textContent=e.message}
+    $('set-emails').checked=!!s.email_notifications;$('set-emails').disabled=!master;
+    // Avisos de revisão (09/11/2026): o n8n envia sozinho todo dia, pela agenda gravada no Drive.
+    const n=s.avisos_n8n||{},box=$('review-sender');
+    box.className='notice '+(n.ativo?'ok':'warn');
+    box.querySelector('.grow').innerHTML=n.ativo
+      ?`<b>Envio automático ativo.</b> O n8n confere a agenda de revisões todo dia às 8h e às 14h e manda os avisos sozinho, mesmo com o NexxusDoc fechado. Última conferência: ${new Date(n.ultima_execucao).toLocaleString('pt-BR')}.`
+      :`<b>Envio automático pelo n8n ainda não ativo</b>${n.ultima_execucao?` (última conferência em ${new Date(n.ultima_execucao).toLocaleString('pt-BR')})`:''}. Até ele rodar, o aviso de revisão sai do computador do autor quando ele abre o NexxusDoc.`;
+  }catch(e){$('approval-saved').textContent=e.message}
 }
 async function saveSetting(body){
   try{state.settings=await api('/api/admin/settings',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});$('review-saved').textContent='Salvo.'}
@@ -4247,6 +4453,7 @@ async function preloadAll(user){
     // abre sem baixar nada na hora do clique
     ['Apresentação',()=>Promise.all(['base.css','animations.css','tema-nexxusdoc.css','idiomas.js','fluxo_importacao.js',
       'mapa_mundo.json','runtime.js','fx-runtime.js'].map(n=>fetch(`/static/apresentacao/${n}?v=${FLOW_DECK_REV}`).then(r=>r.blob())))],
+    ...(user.auditoria?[['Auditoria',()=>window.nexusAudit?.open()]]:[]),
     ['Conexão VPN',()=>checkVpn(true)],
     ['Usuários',()=>api('/api/users/directory').then(d=>{state.directory=d})],
     ['Revisão e e-mails',()=>loadApprovalSettings()],
@@ -4262,26 +4469,39 @@ async function preloadAll(user){
   // Nunca prende a pessoa: no máximo 15 s (o que faltar continua carregando com o sistema já aberto).
   await Promise.race([Promise.all([all,new Promise(r=>setTimeout(r,MIN_MS))]),new Promise(r=>setTimeout(r,15000))]);
 }
+// Abaixo do nome no topo (12/11/2026, pedido do usuário): versão instalada neste computador e quando ela entrou.
+async function showVersion(){
+  try{const h=await (await fetch('/api/health',{cache:'no-store',credentials:'same-origin'})).json();const el=$('brand-ver');
+    if(!el||!h.versao)return;const d=h.atualizado_em?new Date(h.atualizado_em):null;
+    el.innerHTML=`v <code>${esc(h.versao)}</code>${d&&!isNaN(d)?` · ${d.toLocaleDateString('pt-BR')} ${d.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}`:''}`;
+    el.title=`Versão ${h.versao}${d&&!isNaN(d)?`, atualizada neste computador em ${d.toLocaleString('pt-BR')}`:''}`}catch{}}
 async function openApplication(user){
-  state.user=user;
+  state.user=user;showVersion();
+  window.nexusUpdate?.boot();  // versão nova pronta: atualiza já na tela de carregamento, sem clique
   showBoot(`Olá, ${(user.name||user.email).split(/[ .@]/)[0].replace(/^./,c=>c.toUpperCase())}! Preparando seu ambiente…`);
   $('account-email').textContent=user.email;window.nexusPhoto.show(user.email);$('avatar').title=`${user.name||''} · ${user.email}`;
   $('nav-config').classList.remove('hidden');
   $('nav-budget').classList.remove('hidden');  // Budget: todos veem a página; números e edição só para master e owners
+  // Auditoria (10/11/2026): todos veem o ícone; só o master e a gestora da area navegam (os demais veem o cadeado e a tela restrita)
+  {const b=$('nav-audit'),lock=!user.auditoria;b.classList.toggle('locked',lock);b.dataset.tip=lock?'Auditoria (acesso restrito)':'Auditoria';
+   if(lock&&!b.querySelector('.nav-lock'))b.insertAdjacentHTML('beforeend','<i class="nav-lock" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9.5" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg></i>');
+   if(!lock)b.querySelector('.nav-lock')?.remove()}
   document.querySelectorAll('.admin-group').forEach(el=>el.classList.toggle('hidden',!isAdmin()));
   document.querySelectorAll('.master-only').forEach(el=>el.classList.toggle('hidden',user.role!=='master'));
-  resetConsult();
+  resetConsult();loadConsultHistory();
   await preloadAll(user);
   $('login-layer').classList.add('hidden');$('app-shell').classList.remove('hidden');
   hideBoot();
   const params=new URLSearchParams(location.search),requested=params.get('page'),mode=params.get('mode');
   if(['access','areas','roteiro','approval','profile','notifications','system','installer','tour','docs','health'].includes(params.get('pane')))state.settingsPane=params.get('pane');
-  showPage(['chat','docs','automation','pgl','budget','config'].includes(requested)?requested:'home');
+  showPage(['chat','docs','automation','pgl','budget','audit','config'].includes(requested)?requested:'home');
   if(requested==='chat'&&['interview','policy','review','consult'].includes(mode))switchChatMode(mode);
   if(params.get('view'))loadDocuments().then(()=>openViewer(params.get('view')));
+  window.nexusUpdate?.restore(requested);  // voltou de uma atualização: mesma página e o texto que estava digitado
   window.nexusTour?.auto();  // primeiro acesso desta pessoa: o tour abre sozinho depois da tela de carregamento
   setTimeout(()=>window.nexusPhoto.refresh(user.email),4000);  // foto do Google no avatar, em segundo plano
   refreshInterviews();       // entrevistas em andamento entram no sino de notificações
+  loadNotifHist();           // e os avisos que foram para o Windows
 }
 $('login-form').addEventListener('submit',async e=>{
   e.preventDefault();$('login-error').textContent='Verificando a conta Windows…';
@@ -4320,15 +4540,29 @@ function bellItems(){
   state.activeInterviews.forEach(it=>items.push({key:`int:${it.id}`,c:'#b39cff',icon:'chat',when:it.updated_at,
     title:`Entrevista em andamento${it.process?': '+it.process:''}`,text:'Procedimento: continue de onde parou no Chat Nexxus.',
     go:()=>{showPage('chat');switchChatMode('interview')}}));
+  // Avisos que foram para o Windows (13/11/2026, pedido do usuário: chegavam no Windows mas não no sino).
+  (state.notifHist||[]).forEach(h=>items.push({key:`win:${h.id}`,win:true,icon:WIN_ICON[h.categoria]||'page',when:h.quando,
+    title:h.titulo,text:h.texto||'',go:()=>{const [page,pane]=String(h.pagina||'home').split(':');window.nexusTab?.go({page,pane})}}));
   return items.sort((a,b)=>String(b.when||'').localeCompare(String(a.when||'')));
 }
+const WIN_ICON={consulta:'flow',chat:'chat',geracao:'doc',vpn:'clock',aprovacoes:'flow',decisoes:'doc',revisoes:'clock'};
+async function loadNotifHist(){
+  try{const d=await api('/api/notificacoes/historico');const before=(state.notifHist||[]).map(h=>h.id).join();
+    state.notifHist=d.itens||[];if(state.notifHist.map(h=>h.id).join()!==before)renderBell()}catch{}
+}
+// Avisos novos do Windows aparecem no sino em até 1 minuto (só com a janela visível; ao voltar para a aba, na hora).
+setInterval(()=>{if(state.user&&!document.hidden)loadNotifHist()},60000);
+document.addEventListener('visibilitychange',()=>{if(state.user&&!document.hidden)loadNotifHist()});
 function openDocsFilter(status){showPage('docs');state.docFilter.status=status;renderDocs()}
+// Card "Vencidos para revisão" da Visão geral: abre Documentos no filtro de revisão.
+$('metric-overdue-card').addEventListener('click',()=>openDocsFilter('revisao'));
+$('metric-overdue-card').addEventListener('keydown',e=>{if(e.key==='Enter'||e.key===' '){e.preventDefault();openDocsFilter('revisao')}});
 function renderBell(){
   const items=bellItems(),seen=bellSeen(),unread=items.filter(i=>!seen.has(i.key)).length,badge=$('bell-badge'),before=Number(badge.textContent)||0;
   badge.textContent=unread>99?'99+':unread;badge.classList.toggle('hidden',!unread);
   if(unread>before&&!badge.classList.contains('hidden')){const b=$('bell-open');b.classList.remove('ring');void b.offsetWidth;b.classList.add('ring')}
   state.bellList=items;if(!$('bell-panel').classList.contains('hidden'))drawBellPanel(seen);
-  window.nexusNotify?.fromBell(items.filter(i=>!seen.has(i.key)));  // itens novos também viram notificação do Windows
+  window.nexusNotify?.fromBell(items.filter(i=>!i.win&&!seen.has(i.key)));  // itens novos também viram notificação do Windows (os que já vieram do Windows não)
 }
 function drawBellPanel(seen=bellSeen()){
   const items=state.bellList||[],idx=new Map(items.map((it,i)=>[it,i]));
@@ -4338,7 +4572,7 @@ function drawBellPanel(seen=bellSeen()){
   $('bell-panel').innerHTML=`<div class="bell-head"><div><b>Notificações</b><small>${unread.length?`<strong>${unread.length} não lida(s)</strong> de ${items.length}`:items.length?'Tudo lido':'Nada pendente'}</small></div>
     <button class="bell-readall" type="button" data-bell-read${unread.length?'':' disabled'}>Marcar todas como lidas</button></div>
     <div class="bell-list">${items.length?(unread.length?`<div class="bell-group">Não lidas</div>${unread.map(row).join('')}`:'')+(read.length?`<div class="bell-group">Lidas</div>${read.map(row).join('')}`:'')
-      :'<div class="bell-empty">Tudo em dia. Documentos para aprovar, aprovações, revisões e entrevistas em andamento aparecem aqui.</div>'}</div>
+      :'<div class="bell-empty">Tudo em dia. Documentos para aprovar, aprovações, revisões, entrevistas em andamento e os avisos enviados ao Windows aparecem aqui.</div>'}</div>
     <div class="bell-foot"><span>Também chegam como notificação do Windows.</span><button type="button" data-bell-prefs>Configurar notificações</button></div>`;
 }
 function markBellRead(keys){try{const seen=bellSeen();(keys||(state.bellList||[]).map(i=>i.key)).forEach(k=>seen.add(k));
@@ -4366,6 +4600,7 @@ const GS_PAGES=[['Visão geral','Resumo, pendências e REF. DOCS','home'],['Chat
   ['Chat Nexxus · Enviar documento','Guarda documentos que você já tem (com aviso de revisão) ou revisa no novo padrão','chat:review'],
   ['Chat Nexxus · Consultas gerais','Pergunte sobre processos e o uso do sistema','chat:consult'],['Documentos','Biblioteca, aprovação e lista mestra','docs'],
   ['Mapa de automação','Oportunidades e transações SAP','automation'],['PGL','Processos executados pela PGL','pgl'],
+  ['Auditoria','Controles internos, recomendações e solicitações de evidência','audit'],
   ['REF. DOCS','Universo dos procedimentos da área','refdocs'],['Configurações · Meu perfil','Seus dados e pasta dos documentos','config:profile'],
   ['Configurações · Notificações','Avisos do Windows','config:notifications'],
   ['Configurações · Revisão e e-mails','Revisão periódica e e-mail de aprovado','config:approval'],['Configurações · Status do sistema','Conflitos do Drive e auditoria','config:system'],
@@ -4439,37 +4674,109 @@ $('faq-open').addEventListener('click',()=>open());
 setTimeout(()=>load().catch(()=>{}),4000);
 return {open,load};
 })();
-/* Versão nova (05/11/2026): o servidor confere a publicação assinada no Drive; quando ela está pronta, aparece
-   "Atualizar" no topo. O clique reinicia o NexxusDoc pelo atalho (aplica a publicação como na abertura) e a tela
-   volta sozinha, já atualizada. Ninguém reinstala. */
+/* Atualização AUTOMÁTICA (11/11/2026, pedido do usuário; antes, botão "Atualizar" no topo): o servidor confere a
+   publicação assinada no Drive e, quando ela está pronta, a tela pede o reinício SOZINHA, sem clique, e só mostra
+   "Atualizando o NexxusDoc". Para não engolir trabalho, só pede quando esta aba está livre (busy() abaixo) e avisa ao
+   servidor enquanto está ocupada (POST /api/atualizacao/ocupado); o servidor também espera os pedidos em curso
+   (agente, geração, gravação). GARANTIA: pronta há 15 min, o servidor atualiza mesmo com aba ocupada; por isso, antes
+   de recarregar, a tela guarda o texto digitado e a página (sessionStorage) e devolve tudo ao voltar (restore). */
 window.nexusUpdate=(()=>{
-let info=null,busy=false;
+const TAB=Math.random().toString(36).slice(2,12),KEY='nexus.atualizando',DRAFT='nexus.rascunho';
+const PAGES=['home','chat','docs','automation','query','pgl','revise','budget','audit','config'];
+const typed=new Set();let info=null,following=false,asking=false,stop=false,lastBusy='',lastSent=0,lastUse=0;
+// Campos em que a pessoa digitou (texto de trabalho). Busca e filtros não contam.
+const FIELD=/^(text|number|date|email|url|tel|time|datetime-local|month|)$/;
+const isDraft=t=>t&&!t.readOnly&&!t.closest('#login-layer,.gs,.update-screen')&&(t.tagName==='TEXTAREA'||(t.tagName==='INPUT'&&FIELD.test(t.type)))
+  &&!/busca|search|filtro|filter/i.test(`${t.id} ${t.className} ${t.name||''}`)&&!/^(buscar|filtrar|pesquisar|procurar)/i.test(t.placeholder||'');
+document.addEventListener('input',e=>{if(e.isTrusted&&isDraft(e.target))typed.add(e.target)},true);
+for(const ev of ['pointerdown','keydown','wheel'])document.addEventListener(ev,e=>{if(e.isTrusted)lastUse=Date.now()},{capture:true,passive:true});
+const dirty=()=>{for(const el of [...typed]){if(!el.isConnected){typed.delete(el);continue}if(el.value.trim()&&el.value!==el.defaultValue)return el}return null};
+const shown=el=>el.getClientRects().length>0&&getComputedStyle(el).visibility!=='hidden';
+const booting=()=>!$('boot-loader').classList.contains('hidden');
+// Por que esta aba NÃO pode recarregar agora ('' = pode). Tudo aqui só existe no navegador; o que já foi enviado
+// (entrevista, documentos, histórico) está gravado e volta sozinho.
+function busy(){
+  if(!state.user||booting())return '';
+  if(dirty())return 'texto digitado e ainda não enviado';
+  if(state.pasted?.length)return 'print colado e ainda não enviado';
+  if(state.sendFiles?.length)return 'arquivo escolhido em Enviar documento';
+  if([...document.querySelectorAll('.qr-group .chip.active')].some(shown))return 'respostas marcadas e ainda não enviadas';
+  const dlg=[...document.querySelectorAll('[role="dialog"],[role="alertdialog"]')].find(el=>shown(el)&&!el.closest('#bell-panel,.gs,.nc,.rx,.update-screen,#offline-screen'));
+  if(dlg)return `quadro aberto (${(dlg.getAttribute('aria-label')||'janela').slice(0,60)})`;
+  if(!document.hidden&&Date.now()-lastUse<60000)return 'pessoa usando o sistema agora';
+  return ''}
+async function report(){
+  if(!state.user||following)return;const why=busy();
+  if(why===lastBusy&&(!why||Date.now()-lastSent<30000))return;
+  lastBusy=why;lastSent=Date.now();
+  try{await postJson('/api/atualizacao/ocupado',{aba:TAB,motivo:why})}catch{}}
 async function check(){
-  if(busy)return info;
+  if(!state.user||following)return info;
   try{info=await api('/api/atualizacao')}catch{return info}
-  $('update-pill').classList.toggle('hidden',!info?.disponivel);
+  if(info?.disponivel)tryApply();
   return info}
-function screen(title,text,spin=true){
+async function tryApply(){
+  if(asking||following||stop||!info?.disponivel||busy())return;
+  asking=true;
+  try{await postJson('/api/atualizacao/aplicar',{aba:TAB});asking=false;
+    try{localStorage.setItem(KEY,String(Date.now()))}catch{}
+    follow(info.instalada)}
+  catch(e){asking=false;if(e.detail?.sem_atalho)stop=true;
+    else if(booting())setTimeout(tryApply,2500)}}   // na abertura, tenta de novo logo (pedido da carga em curso)
+function screen(title,text,spin=true,foot=''){
   let el=$('update-screen');if(!el){el=document.createElement('div');el.id='update-screen';el.className='update-screen';document.body.appendChild(el)}
-  el.innerHTML=`<div role="alertdialog" aria-live="assertive">${spin?'<div class="upd-spin"></div>':''}<h2>${esc(title)}</h2><p>${text}</p></div>`;return el}
-async function apply(){
-  if(busy)return;
-  if(!confirm('Atualizar o NexxusDoc agora?\n\nLeva poucos segundos e a tela volta sozinha. O que já foi enviado ao agente fica salvo; texto digitado e ainda não enviado se perde.'))return;
-  busy=true;const from=info?.instalada||'';
-  screen('Atualizando o NexxusDoc','Aplicando a versão nova publicada pelo administrador. A tela volta sozinha em alguns segundos.');
-  try{await postJson('/api/atualizacao/aplicar',{})}
-  catch(e){busy=false;screen('Não deu para atualizar agora',esc(e.message)+'<br><br><button class="primary" type="button" onclick="this.closest(\'.update-screen\').remove()">Fechar</button>',false);return}
+  el.innerHTML=`<div class="upd-card" role="alertdialog" aria-live="assertive" aria-label="${esc(title)}">
+    <div class="upd-top">${spin?'<span class="upd-dot" aria-hidden="true"></span>':''}NexxusDoc · atualização</div>
+    <h2>${esc(title)}</h2><div class="upd-body">${text}</div>
+    ${spin?'<div class="upd-bar" aria-hidden="true"><i></i></div>':''}${foot?`<div class="upd-foot">${foot}</div>`:''}</div>`;return el}
+// Guarda o que só existe nesta aba (texto digitado com id e a página aberta) para devolver depois de recarregar.
+// transfer=true (12/11/2026, uma aba só): a aba desativada passa o texto para a aba nova pelo localStorage.
+function keep(transfer){
+  const fields={};for(const el of typed)if(el.isConnected&&el.id&&el.value.trim()&&el.value!==el.defaultValue)fields[el.id]=el.value;
+  const page=PAGES.find(p=>!$('page-'+p)?.classList.contains('hidden'))||'home';
+  const data=JSON.stringify({page,mode:state.chatMode||'',fields,t:Date.now()});
+  try{if(transfer){if(Object.keys(fields).length)localStorage.setItem(TRANSF,data)}else sessionStorage.setItem(DRAFT,data)}catch{}}
+const TRANSF='nexus.rascunho.transf';let moved=null;
+function fill(fields){for(const [id,v] of Object.entries(fields||{})){const el=document.getElementById(id);
+  if(el&&!el.value){el.value=v;el.dispatchEvent(new Event('input',{bubbles:true}));typed.add(el)}}}
+function takeMoved(){if(!moved||!state.user||booting())return;const f=moved;moved=null;fill(f);setTimeout(()=>fill(f),2500)}
+addEventListener('storage',e=>{if(e.key!==TRANSF||!e.newValue)return;
+  try{const d=JSON.parse(e.newValue);if(Date.now()-(d.t||0)<120000)moved=d.fields}catch{}
+  try{localStorage.removeItem(TRANSF)}catch{}takeMoved()});
+setInterval(takeMoved,1000);
+// Mostra "Atualizando" e espera o servidor voltar com a versão nova; serve para a aba que pediu, para as outras abas
+// (aviso pelo localStorage) e para a aba que viu o servidor cair sabendo que havia versão nova.
+async function follow(from){
+  if(following)return;following=true;keep();
+  from=from||info?.instalada||'';
+  // Breve resumo do que muda (pedido do usuário, como no antigo quadro do Atualizar): itens do novidades.json, até 6.
+  const items=(info?.novidades||[]).flatMap(v=>v.itens||[]).slice(0,6);
+  screen('Atualizando o NexxusDoc',`Aplicando a versão nova publicada pelo administrador.${items.length?`<ul class="upd-list">${items.map(x=>`<li>${esc(x)}</li>`).join('')}</ul>`:''}`,
+    true,`<span>A tela volta sozinha em alguns segundos.</span>${info?.nova?`<code>v ${esc(info.nova)}</code>`:''}`);
   const t0=Date.now();
-  while(Date.now()-t0<120000){
+  while(Date.now()-t0<180000){
     await new Promise(r=>setTimeout(r,1500));
-    try{const r=await fetch('/api/health',{cache:'no-store'});if(r.ok){const h=await r.json();if(h.versao&&h.versao!==from){location.reload();return}}}catch{}
+    try{const r=await fetch('/api/health',{cache:'no-store'});if(r.ok){const h=await r.json();if(h.versao&&(!from||h.versao!==from)){location.reload();return}}}catch{}
   }
-  busy=false;screen('O NexxusDoc não voltou sozinho','Feche esta aba e abra o NexxusDoc pelo atalho da Área de Trabalho.',false);
+  screen('O NexxusDoc não voltou sozinho','Feche esta aba e abra o NexxusDoc pelo atalho da Área de Trabalho.',false);
 }
-$('update-pill').addEventListener('click',apply);
-setTimeout(check,6000);setInterval(check,120000);
+function expected(){
+  if(info?.disponivel)return true;
+  try{return Date.now()-Number(localStorage.getItem(KEY)||0)<180000}catch{return false}}
+// Depois de recarregar pela atualização: volta à página em que a pessoa estava e devolve o texto digitado.
+function restore(requested){
+  let d=null;try{d=JSON.parse(sessionStorage.getItem(DRAFT)||'null');sessionStorage.removeItem(DRAFT)}catch{}
+  if(!d||Date.now()-(d.t||0)>600000)return;
+  if(!requested&&PAGES.includes(d.page)&&d.page!=='home'){showPage(d.page);if(d.page==='chat'&&d.mode)switchChatMode(d.mode)}
+  setTimeout(()=>fill(d.fields),1200);setTimeout(()=>fill(d.fields),4000)}
+addEventListener('storage',e=>{if(e.key===KEY&&e.newValue&&state.user)follow()});
+addEventListener('pagehide',()=>{if(lastBusy&&state.user){try{navigator.sendBeacon('/api/atualizacao/ocupado',new Blob([JSON.stringify({aba:TAB,motivo:''})],{type:'application/json'}))}catch{}}});
+setInterval(()=>{report();if(info?.disponivel)tryApply()},15000);
+setInterval(check,60000);
 document.addEventListener('visibilitychange',()=>{if(!document.hidden)check()});
-return {check,apply};
+// Abertura (chamado no openApplication): confere na hora; versão nova pronta = atualiza já na tela de carregamento.
+const boot=()=>{lastBusy='';check()};
+return {check,boot,follow,expected,restore,busy,keep};
 })();
 document.addEventListener('keydown',e=>{if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='k'&&state.user&&!$('app-shell').classList.contains('hidden')){e.preventDefault();openSearch()}});
 
@@ -4484,24 +4791,22 @@ function startHealth(){clearInterval(HS.timer);HS.key='';$('hs-live').classList.
 async function loadHealth(){try{renderHealth(await api('/api/health/system?task='+encodeURIComponent(HS.task)))}catch(e){$('hs-live').classList.add('off');if(!HS.last)$('hs-body').innerHTML=`<div class="empty error-text">${esc(e.message)}</div>`}}
 function hsProtection(p){
   if(!p)return '';
-  const b=p.backup||{},c=p.cadastro||{},ct=b.contagem||{},susp=b.suspeito;
+  const b=p.backup||{},c=p.cadastro||{},ct=b.contagem||{},red=b.reducao;
   const when=v=>v?new Date(v).toLocaleString('pt-BR'):'';
   const mb=v=>v?(v/1048576).toFixed(1).replace('.',',')+' MB':'-';
   const can=p.master_local&&p.pasta_privada;
   return `<section class="hs-card"><div class="hs-card-head"><div><h3>Proteção dos dados</h3><small>Só o administrador master vê: cadastro de acessos assinado e backup diário de todo o sistema na pasta privada.</small></div>${can?`<button class="secondary" type="button" id="hs-backup-now"${b.rodando?' disabled':''}>${b.rodando?'Fazendo backup…':'Fazer backup agora'}</button>`:''}</div>
     <div class="hs-prot-grid">
       <div><small>Cadastro de acessos</small><b class="${c.assinado?'ok':'bad'}">${c.assinado?'Assinado e conferido':'Sem assinatura válida'}</b><span>${esc(c.alerta||(c.restaurado_em?'Restaurado da pasta privada em '+when(c.restaurado_em):'Alteração feita fora do NexxusDoc é ignorada e desfeita.'))}</span></div>
-      <div><small>Último backup (substituído a cada dia)</small><b class="${susp?'bad':b.dia?'ok':'warn'}">${b.dia?esc(when(b.criado_em)):'Ainda não feito'}</b><span>${b.dia?`${ct.arquivos||0} arquivos · ${ct.documentos||0} documentos · ${ct.pdfs||0} PDFs · ${mb(b.tamanho_zip)}`:(can?'Sai sozinho com o NexxusDoc aberto.':'Feito pelo computador do master.')}</span></div>
+      <div><small>Último backup (substituído a cada dia)</small><b class="${red?'warn':b.dia?'ok':'warn'}">${b.dia?esc(when(b.criado_em)):'Ainda não feito'}</b><span>${b.dia?`${ct.arquivos||0} arquivos · ${ct.documentos||0} documentos · ${ct.pdfs||0} PDFs · ${mb(b.tamanho_zip)}`:(can?'Sai sozinho com o NexxusDoc aberto.':'Feito pelo computador do master.')}</span></div>
       <div><small>Onde fica</small><b>Meu Drive (privado)</b><span>${esc(b.local||p.pasta_privada_label||'Pasta privada não configurada neste computador')}</span></div>
     </div>
-    ${susp?`<div class="hs-prot-alert">O backup de ${esc(when(susp.quando))} <b>não substituiu</b> o anterior, porque a pasta está bem menor: ${esc((susp.problemas||[]).join('; '))}. Confira a pasta compartilhada. Se a redução foi de propósito,<button class="danger-btn" type="button" id="hs-backup-force">Substituir mesmo assim</button></div>`:''}
+    ${red?`<div class="hs-prot-alert">O último backup foi feito com a pasta menor que antes (${esc((red.problemas||[]).join('; '))}). O backup anterior foi guardado à parte${red.anterior_guardado?` em ${esc(red.anterior_guardado)}`:''}. Se ninguém apagou nada de propósito, confira a pasta compartilhada.</div>`:''}
     ${b.erro?`<div class="hs-prot-alert">Último backup falhou: ${esc(b.erro)}</div>`:''}</section>`}
 document.addEventListener('click',async e=>{
-  const now=e.target.closest('#hs-backup-now'),force=e.target.closest('#hs-backup-force');if(!now&&!force)return;
-  if(force&&!confirm('Substituir o backup bom pelo da pasta atual, que está bem menor?\n\nFaça isso só se a redução foi de propósito.'))return;
-  const b=now||force;b.disabled=true;b.textContent='Fazendo backup…';
-  try{const r=await postJson('/api/backup',{substituir_mesmo_assim:!!force});
-    if(!r.feito&&r.motivo)alert(r.motivo);else if(r.bloqueado)alert('Backup não substituído: '+(r.problemas||[]).join('; '))}
+  const b=e.target.closest('#hs-backup-now');if(!b)return;
+  b.disabled=true;b.textContent='Fazendo backup…';
+  try{const r=await postJson('/api/backup',{});if(!r.feito&&r.motivo)alert(r.motivo)}
   catch(err){alert(err.message)}
   loadHealth();
 });
@@ -4617,53 +4922,105 @@ const TIP_SVG='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 18h6M10 2
 const PAUSE_SVG='<svg viewBox="0 0 24 24"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>';
 const PLAY_SVG='<svg viewBox="0 0 24 24"><path d="M8 5.5v13l10-6.5z"/></svg>';
 const STEPS=[
- {page:'home',sel:'#pagesel-btn',icon:'home',kicker:'Navegação',title:'Seletor de páginas',
-  text:'As páginas ficam no seletor do centro do topo (ou <b>Ctrl+.</b>): <b>Visão geral</b>, <b>Chat Nexxus</b> (onde os documentos nascem), <b>Documentos</b> (onde o owner da área aprova), <b>Automação</b>, <b>Query Console</b> (tabelas do BigQuery), <b>PGL</b>, <b>Budget</b> (números para master e owners) e <b>Configurações</b>. Cada página tem seu ícone num quadro colorido; a página atual aparece no próprio seletor e fica marcada com um anel na lista.'},
+ {page:'home',sel:'#pagesel-menu',icon:'home',kicker:'Navegação',title:'Barra de páginas',
+  text:'As páginas ficam na barra de ícones do centro do topo, e <b>um clique</b> troca de página: <b>Visão geral</b>, <b>Chat Nexxus</b> (onde os documentos nascem), <b>Documentos</b> (onde o owner da área aprova), <b>Automação</b>, <b>Query Console</b> (tabelas do BigQuery), <b>PGL</b>, <b>Budget</b> (números para master e owners), <b>Auditoria</b> (controles internos) e <b>Configurações</b>. Passe o mouse sobre um ícone para ver o nome; a página atual aparece com o nome ao lado do ícone.'},
  {page:'home',sel:'.account',icon:'home',kicker:'Topo da tela',title:'Busca e notificações',
-  text:'<b>Buscar</b> (ou <b>Ctrl+K</b> em qualquer página) procura documentos, processos da área, cards da PGL, páginas e a documentação técnica. O <b>sino</b> reúne o que depende de você: documentos para aprovar, seus documentos aprovados, revisões a vencer e entrevistas em andamento.',
-  tip:'O número no sino mostra só o que você ainda não viu. Quando sair uma versão nova do NexxusDoc, aparece o botão Atualizar no topo: um clique e a tela volta atualizada, sem reinstalar.'}, {page:'home',sel:'.hero',icon:'home',kicker:'Visão geral',title:'Comece por aqui',
+  text:'<b>Buscar</b> (ou <b>Ctrl+K</b> em qualquer página) procura documentos, processos da área, cards da PGL, páginas e a documentação técnica. O <b>sino</b> reúne o que depende de você: documentos para aprovar, seus documentos aprovados, revisões a vencer, entrevistas em andamento e os avisos que foram para o Windows nos últimos 14 dias.',
+  userText:'<b>Buscar</b> (ou <b>Ctrl+K</b> em qualquer página) procura documentos, processos da área, cards da PGL, páginas e a documentação técnica. O <b>sino</b> reúne o que é seu: documentos aprovados, revisões a vencer, entrevistas em andamento e os avisos que foram para o Windows nos últimos 14 dias.',
+  tip:'O número no sino mostra só o que você ainda não viu. Quando sair uma versão nova do NexxusDoc, ele se atualiza sozinho num momento em que você não está no meio de algo: aparece "Atualizando" por alguns segundos e a tela volta na mesma página, sem reinstalar.'}, {page:'home',sel:'.hero',icon:'home',kicker:'Visão geral',title:'Comece por aqui',
   text:'Os atalhos levam direto ao Chat Nexxus: <b>Criar procedimento</b> (POP), <b>Enviar documento</b> (até 5 documentos que você já tem: guardar como estão ou revisar no novo padrão) e <b>Consultas gerais</b> (perguntas sobre processos e o próprio sistema).',
   tip:'Documentos só nascem pela entrevista com o agente: não existe formulário manual.'},
  {page:'home',sel:'#refdocs-open',icon:'home',kicker:'Visão geral',title:'REF. DOCS',
   text:'O universo dos procedimentos da área: cada fase da importação é uma galáxia e cada processo, uma estrela (documentado, com manual ou sem documento). Os pontos em volta são os vínculos com a PGL, transações SAP e controles de auditoria. Clique num processo para abrir os documentos dele em outra aba ou começar a documentá-lo. O botão <b>Fluxo de importação</b> abre a apresentação da jornada Fisia × Centauro em português, inglês ou espanhol; o globo ao lado troca o idioma.',
   tip:'Role para aproximar, arraste para navegar, clique no espaço vazio para centralizar e use a busca no topo do universo.'},
+ {page:'home',group:'refdocs',before:openRd,sel:'#refdocs .rd-modal',icon:'home',kicker:'REF. DOCS',title:'Universo dos procedimentos',
+  text:'Cada fase da importação é uma galáxia e cada processo, uma estrela: <b>verde-limão</b> = documentado no NexxusDoc, <b>ciano</b> = manual existente, <b>cinza</b> = sem documento. No topo ficam a unidade (Fisia ou Centauro), a busca de processos e o botão da apresentação; a legenda explica as cores e os vínculos (PGL, transações SAP e controles).'},
+ {page:'home',group:'refdocs',before:rdCard,sel:'#rd-panel.open',icon:'home',kicker:'REF. DOCS',title:'Card do processo',
+  text:'Clique numa estrela (ou busque pelo nome) e abre o card do processo: fase, situação da documentação, os documentos e manuais com link, os vínculos com a PGL, transações SAP e controles de auditoria, os processos ligados e as ações (abrir o PDF, documentar no NexxusDoc ou revisar o manual).'},
+ {page:'home',group:'refdocs',before:rdDeck,sel:'#refdocs .rd-deck',icon:'home',kicker:'REF. DOCS',title:'Apresentação do fluxo de importação',
+  text:'O botão <b>Fluxo de importação</b> abre a apresentação da jornada Fisia × Centauro: lead time, a rota no mapa até os CDs, as fases, o comparativo e a documentação de cada etapa. Ela passa sozinha; clique numa etapa para ver os processos e abrir o documento. O globo ao lado do botão troca o idioma (português, inglês ou espanhol).'},
+ {page:'home',sel:'.metrics',icon:'home',kicker:'Visão geral',title:'Números do acervo',
+  text:'Documentos registrados, áreas documentadas, aguardando aprovação e vigentes e <b>Vencidos para revisão</b>. Clique neste último para abrir Documentos já filtrado nas revisões vencidas ou a vencer.',
+  tip:'O aviso de revisão vai por e-mail ao autor e a todos os owners da área, mesmo com o NexxusDoc fechado.'},
  {page:'home',sel:'#home-attention-panel',icon:'home',kicker:'Visão geral',title:'Pendências para você',
-  text:'Aqui aparece o que depende de você: documentos da sua área prontos para aprovar (owner e administrador), com o botão <b>Aprovar</b>, e revisões periódicas dos seus documentos perto de vencer.'},
+  when:()=>!$('home-attention-panel').classList.contains('hidden'),  // só aparece quando há pendência
+  text:'Aqui aparece o que depende de você: documentos da sua área prontos para aprovar, com o botão <b>Aprovar</b>, e revisões periódicas dos seus documentos perto de vencer.',
+  userText:'Aqui aparecem as revisões periódicas dos seus documentos perto de vencer, com o botão para revisar.'},
  {page:'chat',sel:'.chat-tabs',icon:'chat',stage:0,kicker:'Chat Nexxus',title:'Três formas de usar o agente',
   text:'<b>Criar procedimento</b>: entrevista com o agente para um POP novo. <b>Enviar documento</b>: junte até 5 procedimentos, políticas ou manuais (de pastas diferentes ou arrastando) e escolha, para cada um, <b>só guardar</b> ou <b>revisar com o agente</b>; vários para revisar formam uma <b>fila</b> e o próximo abre quando você salva o anterior. <b>Consultas gerais</b>: perguntas sobre os processos e o próprio sistema, com a fonte de cada resposta.',
   tip:'Documento que já está no NexxusDoc não é enviado de novo: atualize em Documentos › Editar.'},
- {page:'chat',before:()=>switchChatMode('interview'),sel:'#chat-interview',icon:'chat',stage:0,kicker:'Chat Nexxus',title:'A entrevista',
-  text:'O NexxusDoc faz uma pergunta por vez e sempre sugere respostas. Quando vierem duas ou mais perguntas, responda todas (escolhendo uma sugestão ou usando <b>Outra resposta…</b>) antes de enviar. Ele pede complementos como transação SAP, link de relatório e caminho de planilha e, na Logística Internacional, pergunta a unidade (Fisia, Centauro ou as duas). O que já está nos documentos feitos aparece como sugestão para você confirmar. Se o processo já tiver documento no sistema, o NexxusDoc avisa logo no começo e pergunta se é o mesmo: sendo o mesmo, atualize o existente em vez de criar outro. Prints da tela: tire com <b>Win+Shift+S</b> e cole com <b>Ctrl+V</b> no campo da resposta; ele vai junto da resposta e entra no documento como figura, logo abaixo do passo que mostra.',
-  tip:'Nome, cargo e e-mail vêm do seu cadastro: o agente nunca pergunta. O cronômetro no topo do chat mostra o tempo ativo de preenchimento.'},
- {page:'chat',sel:'#chat-side',icon:'chat',stage:0,kicker:'Chat Nexxus',title:'Base de conhecimento do documento',
+ {page:'chat',group:'chatdemo',before:demoSend,sel:'#review-controls',icon:'chat',stage:0,kicker:'Chat Nexxus',title:'Enviar documento',
+  text:'Junte até 5 documentos que você já tem (botão <b>Adicionar documentos</b> ou arrastando para cá); aqui, dois exemplos já na lista. Em <b>Enviar documentos</b>, o agente confere se cada um é um documento operacional, lê as datas de revisão e vê se ele já está no sistema; aí você escolhe, para cada um, <b>só guardar</b> ou <b>revisar com o agente</b>.',
+  tip:'Exemplo do tour: nada é enviado.'},
+ {page:'chat',group:'chatdemo',before:demoChat,sel:'#chat-interview',icon:'chat',stage:0,kicker:'Chat Nexxus',title:'A entrevista',
+  text:'O agente faz uma pergunta por vez e sempre sugere respostas: escolha uma ou use <b>Outra resposta…</b>. Prints da tela: <b>Win+Shift+S</b> e <b>Ctrl+V</b> no campo da resposta.',
+  tip:'Nome, e-mail e área vêm do seu cadastro.'},
+ {page:'chat',group:'chatdemo',sel:'#chat-side',icon:'chat',stage:0,kicker:'Chat Nexxus',title:'Base de conhecimento do documento',
   text:'Planilhas, sistemas, links e arquivos citados na entrevista ficam vinculados ao documento e são salvos junto no Drive. Use o clipe para anexar arquivos e o ícone de link para incluir endereços. Documentos parecidos de outras áreas aparecem em <b>Documentos relacionados</b>.'},
  {page:'docs',sel:'.doc-toolbar',icon:'docs',stage:1,kicker:'Documentos',title:'Biblioteca de documentos',
-  text:'Busque por código, título, área ou autor e use as listas de área, origem, status, unidade, autor e exibir (todos, só os seus ou não salvos no Drive). A <b>Lista mestra (Excel)</b> fica ao lado de Criar com o NexxusDoc. Em <b>Origem</b> aparecem também os documentos <b>enviados</b> (guardados como estão) e os <b>mapeados</b> (manuais oficiais da área e localizados no Drive), com a situação da revisão. O filtro <b>Para eu aprovar</b> mostra o que espera a sua aprovação. A <b>Lista mestra (Excel)</b> traz código, versão, aprovação, próxima revisão e local no Drive.'},
- {page:'docs',sel:'#all-list',up:'.panel',icon:'docs',stage:1,kicker:'Documentos',title:'Ações de cada documento',
-  text:'<b>Aprovar</b> (só o owner da área ou o administrador) torna o documento vigente: o PDF ganha a marca de aprovado e a próxima revisão, e quem montou recebe um e-mail. Para vários de uma vez, marque as caixas da primeira coluna (ou <b>Selecionar todos para aprovar</b>) e use <b>Aprovar selecionados</b>. <b>Visualizar</b> abre o PDF com sumário clicável; <b>Fluxo As Is</b> abre o fluxograma do processo (quem faz cada etapa, decisões, retornos e pontos de melhoria; o check verde no botão indica que o fluxo já foi montado; quem montou o documento corrige qualquer quadro em Editar e reorganiza as etapas em Mover etapas; download em imagem e BPMN); <b>Editar</b> gera nova versão pela entrevista; <b>Salvar no Drive</b> grava na pasta definida em Configurações (subpasta POP, ou REVISÕES quando veio de Enviar documento); não há como mover para outra pasta.',
-  tip:'O owner não aprova o documento que ele mesmo montou. O e-mail de aprovado sai pelo NexxusDoc como Vektor.'},
+  text:'Busque por código, título, área ou autor e use as listas de área, origem, status, unidade, autor e exibir (todos, só os seus ou não salvos no Drive). A <b>Lista mestra (Excel)</b> fica ao lado de Criar com o NexxusDoc. Em <b>Origem</b> aparecem também os documentos <b>enviados</b> (guardados como estão) e os <b>mapeados</b> (manuais oficiais da área e localizados no Drive), com a situação da revisão. O filtro <b>Para eu aprovar</b> mostra o que espera a sua aprovação. A <b>Lista mestra (Excel)</b> traz código, versão, aprovação, próxima revisão e local no Drive.',
+  userText:'Busque por código, título, área ou autor e use as listas de área, origem, status, unidade, autor e exibir (todos, só os seus ou não salvos no Drive). Em <b>Origem</b> aparecem também os documentos <b>enviados</b> (guardados como estão) e os <b>mapeados</b> (manuais oficiais da área), com a situação da revisão. A <b>Lista mestra (Excel)</b> traz código, versão, aprovação, próxima revisão e local no Drive.'},
+ {page:'docs',sel:'#all-list tbody tr',when:()=>Boolean(document.querySelector('#all-list tbody tr')),icon:'docs',stage:1,kicker:'Documentos',title:'Ações de cada documento',
+  text:'<b>Aprovar</b> torna o documento vigente (para vários, marque as caixas e use <b>Aprovar selecionados</b>). <b>Visualizar</b> abre o PDF, <b>Fluxo As Is</b> o fluxograma do processo, <b>Editar</b> gera nova versão e <b>Salvar no Drive</b> grava na pasta da área. <b>Alterar data</b> troca a próxima revisão.',
+  tip:'Aprova o owner da área ou o master; o owner não aprova o que ele mesmo montou.',
+  userText:'<b>Visualizar</b> abre o PDF e <b>Fluxo As Is</b> o fluxograma do processo. Nos documentos que você montou: <b>Editar</b> gera nova versão, <b>Salvar no Drive</b> grava na pasta da área e <b>Alterar data</b> troca a próxima revisão.',
+  userTip:'Quem aprova é o owner da sua área ou o master; você recebe um e-mail quando o seu documento for aprovado.'},
  {page:'automation',sel:'#auto-matrix',icon:'automation',stage:2,kicker:'Automação',title:'Mapa de automação',
-  text:'Cada POP alimenta o mapa: tempo, volume e tarefas manuais viram oportunidades priorizadas por impacto × esforço. No card <b>Ganhos rápidos</b>, a pizza mostra a distribuição por prioridade, e <b>Exportar Excel</b> leva tudo para planilha.'},
- {page:'automation',sel:'#auto-rows .rx-btn',icon:'automation',stage:2,kicker:'Automação',title:'Resumo executivo',
+  text:'Cada POP alimenta o mapa: tempo, volume e tarefas manuais viram oportunidades priorizadas por impacto × esforço. No card <b>Ganhos rápidos</b>, a pizza mostra a distribuição por prioridade, e <b>Exportar Excel</b> leva tudo para planilha.',
+  empty:()=>!(state.autoRows||[]).length,emptySel:'#auto-tiles',
+  emptyText:'Este mapa se forma sozinho com os procedimentos (POPs) criados ou revisados no NexxusDoc: tempo, volume e tarefas manuais de cada um viram oportunidades de automação, priorizadas por impacto × esforço. <b>Ainda não há procedimentos com essa análise</b>, por isso os números e os quadros estão zerados; o primeiro POP gerado já aparece aqui.',
+  emptyTip:'Comece pelo Chat Nexxus › Criar procedimento ou Enviar documento.'},
+ {page:'automation',sel:'#auto-rows .rx-btn',when:()=>Boolean(document.querySelector('#auto-rows .rx-btn')),icon:'automation',stage:2,kicker:'Automação',title:'Resumo executivo',
   text:'Ao lado de cada oportunidade, o <b>robô</b> abre o resumo executivo: situação atual, o que automatizar, como funcionaria (com sistemas e transações SAP), ganhos, esforço, riscos e próximos passos. Só o <b>master</b> gera o resumo, pelo agente local instalado no computador dele; o resumo fica salvo e <b>todos veem</b>.',
   tip:'Anel girando = gerando agora. Robô aceso com selo ✓ = resumo pronto; âmbar com “!” = a oportunidade mudou depois do resumo e vale gerar de novo.'},
  {page:'automation',sel:'#sap-block',icon:'automation',stage:2,kicker:'Automação',title:'Transações SAP',
   text:'Para cada processo com transação SAP, verifique no BigQuery quantos lançamentos houve nos últimos 30 dias (BKPF, BSEG e ACDOCA) e gere a <b>ficha técnica</b> de automação no S/4HANA para a equipe de Tech SAP. O selo <b>Script SAP GUI</b> aparece só em casos específicos: onde o documento mostra uma etapa recorrente no SAP que <b>extrai relatórios ou arquivos</b> ou digita dados de planilha, que dá para gravar em script (.vbs) e rodar por macro ou Python.',
-  tip:'A consulta ao BigQuery é liberada pelo master em Configurações › Acessos; sem a liberação, os botões aparecem bloqueados.'},
- {page:'query',sel:'#page-query .qc-filter',icon:'query',stage:2,kicker:'Query Console',title:'Tabelas do BigQuery por procedimento',
-  text:'Página clara com as tabelas do BigQuery que automatizam cada procedimento da área, pela ordem da importação. Escolha o procedimento na lista: à esquerda aparece o que a consulta cobre e facilita (e o que continua fora), à direita as tabelas com as colunas, um exemplo do que elas trazem e a consulta sugerida, com a leitura estimada.',
-  tip:'Todos veem; só o administrador master gera consultas. Documento novo que entrar no sistema aparece sozinho no procedimento certo.'},
+  tip:'A consulta ao BigQuery é liberada pelo master em Configurações › Acessos; sem a liberação, os botões aparecem bloqueados.',
+  empty:()=>!(state.sap||[]).length,
+  emptyText:'Quando um procedimento citar transações SAP (MIRO, FB60, transações Z etc.), elas aparecem aqui, com quantos lançamentos houve nos últimos 30 dias no BigQuery e a <b>ficha técnica</b> de automação no S/4HANA para a equipe de Tech SAP. <b>Ainda não há transações levantadas</b>: a lista se preenche sozinha com os POPs.',
+  emptyTip:''},
+ {page:'query',group:'query',before:qcView('proc'),sel:'#page-query .qc-nav',icon:'query',stage:2,kicker:'Query Console',title:'Query Console: as abas',
+  text:'Tudo sobre as tabelas do BigQuery da área, em cinco abas: <b>Procedimentos</b> (tabelas e consulta pronta de cada procedimento), <b>Perguntar</b> (escreva em português e o NexxusDoc monta o SQL), <b>Catálogo do BigQuery</b> (todas as tabelas, com busca), <b>Processos × tabelas</b> e <b>Minhas consultas</b>.',
+  tip:'Todos veem. Gerar, ajustar e salvar consultas é para quem o administrador habilitou em Configurações › Acessos (Pode consultar o BigQuery).'},
+ {page:'query',group:'query',before:qcView('proc'),sel:'#page-query .qc-filter',icon:'query',stage:2,kicker:'Query Console',title:'Tabelas do BigQuery por procedimento',
+  text:'Na aba Procedimentos ficam as tabelas do BigQuery que automatizam cada procedimento da área, pela ordem da importação. Escolha o procedimento na lista: à esquerda aparece o que a consulta cobre e facilita (e o que continua fora), à direita as tabelas com as colunas, um exemplo do que elas trazem e a consulta pronta.',
+  tip:'Documento novo que entrar no sistema aparece sozinho no procedimento certo.'},
+ {page:'query',group:'query',before:qcPick,sel:'#page-query .qc-detail',icon:'query',stage:2,kicker:'Query Console',title:'Procedimento aberto',
+  text:'Escolhido o procedimento, à esquerda aparece o que a consulta cobre, o que ela facilita no dia a dia e o que continua fora; à direita, as tabelas do BigQuery com as colunas principais e um exemplo do que elas trazem.'},
+ {page:'query',group:'query',sel:'#page-query .qc-sql',icon:'query',stage:2,kicker:'Query Console',title:'Consulta pronta (SQL)',
+  text:'A consulta pronta para o procedimento, com as cores de cada parte do SQL. Quem está habilitado pode <b>Editar consulta</b> (um clique numa coluna insere o nome no cursor), <b>Abrir no editor</b> (para ajustar com o agente e salvar) e <b>Gerar consulta</b>: o NexxusDoc confere que é só leitura, executa e mostra o resultado, que baixa em Excel ou CSV.'},
+ {page:'query',group:'query',sel:'#page-query .qc-full',icon:'query',stage:2,kicker:'Query Console',title:'Tabela completa',
+  text:'Todas as colunas da tabela, na largura da página: busque uma coluna pelo nome e use <b>Usadas aqui</b> para ver só as que a consulta do procedimento usa.'},
+ {page:'query',group:'query',before:qcView('perguntar'),sel:'#page-query .qc-ask',icon:'query',stage:2,kicker:'Query Console',title:'Perguntar em português',
+  text:'Escreva o que quer ver (ex.: <i>pedidos Nike com quantidade em aberto por mês de remessa</i>). O NexxusDoc escolhe as tabelas, monta o SQL, confere no BigQuery e explica o que a consulta traz. A consulta vai para o <b>editor</b>, onde dá para ajustar (pedindo ao agente ou à mão), <b>Gerar consulta</b>, baixar em Excel e <b>Salvar</b>.',
+  tip:'Quem não está habilitado vê esta aba com cadeado e pode usar as consultas prontas e o catálogo.'},
+ {page:'query',group:'query',before:qcView('catalogo'),sel:'#page-query .qc-catbar',ready:()=>Boolean(document.querySelector('#page-query .qc-catr')),icon:'query',stage:2,kicker:'Query Console',title:'Catálogo do BigQuery',
+  text:'Todas as tabelas do BigQuery, agrupadas por projeto (SAP, Fisia, visões do Grupo e Centauro), com busca por nome, coluna ou assunto. Clique numa tabela para ver as colunas, em que procedimento e em quais transações SAP ela aparece e, para quem está habilitado, <b>Nova consulta com esta tabela</b>.'},
+ {page:'query',group:'query',before:qcView('processos'),sel:'#page-query .qc-prbar',ready:()=>Boolean(document.querySelector('#page-query .qc-pr')),icon:'query',stage:2,kicker:'Query Console',title:'Processos × tabelas',
+  text:'Cada processo da área (do inventário e dos documentos do NexxusDoc), agrupado pela fase (Pré-embarque, Embarque, Chegada, Desembaraço, Entrega no CD e Financeiro), com as transações SAP citadas, as tabelas do BigQuery ligadas a ele e a consulta pronta, quando existe. Também mostra o que depende de dados fora do BigQuery, como a PGL e o Siscomex.'},
+ {page:'query',group:'query',before:qcView('biblioteca'),sel:'#page-query .qc-lib',ready:()=>Boolean(document.querySelector('#page-query .qc-lib')),icon:'query',stage:2,kicker:'Query Console',title:'Minhas consultas',
+  text:'As consultas prontas da área, as que você salvou (só você vê, a não ser que compartilhe), as <b>Consultas da equipe</b> (todas as que foram compartilhadas, inclusive as suas) e o histórico das suas execuções. Marque as que mais usa com a <b>estrela</b> e abra qualquer uma no editor.'},
  {page:'pgl',sel:'#pgl-journey',icon:'pgl',stage:3,kicker:'PGL',title:'Processos executados pela PGL',
   text:'O catálogo da PGL organizado pela jornada da importação. Clique numa fase ou frente para filtrar e veja, em cada processo, o que a PGL executa, o que é da equipe SBF, o SLA e os documentos ligados.'},
  {page:'pgl',sel:'#pgl-show',icon:'pgl',stage:3,kicker:'PGL',title:'Mostrar cards',
   text:'Os cards começam recolhidos. Clique em <b>Mostrar cards</b> para ver a grade; em cada card, <b>Documentar no NexxusDoc</b> já abre a entrevista com os dados da PGL.'},
- {page:'budget',admin:true,sel:'#page-budget .bg-hero',icon:'budget',kicker:'Budget',title:'Orçamento Inbound',
+ {page:'budget',sel:'#page-budget #bg-kpis',ready:()=>Boolean(document.querySelector('#page-budget .bg-hero')),icon:'budget',kicker:'Budget',title:'Orçamento Inbound',
+  empty:()=>Boolean(document.querySelector('#page-budget .bg-hero'))&&!document.querySelector('#page-budget #bg-kpis'),emptySel:'#page-budget .bg-hero',
+  emptyText:'Aqui fica o orçamento Inbound da área, com painel de gráficos, resumo mensal, comparativo com o ano anterior, premissas editáveis e alertas. <b>Ainda não há versão do orçamento</b>: envie a planilha (MODELO, FISIA ou outra) ou carregue o modelo aprovado para começar.',emptyTip:'',
+  userText:'O orçamento Inbound da área: custo total do ano, 1º e 2º semestre, comparação com o Forecast do ano anterior, custo por unit e contêineres, com o painel de gráficos, o resumo mensal e o comparativo. <b>Os números ficam só com o master e os owners</b>: para você eles aparecem mascarados, e os gráficos, desfocados.',
+  userTip:'Se precisar dos valores, peça ao owner da sua área.',
   text:'Números e edição só para master e owners (as demais pessoas veem a página com o aviso de acesso restrito). <b>Enviar planilha</b> lê o orçamento (o MODELO, a planilha FISIA ou outra, pelos rótulos), mostra a prévia com as premissas achadas e os alertas e cria uma versão. As subpáginas ficam na barra logo abaixo dos números (Painel, Resumo mensal, Comparativo, Premissas, Alertas e Histórico de versões); a selecionada fica em verde-lima. Em <b>Premissas</b> você muda câmbio, tarifas, volumes e reajustes e vê o total recalculado na hora; salvar cria uma nova versão, com histórico. <b>Resumo mensal</b> filtra Orçamento, Budget e Forecast do ano anterior mês a mês. <b>Baixar Excel</b> gera a planilha MODELO com os gráficos e o mesmo filtro.',
   tip:'Tudo é calculado pelo sistema, com as regras da planilha MODELO; nada passa pelo agente.'},
+ {page:'audit',when:()=>!state.user?.auditoria,sel:'#page-audit #au-locked',ready:()=>Boolean(document.querySelector('#page-audit #au-locked')),icon:'audit',kicker:'Auditoria',title:'Controles internos',
+  text:'A página de controles internos da área: os controles avaliados pela Auditoria Interna, as recomendações e as solicitações de evidência. <b>Por enquanto, só o master e a gerência da área entram nela</b>; para as demais pessoas o ícone aparece com um cadeado.'},
+ {page:'audit',when:()=>Boolean(state.user?.auditoria),sel:'#page-audit #au-kpis',ready:()=>Boolean(document.querySelector('#page-audit #au-kpis')),icon:'audit',kicker:'Auditoria',title:'Controles internos',
+  text:'Os controles da área avaliados pela Auditoria Interna, as <b>recomendações</b> e as <b>solicitações de evidência</b>, cada um na sua aba, com busca e filtros por unidade, processo e situação. Clique numa linha para ver o risco, a descrição da atividade, as evidências e os responsáveis.',
+  tip:'A base vem da planilha de Controles Internos da área; o botão Abrir planilha leva ao original. Por enquanto só o master e a gerência da área entram nesta página.'},
  {page:'config',pane:'profile',sel:'.settings-nav',icon:'config',kicker:'Configurações',title:'Preferências e administração',
-  text:'Seu perfil e a pasta dos seus documentos, as notificações, a revisão periódica e os e-mails e o status das conexões (VPN, n8n e Drive). Owners e master também administram acessos e baixam o instalador para enviar a novos usuários.'},
+  text:'Seu perfil e a pasta dos seus documentos, as notificações, a revisão periódica e os e-mails e o status das conexões (VPN, n8n e Drive). Owners e master também administram acessos e baixam o instalador para enviar a novos usuários.',
+  userText:'Seu perfil e a pasta dos seus documentos, as notificações, a regra de revisão periódica e e-mails (só para consulta), o status das conexões (VPN, n8n e Drive) e a Ajuda, com este tour e a documentação.'},
  {page:'config',pane:'notifications',sel:'#notif-info',icon:'pane-notifications',kicker:'Configurações',title:'Notificações',
-  text:'Escolha quais avisos chegam como notificação do Windows: documentos para aprovar, seus documentos aprovados, revisões, respostas do agente, documento gerado e VPN desligada. Elas chegam mesmo com o NexxusDoc minimizado, uma de cada vez (várias juntas viram um resumo), e o clique abre a página certa.',
+  text:'Escolha quais avisos chegam como notificação do Windows: documentos para aprovar, seus documentos aprovados, revisões, respostas do agente, documento gerado, consulta da Query Console pronta e VPN desligada. Elas chegam mesmo com o NexxusDoc minimizado, uma de cada vez (várias juntas viram um resumo), o clique abre a página certa e cada aviso também fica no sino.',
   tip:'Use “Enviar notificação de teste” para ver como o aviso aparece.'},
  {page:'config',pane:'access',admin:true,sel:'#user-list',icon:'pane-access',kicker:'Configurações',title:'Acessos por área',
   text:'O master cadastra usuários, define os owners de cada área, a pasta dos documentos e quem pode consultar o BigQuery. <b>Revogar</b> bloqueia o acesso; <b>Excluir</b> apaga o cadastro, sem apagar os documentos da pessoa. O owner vê quem tem acesso à área dele.',
@@ -4671,7 +5028,7 @@ const STEPS=[
  {page:'config',pane:'roteiro',master:true,sel:'#rt-list',icon:'pane-roteiro',kicker:'Configurações',title:'Roteiro de perguntas',
   text:'Só para o master: o que todo procedimento precisa deixar claro para a análise de automação e melhoria (unidade, tempo, volume, pessoas, sistemas, transações SAP, dados, prazo e outros). Cada item tem um nome e a intenção; o agente formula a pergunta. Na revisão, ele só pergunta o que não está no documento nem nas respostas, um item por vez.',
   tip:'Desmarque <b>Ativo</b> para pausar um item. <b>Restaurar padrão</b> volta ao roteiro original (a versão atual fica nos backups).'},
- {page:'config',pane:'health',sel:'#settings-health',icon:'pane-health',kicker:'Configurações',title:'Health System',
+ {page:'config',pane:'health',sel:'#settings-health',ready:()=>Boolean($('hs-chart')&&(state.user?.role!=='master'||$('hs-prot')?.children.length)),icon:'pane-health',kicker:'Configurações',title:'Health System',
   text:'Monitoramento em tempo real: status geral, VPN, servidor do n8n, Google Drive e servidor local, além da latência do agente por hora e por dia, com gráfico, e do uso do sistema pela equipe. Para o master, o quadro <b>Proteção dos dados</b> mostra o cadastro assinado e o backup diário de todo o sistema (com <b>Fazer backup agora</b>).',
   tip:'Se o agente estiver lento ou fora do ar, comece por aqui: cada item diz o que está errado.'},
  {page:'config',pane:'docs',sel:'#settings-docs .docs-viewer',icon:'pane-docs',kicker:'Ajuda',title:'Documentação',
@@ -4683,13 +5040,14 @@ const T={list:[],i:-1,mode:null,paused:false,hover:false,left:0,dur:0,last:0,raf
 const iconOf=key=>{const el=key.startsWith('pane-')?document.querySelector(`.settings-item[data-settings="${key.slice(5)}"] svg`):document.querySelector(`.nav [data-page="${key}"] svg`);return el?el.outerHTML:''};
 const activeView=()=>[...document.querySelectorAll('section[id^="page-"]')].find(s=>!s.classList.contains('hidden'))?.id.slice(5)||'home';
 const firstName=()=>String(state.user?.name||state.user?.email||'').split(/[ .@_-]/)[0].replace(/^./,c=>c.toUpperCase());
-const durationOf=s=>{const words=(s.text+' '+(s.tip||'')).replace(/<[^>]+>/g,'').split(/\s+/).length;return Math.min(19000,Math.max(9000,4500+words*200))};
+const durationOf=s=>{const words=(stepText(s)+' '+(stepTip(s)||'')).replace(/<[^>]+>/g,'').split(/\s+/).length;return Math.min(19000,Math.max(9000,4500+words*200))};
 const totalMinutes=list=>Math.max(1,Math.round(list.reduce((n,s)=>n+durationOf(s)+900,0)/60000));
 function activate(s){if(s.page==='config'){if(activeView()!=='config')showPage('config');if(s.pane)setSettingsPane(s.pane)}else if(activeView()!==s.page)showPage(s.page);s.before?.()}
-function pick(s){const el=document.querySelector(s.sel),found=el&&s.up?el.closest(s.up)||el:el;
+function pick(s){const el=document.querySelector(stepSel(s)),found=el&&s.up?el.closest(s.up)||el:el;
   if(found&&!found.closest('.hidden')&&found.getClientRects().length)return found;
   return document.querySelector(`#page-${s.page} .pagehead`)}
-const available=()=>STEPS.filter(s=>(!s.admin||isAdmin())&&(!s.master||state.user?.role==='master'));
+// Passos por perfil: admin = owner e master; master = só o master; when = só se a parte existir para a pessoa agora.
+const available=()=>STEPS.filter(s=>(!s.admin||isAdmin())&&(!s.master||state.user?.role==='master')&&(!s.when||s.when()));
 function mark(body){return postJson('/api/tour/seen',body).then(fillCard).catch(()=>{})}
 function fillCard(s){const meta=$('tour-card-meta');if(!meta||!s)return;
   meta.textContent=s.seen_at?`Você viu o tour em ${new Date(s.seen_at).toLocaleDateString('pt-BR')}${s.finished?' (até o fim)':''}.`:'Você ainda não viu o tour.'}
@@ -4706,7 +5064,7 @@ function welcome(){T.mode='welcome';const name=firstName();let left=10;
   root.querySelector('[data-t="start"]').onclick=()=>{clearInterval(T.timer);startSteps()};
   root.querySelector('[data-t="skip"]').onclick=()=>close(false);
   clearInterval(T.timer);T.timer=setInterval(()=>{left--;const el=$('tour-auto');if(el)el.innerHTML=autoText();if(left<=0){clearInterval(T.timer);startSteps()}},1000)}
-function startSteps(){T.mode='step';
+function startSteps(){T.mode='step';root.classList.remove('tour-moving');
   root.innerHTML=`<div class="tour-dim"></div><div class="tour-block"></div><div class="tour-spot"></div><div class="tour-card" role="dialog" aria-label="Tour guiado"><div class="tour-body"></div>
    <div class="tour-bar"><i></i></div><div class="tour-foot"><span class="tour-count"></span><button class="tour-btn" type="button" data-t="prev" title="Anterior (←)" aria-label="Anterior"><svg viewBox="0 0 24 24"><path d="M15 5 8 12l7 7"/></svg></button><button class="tour-btn" type="button" data-t="pause" title="Pausar ou continuar (espaço)" aria-label="Pausar">${PAUSE_SVG}</button><button class="tour-btn primary" type="button" data-t="next" title="Próximo (→)">Próximo</button><button class="tour-btn ghost" type="button" data-t="exit" title="Sair do tour (Esc)">Sair</button></div></div>`;
   root.querySelector('[data-t="prev"] svg').style.cssText='fill:none;stroke:currentColor;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round';
@@ -4719,20 +5077,92 @@ function startSteps(){T.mode='step';
 function paint(){if(!T.card)return;const off=T.paused||T.hover;T.card.classList.toggle('paused',off);
   const b=root.querySelector('[data-t="pause"]');if(b)b.innerHTML=T.paused?PLAY_SVG:PAUSE_SVG;
   const c=root.querySelector('.tour-count');if(c)c.innerHTML=`${T.i+1} de ${T.list.length}${off?'<em>pausado</em>':''}`}
+// Alvo do passo pronto (página trocada e elemento visível): espera quadro a quadro, no máximo 1,2 s (antes era 0,65 s fixo).
+async function waitTarget(s,seq){const t0=performance.now();
+  while(performance.now()-t0<1700){if(seq!==T.seq)return null;
+    const el=document.querySelector(stepSel(s)),f=el&&s.up?el.closest(s.up)||el:el;
+    if(f&&!f.closest('.hidden')&&f.getBoundingClientRect().width&&(!s.ready||s.ready()||performance.now()-t0>1500)){
+      // Conteúdo que ainda está carregando (ex.: Health System) muda de tamanho: espera ficar estável por 3 quadros.
+      let last='',same=0;
+      while(same<3&&performance.now()-t0<1700){const r=f.getBoundingClientRect(),k=`${r.width|0}x${r.height|0}`;
+        same=k===last?same+1:0;last=k;await new Promise(r2=>requestAnimationFrame(r2))}
+      return f}
+    await new Promise(r=>requestAnimationFrame(r))}
+  return pick(s)}
+// Texto do passo para o perfil: usuário comum não aprova nem administra (userText/userTip quando existem).
+// Página sem dados (empty): o passo usa emptyText/emptySel/emptyTip, conforme o que a tela realmente mostra agora.
+const isEmpty=s=>Boolean(s.empty&&s.empty());
+const stepSel=s=>isEmpty(s)&&s.emptySel?s.emptySel:s.sel;
+// Perfil: userText (usuário comum) e ownerText (owner); sem eles, o texto padrão (escrito para o master).
+const stepText=s=>isEmpty(s)&&s.emptyText?s.emptyText:!isAdmin()&&s.userText?s.userText:state.user?.role==='owner'&&s.ownerText?s.ownerText:s.text;
+const stepTip=s=>isEmpty(s)&&'emptyTip' in s?s.emptyTip:!isAdmin()&&'userTip' in s?s.userTip:state.user?.role==='owner'&&'ownerTip' in s?s.ownerTip:s.tip;
+/* Tour detalhado (09/11/2026, pedido do usuário): grupos de passos que abrem partes da tela (o universo REF. DOCS e a
+   apresentação, um procedimento da Query Console com o SQL e uma demonstração no Chat Nexxus). Ao sair do grupo ou do
+   tour, tudo volta como estava; nada é gravado e nenhum pedido vai ao agente. */
+const waitEl=async(sel,ms=2500)=>{const t0=performance.now();while(performance.now()-t0<ms){const e=document.querySelector(sel);if(e)return e;await new Promise(r=>setTimeout(r,60))}return null};
+const GROUP_LEAVE={
+  refdocs:()=>{document.querySelector('#refdocs .rd-deck-close')?.click();document.querySelector('#refdocs .rd-close')?.click();
+    if(T.flowLang===null){try{localStorage.removeItem('nexus.flow.lang')}catch{}}T.flowLang=undefined},
+  query:()=>{const q=window.nexusQuery;if(q&&T.qcPrev!==undefined&&q._estado().view!==T.qcPrev)q.view(T.qcPrev);T.qcPrev=undefined;
+    const p=$('qc-proc');if(p&&p.value){p.value='';p.dispatchEvent(new Event('change',{bubbles:true}))}},
+  chatdemo:()=>{T.demo=(T.demo||0)+1;resetInterviewUi();const prev=T.chatPrev||'interview';T.chatPrev=null;switchChatMode(prev)},
+};
+function leaveGroup(){const g=T.group;T.group=null;if(g)try{GROUP_LEAVE[g]()}catch{}}
+async function openRd(){if(!$('refdocs')){$('refdocs-open').click()}await waitEl('#refdocs #rd-q');
+  document.querySelector('#refdocs .rd-deck-close')?.click();$('rd-panel')?.classList.remove('open')}
+async function rdCard(){await openRd();const stars=state.refdocs?.stars||[];
+  const s=stars.find(x=>x.s==='nexxusdoc'&&(x.m||[]).length)||stars.find(x=>x.s==='manual'&&(x.m||[]).length)||stars.find(x=>x.s==='manual')||stars[0];if(!s)return;
+  const q=$('rd-q');q.value=s.n;q.dispatchEvent(new Event('input',{bubbles:true}));
+  (await waitEl(`#rd-sugg [data-id="${CSS.escape(String(s.id))}"]`,1200))?.click()}
+async function rdDeck(){await openRd();
+  if(T.flowLang===undefined){try{T.flowLang=localStorage.getItem('nexus.flow.lang')}catch{T.flowLang=null}}
+  if(!document.querySelector('#refdocs .rd-deck'))$('rd-flow').click();
+  (await waitEl('#refdocs .rd-lp-start',900))?.click()}  // 1ª vez: começa no idioma marcado (a escolha não fica salva pelo tour)
+// Abas da Query Console no tour (12/11/2026): guarda a aba em que a pessoa estava e devolve ao sair do grupo.
+function qcView(v){return ()=>{const q=window.nexusQuery;if(!q)return;if(T.qcPrev===undefined)T.qcPrev=q._estado().view;q.view(v)}}
+function qcPick(){const p=$('qc-proc');if(!p||p.value)return;const o=[...p.options].find(x=>x.value);if(o){p.value=o.value;p.dispatchEvent(new Event('change',{bubbles:true}))}}
+function demoStart(){if(!T.chatPrev)T.chatPrev=state.chatMode||'interview';T.demo=(T.demo||0)+1;return T.demo}
+function demoSend(){demoStart();switchChatMode('review',{restore:false});
+  const mk=(n,kb)=>new File([new Uint8Array(kb*1024)],n,{lastModified:1762700000000});
+  addSendFiles([mk('POP - Conferência de Documentos de Importação.docx',184),mk('Manual - Desembaraço Aduaneiro Fisia.pdf',612)])}
+function demoChat(){const id=demoStart();switchChatMode('interview',{restore:false});
+  $('interview-start-panel').classList.add('hidden');$('interview-session').classList.remove('hidden');
+  const box=$('interview-messages');box.innerHTML='';const name=firstName();let think=null;
+  const plan=[[0,()=>bubble('interview-messages',`Olá${name?', '+name:''}! Vamos documentar um procedimento da **Logística Internacional**. Qual processo você quer documentar?`,'assistant')],
+    [700,()=>bubble('interview-messages','Conferência de documentos de importação','user')],
+    [1100,()=>{think=thinking('interview-messages')}],
+    [2300,()=>{think?.remove();bubble('interview-messages','Ótimo, vamos lá. Para começar:\n1. Esse processo vale para a **Fisia**, a **Centauro** ou as duas?\n2. Em qual sistema você registra a conferência?','assistant');
+      renderQuickReplies([{question:'Unidade',label:'Fisia',value:'Fisia'},{question:'Unidade',label:'Centauro',value:'Centauro'},{question:'Unidade',label:'As duas',value:'Fisia e Centauro'},
+        {question:'Sistema',label:'SAP (ZTMM192)',value:'SAP, transação ZTMM192'},{question:'Sistema',label:'Planilha de conferência',value:'Planilha de conferência no Drive'}])}]];
+  plan.forEach(([ms,fn])=>setTimeout(()=>{if(T.demo===id&&T.group==='chatdemo')fn()},ms))}
 async function go(i){if(i<0)return;if(i>=T.list.length){finish();return}
   const seq=++T.seq,s=T.list[i];T.i=i;T.ready=false;T.dur=durationOf(s);T.left=T.dur;
-  const before=activeView()+'|'+state.settingsPane;activate(s);
-  if(before!==activeView()+'|'+state.settingsPane||s.before)await new Promise(r=>setTimeout(r,650));
+  if(T.group&&T.group!==s.group)leaveGroup();
+  T.group=s.group||null;
+  // Troca de página: quadro e destaque somem juntos; a página troca por baixo da camada escura e os dois voltam juntos.
+  const moving=s.page!==activeView()||Boolean(s.pane&&s.pane!==state.settingsPane)||Boolean(s.before);
+  if(moving){root.classList.add('tour-moving');await new Promise(r=>setTimeout(r,180))}
   if(seq!==T.seq||T.mode!=='step')return;
-  const el=pick(s);T.target=el;T.fixed=Boolean(el&&el.closest('header.top'));
-  if(el&&!T.fixed){el.style.scrollMarginTop='80px';const r=el.getBoundingClientRect();el.scrollIntoView({behavior:'smooth',block:r.height>innerHeight*.62?'start':'center'})}
-  const stage=s.stage;
+  activate(s);
+  const el=await waitTarget(s,seq);
+  if(seq!==T.seq||T.mode!=='step')return;
+  T.target=el;T.fixed=Boolean(el&&el.closest('header.top'));
+  // Alvo fora da tela na mesma página: também some e volta junto (senão o destaque desliza enquanto a página rola).
+  let jump=moving;
+  if(!jump&&el&&!T.fixed){const r=el.getBoundingClientRect();
+    if(r.top<66||r.bottom>innerHeight-8){jump=true;root.classList.add('tour-moving');await new Promise(r2=>setTimeout(r2,180));
+      if(seq!==T.seq||T.mode!=='step')return}}
+  // Rolagem direta (a suave fazia o destaque e o quadro correrem atrás da página).
+  if(el&&!T.fixed){el.style.scrollMarginTop='80px';const r=el.getBoundingClientRect();el.scrollIntoView({behavior:'auto',block:r.height>innerHeight*.62?'start':'center'})}
+  const stage=s.stage,tip=stepTip(s);
   root.querySelector('.tour-body').innerHTML=`<div class="tour-top"><span class="tour-icon">${iconOf(s.icon)}</span><div><div class="tour-kicker">${esc(s.kicker)}</div><h3>${esc(s.title)}</h3></div></div>
-   <p class="tour-text">${s.text}</p>${s.tip?`<div class="tour-tip">${TIP_SVG}<span>${esc(s.tip)}</span></div>`:''}
+   <p class="tour-text">${stepText(s)}</p>${tip?`<div class="tour-tip">${TIP_SVG}<span>${esc(tip)}</span></div>`:''}
    ${stage!=null?`<div class="tour-flow">${FLOW.map(([,label],k)=>`<span class="${k<stage?'done':k===stage?'now':''}">${label}</span>`).join('')}</div>`:''}`;
   T.card.classList.remove('swap');void T.card.offsetWidth;T.card.classList.add('swap');
   root.querySelector('[data-t="next"]').textContent=i===T.list.length-1?'Concluir':'Próximo';
   root.querySelector('[data-t="prev"]').disabled=i===0;paint();
+  // Depois da troca de página, destaque e quadro vão direto para o lugar (sem deslizar da posição da página anterior).
+  if(jump){T.snap=true;track(0);requestAnimationFrame(()=>{if(seq===T.seq)root.classList.remove('tour-moving')})}
   setTimeout(()=>{if(seq===T.seq)T.ready=true},700)}
 // Destaque: camada escura com um recorte (clip-path) que desliza até o alvo; o anel acompanha o recorte.
 function hole(c,vw,vh){const l=c.l,t=c.t,w=Math.max(0,c.r-c.l),h=Math.max(0,c.b-c.t),q=Math.min(14,w/2,h/2);
@@ -4743,8 +5173,9 @@ function track(dt){const el=T.target;if(!el||!T.spot)return;const r=el.getBoundi
   if(!r.width&&!r.height)return;
   let l=Math.max(6,r.left-pad),t=Math.max(minTop,r.top-pad),rr=Math.min(vw-6,r.right+pad),b=Math.min(vh-6,r.bottom+pad);
   if(b-t<36){t=Math.min(t,vh-60);b=t+40}
-  const c=T.cur,k=1-Math.exp(-(dt||16)/115),goal={l,t,r:rr,b};
-  for(const p of ['l','t','r','b'])c[p]+=Math.abs(goal[p]-c[p])<.4?goal[p]-c[p]:(goal[p]-c[p])*k;
+  const c=T.cur,k=1-Math.exp(-(dt||16)/85),goal={l,t,r:rr,b};
+  if(T.snap)Object.assign(c,goal);
+  else for(const p of ['l','t','r','b'])c[p]+=Math.abs(goal[p]-c[p])<.4?goal[p]-c[p]:(goal[p]-c[p])*k;
   const key=`${c.l.toFixed(1)},${c.t.toFixed(1)},${c.r.toFixed(1)},${c.b.toFixed(1)},${vw},${vh}`;
   if(T.spotKey!==key){T.spotKey=key;const sp=T.spot.style;sp.left=c.l+'px';sp.top=c.t+'px';sp.width=(c.r-c.l)+'px';sp.height=(c.b-c.t)+'px';T.dim.style.clipPath=hole(c,vw,vh)}
   const g=20,side=Math.max(vw-rr,l)-g*2,cw=side>=400?400:side>=330?Math.floor(side):400;
@@ -4752,13 +5183,15 @@ function track(dt){const el=T.target;if(!el||!T.spot)return;const r=el.getBoundi
   const ch=T.card.offsetHeight;let x,y;
   if(vw-rr>=cw+g*2){x=rr+g;y=t}else if(l>=cw+g*2){x=l-g-cw;y=t}else if(vh-b>=ch+g*2){x=l;y=b+g}else if(t-minTop>=ch+g*2){x=l;y=t-g-ch}else{x=vw-cw-28;y=vh-ch-28}
   x=Math.max(16,Math.min(x,vw-cw-16));y=Math.max(70,Math.min(y,vh-ch-16));
-  const ck=`${x|0},${y|0}`;if(T.cardKey!==ck){T.cardKey=ck;T.card.style.left=x+'px';T.card.style.top=y+'px'}}
+  const ck=`${x|0},${y|0}`;
+  if(T.snap){T.snap=false;T.cardKey=ck;const st=T.card.style;st.transition='none';st.left=x+'px';st.top=y+'px';void T.card.offsetWidth;st.transition='';return}
+  if(T.cardKey!==ck){T.cardKey=ck;T.card.style.left=x+'px';T.card.style.top=y+'px'}}
 function loop(ts){if(T.mode!=='step')return;const dt=T.last?Math.min(120,ts-T.last):0;T.last=ts;track(dt);
   if(T.ready&&!T.paused&&!T.hover&&document.visibilityState==='visible'){T.left-=dt;if(T.left<=0){T.ready=false;go(T.i+1)}}
   if(T.bar)T.bar.style.width=(100*(1-Math.max(0,T.left)/(T.dur||1))).toFixed(2)+'%';
   T.raf=requestAnimationFrame(loop)}
-function restore(){if(T.from==='config'){showPage('config');if(T.fromPane)setSettingsPane(T.fromPane)}else showPage(T.from||'home')}
-function finish(){T.mode='done';T.seq++;cancelAnimationFrame(T.raf);mark({step:T.list.length,finished:true});const name=firstName();let left=20;
+function restore(){leaveGroup();if(T.from==='config'){showPage('config');if(T.fromPane)setSettingsPane(T.fromPane)}else showPage(T.from||'home')}
+function finish(){T.mode='done';T.seq++;cancelAnimationFrame(T.raf);leaveGroup();mark({step:T.list.length,finished:true});const name=firstName();let left=20;
   restore();window.scrollTo({top:0,behavior:'smooth'});
   root.innerHTML=`<div class="tour-stage"><div class="tour-hero">${logo}<span class="tour-kicker">Tour concluído</span><h2>Tudo pronto${name?`, ${esc(name)}`:''}! Agora é com você</h2>
    <p>O caminho de ponta a ponta: <b>converse</b> com o agente no Chat Nexxus, gere o <b>documento</b>, o owner da área <b>aprova</b> em Documentos e use o <b>Mapa de automação</b> e a <b>PGL</b> para decidir o próximo passo.</p>${heroPath()}
@@ -4766,7 +5199,7 @@ function finish(){T.mode='done';T.seq++;cancelAnimationFrame(T.raf);mark({step:T
    <div class="tour-auto">Para rever depois: Configurações › Ajuda › Tour guiado.</div></div></div>`;
   root.querySelector('[data-t="done"]').onclick=()=>close(true);root.querySelector('[data-t="again"]').onclick=()=>{close(true,true);open()};
   clearInterval(T.timer);T.timer=setInterval(()=>{left--;if(left<=0)close(true)},1000)}
-function close(done,silent){clearInterval(T.timer);cancelAnimationFrame(T.raf);const wasStep=T.mode==='step'||T.mode==='welcome';T.mode=null;T.seq++;T.target=null;T.card=T.spot=T.bar=T.dim=null;T.spotKey=T.cardKey='';T.cardW=0;
+function close(done,silent){clearInterval(T.timer);cancelAnimationFrame(T.raf);leaveGroup();const wasStep=T.mode==='step'||T.mode==='welcome';T.mode=null;T.seq++;T.target=null;T.card=T.spot=T.bar=T.dim=null;T.spotKey=T.cardKey='';T.cardW=0;
   root.innerHTML='';root.hidden=true;document.removeEventListener('keydown',onKey,true);
   if(!silent&&(wasStep||!done))restore()}
 function onKey(e){if(!T.mode)return;const k=e.key;

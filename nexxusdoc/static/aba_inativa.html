@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NexxusDoc · aba desativada</title>
+<link rel="icon" href="/static/assets/nexxusdoc.svg">
+<style>
+  /* Uma aba só (12/11/2026): a aba anterior vem para cá quando outra abre. Nenhum código do sistema roda aqui. */
+  :root{color-scheme:dark}
+  html,body{height:100%;margin:0}
+  body{display:grid;place-items:center;background:radial-gradient(1200px 600px at 50% 30%,#12251a,#070d0a 70%);
+    font-family:"Segoe UI",system-ui,sans-serif;color:#e8f0ea}
+  .card{width:min(470px,calc(100vw - 32px));padding:26px 28px 22px;border-radius:14px;border:1px solid rgba(175,208,55,.26);
+    background:linear-gradient(rgba(175,208,55,.035) 1px,transparent 1px) 0 0/22px 22px,linear-gradient(90deg,rgba(175,208,55,.035) 1px,transparent 1px) 0 0/22px 22px,linear-gradient(160deg,#122219,#0b1510 70%);
+    box-shadow:0 24px 70px rgba(0,0,0,.6),inset 0 1px 0 rgba(255,255,255,.05)}
+  .top{display:flex;align-items:center;gap:10px;font:600 11px/1 ui-monospace,Consolas,monospace;letter-spacing:.14em;text-transform:uppercase;color:#AFD037}
+  .top img{width:26px;height:26px}
+  h1{margin:14px 0 6px;font-size:20px;color:#fff}
+  p{margin:0 0 18px;color:#a9bcae;font-size:14px;line-height:1.55}
+  .actions{display:flex;justify-content:flex-end;gap:10px;align-items:center}
+  .actions small{margin-right:auto;color:#8aa093;font-size:12px}
+  button{font:600 14px "Segoe UI",system-ui,sans-serif;padding:10px 18px;border-radius:9px;border:0;cursor:pointer;background:#AFD037;color:#0b1510}
+  button:hover{filter:brightness(1.06)}
+</style>
+</head>
+<body>
+  <main class="card" role="alertdialog" aria-labelledby="t" aria-describedby="d">
+    <div class="top"><img src="/static/assets/nexxusdoc.svg" alt="">NexxusDoc · aba desativada</div>
+    <h1 id="t">O NexxusDoc está aberto em outra aba</h1>
+    <p id="d">Só uma aba do sistema fica ativa por vez, para não haver duas telas trabalhando ao mesmo tempo. Esta aba foi desativada e pode ser fechada. O que estava digitado aqui foi passado para a aba nova (quando ela está no mesmo navegador).</p>
+    <div class="actions"><small>A outra aba deixa de funcionar se você usar esta.</small><button type="button" id="usar">Usar nesta aba</button></div>
+  </main>
+<script>
+  document.getElementById('usar').addEventListener('click',()=>location.replace('/'));
+  try{window.close()}catch(e){}
+</script>
+</body>
+</html>

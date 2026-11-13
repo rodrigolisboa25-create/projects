@@ -4,6 +4,7 @@ import asyncio
 import difflib
 import json
 import hashlib
+from concurrent.futures import ThreadPoolExecutor
 import mimetypes
 import io
 import base64
@@ -37,7 +38,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field, StringConstraints
+from pydantic import BaseModel, Field, StringConstraints, field_validator
 from typing import Annotated
 
 import budget_engine  # pagina Budget (motor do orcamento; openpyxl so e carregado ao importar planilha)
@@ -115,7 +116,22 @@ async def track_activity(request: Request, call_next):
     if (request.method not in {"GET", "HEAD", "OPTIONS"} and origin
             and origin != f"{request.url.scheme}://{request.headers.get('host', '')}"):
         return JSONResponse({"detail": "Pedido bloqueado: origem diferente da tela do NexxusDoc."}, status_code=403)
-    response = await call_next(request)
+    # Atualizacao automatica (11/11/2026): pedido que grava ou chama o agente conta como trabalho em andamento; com
+    # algum em curso o servidor nao reinicia para atualizar. Depois de decidir reiniciar, nenhum pedido novo comeca.
+    path = request.url.path
+    tracked = (request.method not in {"GET", "HEAD", "OPTIONS"} and path.startswith("/api/")
+               and not path.startswith("/api/atualizacao"))
+    if tracked and _update_state.get("aplicando"):
+        return JSONResponse({"detail": "O NexxusDoc está atualizando. A tela volta sozinha em alguns segundos."},
+                            status_code=503)
+    if tracked:
+        _update_inflight["n"] += 1
+        try:
+            response = await call_next(request)
+        finally:
+            _update_inflight["n"] -= 1
+    else:
+        response = await call_next(request)
     # Seguranca (05/11/2026): o navegador nao "adivinha" o tipo do arquivo (um HTML disfarcado de PDF nao vira pagina),
     # a tela nao pode ser aberta dentro de outro site (clique enganado) e os links para fora nao levam o endereco local.
     response.headers.setdefault("X-Content-Type-Options", "nosniff")
@@ -124,7 +140,6 @@ async def track_activity(request: Request, call_next):
     # Arquivos da tela (static/): o navegador confere a versão a cada abertura (304 se não mudou), senão uma publicação
     # nova pode ficar escondida atrás da cópia antiga em cache. Exceção: .js/.css/.json pedidos com ?v= (versão no
     # endereço, ex.: os da apresentação, baixados na tela de carregamento) ficam guardados, pois outra versão = outro endereço.
-    path = request.url.path
     if path.startswith("/static/") and "cache-control" not in response.headers:
         versioned = "v" in request.query_params and path.endswith((".js", ".css", ".json"))
         response.headers["Cache-Control"] = "public, max-age=31536000, immutable" if versioned else "no-cache"
@@ -207,7 +222,7 @@ def _windows_user_email() -> str:
     except (AttributeError, OSError):
         pass
     try:
-        result = subprocess.run([_system_exe("whoami.exe"), "/upn"], capture_output=True, text=True, timeout=3, check=False,
+        result = subprocess.run([_system_exe("whoami.exe"), "/upn"], capture_output=True, text=True, timeout=8, check=False,
                                 creationflags=NO_WINDOW)
         value = result.stdout.strip().casefold()
         if result.returncode == 0 and "@" in value:
@@ -217,7 +232,39 @@ def _windows_user_email() -> str:
     return ""
 
 
-WINDOWS_EMAIL = _windows_user_email()
+# Conta do Windows (13/11/2026): quando o Windows nao confirma a conta na hora (computador ocupado ou rede da empresa
+# instavel), o servidor ficava sem conta ate reiniciar e ninguem entrava. Agora a ultima conta confirmada nesta
+# instalacao fica guardada como reserva (pasta da propria instalacao, por usuario do Windows) e a deteccao e refeita no
+# login quando falhou na abertura.
+WINDOWS_EMAIL_CACHE = ROOT / "logs" / "conta_windows.txt"
+_windows_email_state: dict[str, float] = {"tentou": 0.0}
+
+
+def _windows_email_detect() -> str:
+    email = _windows_user_email()
+    try:
+        if email:
+            if not WINDOWS_EMAIL_CACHE.is_file() or WINDOWS_EMAIL_CACHE.read_text(encoding="utf-8").strip() != email:
+                WINDOWS_EMAIL_CACHE.parent.mkdir(parents=True, exist_ok=True)
+                WINDOWS_EMAIL_CACHE.write_text(email, encoding="utf-8")
+        elif WINDOWS_EMAIL_CACHE.is_file():
+            cached = WINDOWS_EMAIL_CACHE.read_text(encoding="utf-8").strip().casefold()
+            email = cached if re.fullmatch(r"[^@\s]+@[^@\s]+\.[a-z]{2,}", cached) else ""
+    except OSError:
+        pass
+    _windows_email_state["tentou"] = time.monotonic()
+    return email
+
+
+def _windows_email() -> str:
+    """Conta do Windows; se ficou vazia na abertura, tenta de novo (no maximo a cada 20 s)."""
+    global WINDOWS_EMAIL
+    if not WINDOWS_EMAIL and time.monotonic() - _windows_email_state["tentou"] > 20:
+        WINDOWS_EMAIL = _windows_email_detect()
+    return WINDOWS_EMAIL
+
+
+WINDOWS_EMAIL = _windows_email_detect()
 
 
 # ---------------------------------------------------------------------------
@@ -451,7 +498,7 @@ def _effective_role(email: str, entry: dict[str, Any]) -> str:
 
 def current_user(request: Request) -> dict[str, Any]:
     email = str(request.session.get("email", "")).casefold()
-    if not WINDOWS_EMAIL or not email or email != WINDOWS_EMAIL:
+    if not _windows_email() or not email or email != WINDOWS_EMAIL:
         request.session.clear()
         raise HTTPException(401, "Informe o mesmo e-mail da conta Windows para entrar.")
     registry = _read_access()["users"].get(email)
@@ -1524,7 +1571,7 @@ def auth_status() -> dict[str, Any]:
 @app.post("/api/auth/login", dependencies=[Depends(local_owner)])
 def login(payload: LoginRequest, request: Request) -> dict[str, str]:
     email = payload.email.casefold()
-    if not WINDOWS_EMAIL:
+    if not _windows_email():
         raise HTTPException(503, "O Windows não disponibilizou o e-mail corporativo (UPN) da conta atual.")
     if not secrets.compare_digest(email, WINDOWS_EMAIL):
         raise HTTPException(403, "O e-mail informado não corresponde à conta conectada ao Windows.")
@@ -1547,7 +1594,7 @@ def logout(request: Request) -> dict[str, bool]:
 def who_am_i(user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
     # Somente os dados de quem esta logado (a sessao e da conta Windows desta maquina).
     return {**{key: user[key] for key in ("email", "name", "role", "area", "bigquery")},
-            "docs_folder": _folder_label(_user_docs_folder(user["email"]))}
+            "docs_folder": _folder_label(_user_docs_folder(user["email"])), "auditoria": _audit_page_access(user)}
 
 
 def _same_area(a: Any, b: Any) -> bool:
@@ -1581,6 +1628,7 @@ def admin_users(admin: dict[str, Any] = Depends(require_admin)) -> dict[str, Any
 
 @app.post("/api/admin/users")
 def add_user(payload: UserCreate, admin: dict[str, Any] = Depends(require_master)) -> dict[str, Any]:
+    _refresh_review_agenda()  # os owners da area recebem os avisos de revisao
     email = payload.email.casefold()
     if not re.fullmatch(r"[^@\s'\"<>]+@[^@\s'\"<>]+\.[^@\s'\"<>]+", email):
         raise HTTPException(422, "Informe um e-mail corporativo válido.")
@@ -1614,6 +1662,7 @@ def add_user(payload: UserCreate, admin: dict[str, Any] = Depends(require_master
 
 @app.patch("/api/admin/users")
 def change_user_access(payload: UserUpdate, admin: dict[str, Any] = Depends(require_master)) -> dict[str, Any]:
+    _refresh_review_agenda()
     email = payload.email.casefold()
     access = _read_access()
     target = access["users"].get(email)
@@ -1664,6 +1713,7 @@ def change_user_access(payload: UserUpdate, admin: dict[str, Any] = Depends(requ
 def delete_user(email: str, master: dict[str, Any] = Depends(require_master)) -> dict[str, Any]:
     """Exclui o cadastro (so o master). Os documentos da pessoa continuam no sistema com o mesmo autor; o cadastro
     excluido fica registrado na auditoria. Diferente de "Revogar", que so bloqueia o acesso e mantem o cadastro."""
+    _refresh_review_agenda()
     email = email.casefold()
     access = _read_access()
     target = access["users"].get(email)
@@ -1748,22 +1798,24 @@ def _n8n_auth_header() -> dict[str, str]:
 N8N_LOST_EXECUTION = ("recusou a busca do resultado", "terminou com erro antes de entregar")
 
 
-async def _send_n8n(message: dict[str, Any], session_id: str) -> Any:
+async def _send_n8n(message: dict[str, Any], session_id: str, url: str | None = None) -> Any:
     """Chamada ao agente com uma nova tentativa quando o n8n PERDE a execucao (sobrecarga: a busca do resultado e
     recusada com 401/403 depois de minutos, ou a execucao cai antes de entregar). Teste de 03/11/2026: com 10 pessoas ao
-    mesmo tempo, 4 de 10 caiam assim. Conversa com o agente nao tem efeito colateral; e-mail nunca e refeito."""
+    mesmo tempo, 4 de 10 caiam assim. Conversa com o agente nao tem efeito colateral; e-mail nunca e refeito.
+    url: outro fluxo do mesmo n8n (ex.: Auditoria), com o mesmo protocolo "pede e busca"."""
     try:
-        return await _send_n8n_once(message, session_id)
+        return await _send_n8n_once(message, session_id, url)
     except HTTPException as exc:
         lost = exc.status_code == 502 and any(text in str(exc.detail) for text in N8N_LOST_EXECUTION)
         if not lost or message.get("task") == "send_notification":
             raise
         print(f"n8n {message.get('task', '')}: execucao perdida no servidor ({exc.detail}); refazendo o pedido", flush=True)
-        return await _send_n8n_once(message, session_id + "-r")
+        return await _send_n8n_once(message, session_id + "-r", url)
 
 
-async def _send_n8n_once(message: dict[str, Any], session_id: str) -> Any:
-    if not N8N_URL:
+async def _send_n8n_once(message: dict[str, Any], session_id: str, url: str | None = None) -> Any:
+    target = url or N8N_URL
+    if not N8N_URL or not target:
         raise HTTPException(503, "NEXUS_N8N_URL não está configurada no arquivo .env da instalação.")
     if (await asyncio.to_thread(_vpn_status)).get("connected") is False:
         raise HTTPException(503, "VPN desconectada. Conecte a VPN corporativa (GlobalProtect) e tente novamente.")
@@ -1786,7 +1838,7 @@ async def _send_n8n_once(message: dict[str, Any], session_id: str) -> Any:
                 per_try = (httpx.Timeout(connect=20.0, read=N8N_ACCEPT_SECONDS, write=60.0, pool=20.0)
                            if quick and not last else timeout)
                 try:
-                    async with client.stream("POST", N8N_URL, json=payload, headers=headers, timeout=per_try) as response:
+                    async with client.stream("POST", target, json=payload, headers=headers, timeout=per_try) as response:
                         body = (await response.aread()).decode("utf-8", errors="replace")
                 except httpx.ReadTimeout:
                     if last:
@@ -2372,7 +2424,7 @@ def _new_document_prompt(answers: dict[str, str], record_id: str, kind: str = "p
                          knowledge_base: dict[str, Any] | None = None, review: bool = False) -> dict[str, Any]:
     context = {"questionnaire": answers, "reference_documents": reference_documents or [],
                "knowledge_base": knowledge_base or {"links": [], "files": []},
-               "area_market_reference": _area_reference(answers.get("area", "")),
+               "area_market_reference": _area_reference(answers.get("area", ""), topic=str(answers.get("processo") or "")[:200]),
                # o que ja foi confirmado em documentos relacionados (sem o proprio documento, quando e nova versao)
                "documented_knowledge": _documented_knowledge(answers, limit=5, size=500, exclude_ids={record_id}),
                "record_id": record_id, "created_at": datetime.now(timezone.utc).isoformat()}
@@ -2613,11 +2665,13 @@ class SettingsChange(BaseModel):
 
 @app.get("/api/settings")
 def get_settings(_: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
-    return _settings()
+    # avisos_n8n: se o n8n ja envia os avisos de revisao sozinho (Configuracoes › Revisao e e-mails mostra)
+    return {**_settings(), "avisos_n8n": _n8n_schedule_status()}
 
 
 @app.put("/api/admin/settings")
 def change_settings(payload: SettingsChange, master: dict[str, Any] = Depends(require_master)) -> dict[str, Any]:
+    _refresh_review_agenda()  # meses, dias de aviso e e-mails ligados mudam a agenda
     access = _read_access()
     changes = payload.model_dump(exclude_none=True)
     access.setdefault("settings", {}).update(changes)
@@ -3097,7 +3151,7 @@ SAP_SQL_TEMPLATE = """-- NexxusDoc: documentos contabeis (BKPF) com __CAMPO_DATA
 -- Custo controlado: so as colunas usadas e poda de particao por kafka_arrival_timestamp (chegada no lake ate 8 dias depois).
 WITH bkpf AS (
   SELECT __SELECAO__
-  FROM `your-gcp-project.trusted.sap_bkpf`
+  FROM `example-sap-project.trusted.sap_bkpf`
   WHERE kafka_arrival_timestamp >= TIMESTAMP('__INICIO__')
     AND kafka_arrival_timestamp < TIMESTAMP(DATE_ADD(DATE '__FIM__', INTERVAL 8 DAY))
     AND __CAMPO_DATA__ BETWEEN DATE '__INICIO__' AND DATE '__FIM__'
@@ -3106,14 +3160,14 @@ WITH bkpf AS (
 ),
 bseg AS (
   SELECT DISTINCT s.bukrs, s.gjahr, s.belnr
-  FROM `your-gcp-project.trusted.sap_bseg` AS s
+  FROM `example-sap-project.trusted.sap_bseg` AS s
   JOIN bkpf AS d USING (bukrs, gjahr, belnr)
   WHERE s.kafka_arrival_timestamp >= TIMESTAMP('__INICIO__')
     AND s.kafka_arrival_timestamp < TIMESTAMP(DATE_ADD(DATE '__FIM__', INTERVAL 8 DAY))
 ),
 acdoca AS (
   SELECT DISTINCT a.rbukrs AS bukrs, a.gjahr, a.belnr
-  FROM `your-gcp-project.trusted.sap_acdoca` AS a
+  FROM `example-sap-project.trusted.sap_acdoca` AS a
   JOIN bkpf AS d ON a.rbukrs = d.bukrs AND a.gjahr = d.gjahr AND a.belnr = d.belnr
   WHERE a.kafka_arrival_timestamp >= TIMESTAMP('__INICIO__')
     AND a.kafka_arrival_timestamp < TIMESTAMP(DATE_ADD(DATE '__FIM__', INTERVAL 8 DAY))
@@ -3552,15 +3606,18 @@ INSTALLER_README = """NexxusDoc - Instalação (Grupo SBF)
 Antes de instalar
 1. Peça ao administrador para cadastrar o seu e-mail no NexxusDoc (Configurações > Acessos por área).
 2. Tenha o Google Drive para computador aberto e sincronizando.
-3. Dê acesso à pasta do sistema no seu Drive: no navegador, abra "Compartilhados comigo", clique com o botão
-   direito na pasta SeuProjeto > Organizar > Adicionar atalho > Meu Drive. Aguarde ela aparecer no Explorador
-   de Arquivos (G:\\Meu Drive\\SeuProjeto\\NexxusDoc).
+3. Confirme que você tem acesso à pasta do sistema: Drives compartilhados > Sua Area > Nexxus > NexxusDoc
+   (no Explorador de Arquivos, G:\\Drives compartilhados\\Sua Area\\Nexxus\\NexxusDoc). Se você é membro
+   do drive compartilhado Sua Area, ela já aparece sozinha. Se recebeu acesso só à pasta Nexxus: no navegador,
+   abra "Compartilhados comigo", clique com o botão direito na pasta Nexxus > Organizar > Adicionar atalho >
+   Meu Drive e aguarde ela aparecer no Explorador de Arquivos. Sem o Google Drive para computador, o instalador usa
+   o Drive pela nuvem.
 
 Instalar
 1. Clique com o botão direito neste .zip > Extrair tudo (não execute de dentro do .zip).
 2. Na pasta extraída, dê dois cliques em INSTALAR_NEXXUSDOC.bat.
    O instalador usa o Python da máquina ou baixa o oficial (python.org), instala tudo na sua pasta de usuário,
-   encontra a pasta NexxusDoc no Google Drive (se não achar, pede para você apontá-la) e cria o atalho
+   encontra a pasta do sistema no Google Drive (se não achar, pede para você apontá-la) e cria o atalho
    NexxusDoc na Área de Trabalho.
 3. Abra o atalho NexxusDoc e entre com o seu e-mail corporativo (o mesmo da conta Windows).
    Para conversar com o NexxusDoc, a VPN (GlobalProtect) precisa estar conectada.
@@ -3715,7 +3772,91 @@ def approve_document(record_id: str, payload: WorkflowDecision, background: Back
         shutil.copy2(_long(pdf), _long(saved))  # a copia no Drive passa a ser a versao vigente
     _audit(user["email"], "aprovado", documento=record_id, titulo=record["document"].get("title", ""))
     background.add_task(_notify_decision, record_id)
+    background.add_task(_write_review_agenda)
     return _workflow_item(record)
+
+
+# Data da proxima revisao alterada a mao (09/11/2026, pedido do usuario): a data automatica (aprovacao + meses de
+# Configuracoes) pode ser trocada em Documentos pelo autor (ou quem enviou), pelo owner da area ou pelo master.
+REVIEW_DATE_MAX_MONTHS = 60
+
+
+class ReviewDateChange(BaseModel):
+    data: Annotated[str, StringConstraints(pattern=r"^\d{4}-\d{2}-\d{2}$")]
+
+
+def _can_change_review(owner_email: Any, area: Any, user: dict[str, Any]) -> bool:
+    return (user.get("role") == "master" or str(owner_email or "").casefold() == user["email"].casefold()
+            or (user.get("role") == "owner" and _same_area(user.get("area"), area)))
+
+
+def _review_date_value(text: str) -> date:
+    try:
+        chosen = date.fromisoformat(text)
+    except ValueError:
+        raise HTTPException(422, "Data inválida.")
+    today = datetime.now(SAO_PAULO).date()
+    if chosen < today or chosen > _add_months_date(today, REVIEW_DATE_MAX_MONTHS):
+        raise HTTPException(422, "Escolha uma data a partir de hoje e em até 5 anos.")
+    return chosen
+
+
+@app.put("/api/documents/{record_id}/revisao")
+def change_review_date(record_id: str, payload: ReviewDateChange, background: BackgroundTasks,
+                       user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    record = _read_record(record_id)
+    if record.get("status") != "vigente":
+        raise HTTPException(409, "Só documentos vigentes (aprovados) têm revisão periódica.")
+    if not _can_change_review(record.get("owner_email"), record.get("area"), user):
+        raise HTTPException(403, "Só o autor do documento, o owner da área ou o administrador master altera a data de revisão.")
+    chosen = _review_date_value(payload.data)
+    settings = _settings()
+    previous = _review_info(record, settings).get("review_due", "")
+    due = datetime(chosen.year, chosen.month, chosen.day, 12, 0, tzinfo=SAO_PAULO)
+    record["review_due"] = due.isoformat()
+    record["review_due_changed"] = {"por": user["email"], "em": datetime.now(timezone.utc).isoformat(), "anterior": previous}
+    _history(record, "revisao_alterada", user["email"], f"Próxima revisão: {chosen:%d/%m/%Y}", anterior=previous)
+    # O PDF vigente traz a proxima revisao: refaz o PDF (sem IA) com a data nova; falhou, fica o anterior.
+    approval = record.get("approval") or {}
+    try:
+        pdf = build_pdf(record["document"], record.get("answers") or {}, record_id, record.get("knowledge_base"),
+                        approval={"name": approval.get("approver_name", ""), "email": approval.get("approver_email", ""),
+                                  "date": _parse_time(approval.get("decided_at")) or datetime.now(timezone.utc),
+                                  "review_due": due},
+                        automation=record.get("automation"))
+        old_pdf = record.get("pdf_filename")
+        record.update({"pdf_filename": pdf.name, "pdf_outline": getattr(build_pdf, "last_outline", [])})
+        if old_pdf and old_pdf != pdf.name and old_pdf not in {v.get("pdf_filename") for v in record.get("versions", [])}:
+            try:
+                (OUTPUT_DIR / old_pdf).unlink()
+            except OSError:
+                pass
+        saved = _saved_file(record)
+        if saved and saved.parent.is_dir():
+            shutil.copy2(_long(pdf), _long(saved))  # a copia no Drive continua igual a vigente
+    except Exception as exc:  # noqa: BLE001
+        print(f"PDF nao refeito com a nova data de revisao ({record_id}): {exc!r}", flush=True)
+    _write_record(record)
+    _audit(user["email"], "revisao_data_alterada", documento=record_id, de=previous, para=chosen.isoformat())
+    background.add_task(_write_review_agenda)
+    return {"id": record_id, **_review_info(record, settings)}
+
+
+@app.put("/api/envios/{doc_id}/revisao")
+def change_sent_review_date(doc_id: str, payload: ReviewDateChange, background: BackgroundTasks,
+                            user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    doc = _sent_read(doc_id)
+    if not _can_change_review(doc.get("enviado_por"), doc.get("area"), user):
+        raise HTTPException(403, "Só quem enviou o documento, o owner da área ou o administrador master altera a data de revisão.")
+    chosen = _review_date_value(payload.data)
+    previous = doc.get("proxima_revisao", "")
+    doc.update({"proxima_revisao": chosen.isoformat(), "fonte_datas": "pessoa",
+                "revisao_alterada": {"por": user["email"], "em": datetime.now(timezone.utc).isoformat(), "anterior": previous}})
+    _sent_write(doc)
+    _audit(user["email"], "revisao_data_alterada", documento=f"env-{doc_id}", de=previous, para=chosen.isoformat())
+    background.add_task(_write_review_agenda)
+    settings = _settings()
+    return {"id": f"env-{doc_id}", **_due_state(chosen, datetime.now(SAO_PAULO).date(), int(settings["review_notice_days"]))}
 
 
 @app.post("/api/workflow/{record_id}/request-changes")
@@ -4211,13 +4352,159 @@ def _save_notice_marks(record_id: str, marks: dict[str, Any]) -> None:
     Path(_long(NOTICE_DIR / f"{record_id}.json")).write_text(json.dumps(marks, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
+# ---------------------------------------------------------------------------
+# Avisos de revisao periodica (09/11/2026, pedido do usuario: "tem que sair independente do autor").
+# O e-mail vai ao responsavel (autor ou quem enviou) e a TODOS os owners da area. Quem envia e o n8n, sozinho, todo
+# dia (8h e 14h): o app grava no Drive a agenda (nexxusdoc_agenda_revisoes.json, com destinatarios, datas e o texto
+# pronto de cada aviso) e o n8n grava o que ja enviou (nexxusdoc_avisos_enviados.json, que so ele escreve). Enquanto
+# o n8n nao roda (fluxo nao reimportado, ou parado ha mais de 36 h), o app envia como antes, da maquina do autor.
+# ---------------------------------------------------------------------------
+REVIEW_AGENDA_FILE = SHARED_ROOT / "nexxusdoc_agenda_revisoes.json"
+N8N_NOTICES_FILE = SHARED_ROOT / "nexxusdoc_avisos_enviados.json"
+N8N_SCHEDULE_HOURS = 36
+
+
+def _area_owner_emails(area: Any) -> list[str]:
+    return [item["email"] for item in _active_directory() if item["role"] == "owner" and _same_area(item.get("area"), area)]
+
+
+def _notice_recipients(*emails: Any) -> list[str]:
+    return sorted({str(e).strip().casefold() for e in emails if e and EMAIL_ALLOWED.fullmatch(str(e).strip().casefold())})
+
+
+def _record_notice(record: dict[str, Any], state: str, due: date) -> dict[str, Any]:
+    """Aviso de revisao de um documento do NexxusDoc (mesmo texto no envio pelo app e na agenda do n8n)."""
+    due_text = due.strftime("%d/%m/%Y")
+    heading = "Revisão vencida" if state == "vencida" else "Revisão próxima do vencimento"
+    intro = (f"A revisão periódica deste documento venceu em {due_text}." if state == "vencida"
+             else f"A revisão periódica deste documento vence em {due_text}.")
+    return {"assunto": _subject(heading, record),
+            "html": _email_html(heading, intro, [*_doc_rows(record), ("Próxima revisão", due_text)],
+                                "Revise em Documentos › Editar: o NexxusDoc gera a nova versão, que o owner da área aprova "
+                                "em Documentos. Se a revisão precisar de outra data, o autor ou o owner da área altera em "
+                                "Documentos.")}
+
+
+def _sent_notice(doc: dict[str, Any], state: str, due: date) -> dict[str, Any]:
+    """Aviso de revisao de um documento enviado (guardado como esta)."""
+    due_text = due.strftime("%d/%m/%Y")
+    heading = "Revisão vencida" if state == "vencida" else "Revisão próxima do vencimento"
+    intro = (f"A revisão deste documento guardado no NexxusDoc venceu em {due_text}." if state == "vencida"
+             else f"A revisão deste documento guardado no NexxusDoc vence em {due_text}.")
+    title = " ".join(str(doc.get("titulo", "")).split())
+    short = title if len(title) <= 48 else title[:48].rsplit(" ", 1)[0] + "…"
+    rows = [("Código", doc.get("codigo") or "-"), ("Documento", title), ("Área", doc.get("area", "")),
+            ("Enviado por", _author_label(doc.get("enviado_por", ""))), ("Arquivo", doc.get("arquivo", "")),
+            ("Próxima revisão", due_text)]
+    return {"assunto": f"[NexxusDoc] {heading}: {doc.get('codigo') or 'Documento guardado'} · {short}",
+            "html": _email_html(heading, intro, rows, "Revise em Documentos › Revisar: o NexxusDoc traz o documento para o "
+                                                      "novo padrão e o owner da área aprova em Documentos.")}
+
+
+def _sp_date(value: Any) -> date | None:
+    """Data (Brasilia) de um valor gravado: 'aaaa-mm-dd' fica como esta; data e hora vira o dia em Brasilia."""
+    text = str(value or "")
+    if re.fullmatch(r"\d{4}-\d{2}-\d{2}", text):
+        return date.fromisoformat(text)
+    moment = _parse_time(text)
+    return moment.astimezone(SAO_PAULO).date() if moment else None
+
+
+def _review_agenda() -> dict[str, Any]:
+    """Todos os documentos com revisao periodica: datas, destinatarios e o texto pronto dos dois avisos."""
+    settings = _settings()
+    notice = int(settings["review_notice_days"])
+    items: list[dict[str, Any]] = []
+
+    def add(key: str, due: date | None, to: list[str], build: Any, drive: dict[str, str]) -> None:
+        if not due:
+            return
+        marks = _notice_marks(key)
+        avisado = {state: str(_sp_date(marks.get(f"revisao_{state}")) or "") for state in ("proxima", "vencida")
+                   if marks.get(f"revisao_{state}")}
+        items.append({"id": key, "vence_em": due.isoformat(), "aviso_em": (due - timedelta(days=notice)).isoformat(),
+                      "para": to, "avisado": avisado, **drive,
+                      "proxima": build("proxima", due), "vencida": build("vencida", due)})
+
+    for record in _load_records():
+        info = _review_info(record, settings)
+        if not info:
+            continue
+        drive = ({"drive_lookup": record["doc_code"], "drive_search_url": _drive_search_url(record)}
+                 if record.get("doc_code") and record.get("saved_location") else {})
+        add(record["id"], _sp_date(info["review_due"]),
+            _notice_recipients(record.get("owner_email", ""), *_area_owner_emails(record.get("area"))),
+            lambda state, due, r=record: _record_notice(r, state, due), drive)
+    for doc in _sent_docs():
+        if doc.get("revisado_em"):
+            continue
+        add(f"env-{doc['id']}", _to_date(doc.get("proxima_revisao")),
+            _notice_recipients(doc.get("enviado_por", ""), *_area_owner_emails(doc.get("area"))),
+            lambda state, due, d=doc: _sent_notice(d, state, due), {})
+    return {"versao": 1, "ativo": bool(settings["email_notifications"]), "aviso_dias": notice,
+            "gerado_em": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            "itens": sorted(items, key=lambda item: item["vence_em"])}
+
+
+AGENDA_LOCK = threading.Lock()
+
+
+def _write_review_agenda() -> bool:
+    """Grava a agenda no Drive so quando ela muda (varias maquinas calculam a mesma agenda). No modo nuvem nao grava:
+    os enderecos do Drive podem aparecer diferentes nessas maquinas e a agenda ficaria trocando."""
+    if CLOUD_MODE:
+        return False
+    with AGENDA_LOCK:
+        try:
+            agenda = _review_agenda()
+            try:
+                current = json.loads(REVIEW_AGENDA_FILE.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                current = {}
+            same = lambda data: {k: v for k, v in data.items() if k != "gerado_em"}  # noqa: E731
+            if same(current) == same(agenda):
+                return False
+            temp = REVIEW_AGENDA_FILE.with_name(f".{REVIEW_AGENDA_FILE.name}.tmp")
+            temp.write_text(json.dumps(agenda, ensure_ascii=False, indent=1), encoding="utf-8")
+            os.replace(temp, REVIEW_AGENDA_FILE)
+            return True
+        except Exception as exc:  # a agenda nunca impede a operacao
+            print(f"Agenda de revisoes nao gravada: {exc!r}", flush=True)
+            return False
+
+
+def _refresh_review_agenda() -> None:
+    """Depois de mudar cadastro, configuracao ou a lista de documentos: regrava a agenda em segundo plano, alguns
+    segundos depois (a gravacao da propria operacao termina antes)."""
+    threading.Thread(target=lambda: (time.sleep(4), _write_review_agenda()), daemon=True).start()
+
+
+def _n8n_notices() -> dict[str, Any]:
+    try:
+        return json.loads(N8N_NOTICES_FILE.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
+def _n8n_schedule_status() -> dict[str, Any]:
+    """O n8n rodou a agenda nas ultimas 36 h? Entao e ele quem envia os avisos de revisao."""
+    data = _n8n_notices()
+    last = _parse_time(data.get("ultima_execucao"))
+    active = bool(last) and datetime.now(timezone.utc) - last < timedelta(hours=N8N_SCHEDULE_HOURS)
+    return {"ativo": active, "ultima_execucao": last.isoformat() if last else "",
+            "enviados": len(data.get("enviados") or {}), "agenda": REVIEW_AGENDA_FILE.is_file()}
+
+
 async def _scheduled_notifications() -> None:
-    """Lembretes automaticos (a cada abertura e a cada 6 h). Cada autor avisa so sobre os proprios documentos:
-    a mesma mensagem nunca sai de duas maquinas."""
+    """A cada abertura e a cada 6 h: atualiza a agenda de revisoes no Drive. Se o n8n ainda nao estiver enviando,
+    a maquina do autor envia os avisos dos proprios documentos (a mesma mensagem nunca sai de duas maquinas)."""
+    await asyncio.to_thread(_write_review_agenda)
     if not WINDOWS_EMAIL or not N8N_URL:
         return
     settings = _settings()
-    if not settings["email_notifications"] or (await asyncio.to_thread(_vpn_status)).get("connected") is False:
+    if not settings["email_notifications"] or (await asyncio.to_thread(_n8n_schedule_status))["ativo"]:
+        return
+    if (await asyncio.to_thread(_vpn_status)).get("connected") is False:
         return
     directory = _active_directory()
     for record in await asyncio.to_thread(_load_records):
@@ -4229,14 +4516,9 @@ async def _scheduled_notifications() -> None:
         state = info.get("review_state")
         if state in {"proxima", "vencida"} and marks.get(f"revisao_{state}") != info["review_due"]:
             owners = [item["email"] for item in directory if item["role"] == "owner" and _same_area(item.get("area"), record.get("area"))]
-            due = _br_date(info["review_due"])
-            heading = "Revisão vencida" if state == "vencida" else "Revisão próxima do vencimento"
-            intro = (f"A revisão periódica deste documento venceu em {due}." if state == "vencida"
-                     else f"A revisão periódica deste documento vence em {due} ({info['review_days']} dias).")
-            if await _notify(f"revisao_{state}", [record.get("owner_email", ""), *owners], _subject(heading, record),
-                             _email_html(heading, intro, [*_doc_rows(record), ("Próxima revisão", due)],
-                                         "Revise em Documentos › Editar: o NexxusDoc gera a nova versão, que o owner da área aprova em Documentos."),
-                             record["id"], record):
+            message = _record_notice(record, state, _sp_date(info["review_due"]))
+            if await _notify(f"revisao_{state}", [record.get("owner_email", ""), *owners], message["assunto"],
+                             message["html"], record["id"], record):
                 marks[f"revisao_{state}"] = info["review_due"]
                 _save_notice_marks(record["id"], marks)
     # Documentos enviados para guardar: a mesma revisao periodica, pela data lida do documento (ou ajustada pela pessoa).
@@ -4249,19 +4531,8 @@ async def _scheduled_notifications() -> None:
         marks = _notice_marks(key)
         if state in {"proxima", "vencida"} and marks.get(f"revisao_{state}") != info["review_due"]:
             owners = [item["email"] for item in directory if item["role"] == "owner" and _same_area(item.get("area"), doc.get("area"))]
-            due = datetime.fromisoformat(info["review_due"]).strftime("%d/%m/%Y")
-            heading = "Revisão vencida" if state == "vencida" else "Revisão próxima do vencimento"
-            intro = (f"A revisão deste documento guardado no NexxusDoc venceu em {due}." if state == "vencida"
-                     else f"A revisão deste documento guardado no NexxusDoc vence em {due} ({info['review_days']} dias).")
-            title = " ".join(str(doc.get("titulo", "")).split())
-            short = title if len(title) <= 48 else title[:48].rsplit(" ", 1)[0] + "…"
-            rows = [("Código", doc.get("codigo") or "-"), ("Documento", title), ("Área", doc.get("area", "")),
-                    ("Enviado por", _author_label(doc.get("enviado_por", ""))), ("Arquivo", doc.get("arquivo", "")),
-                    ("Próxima revisão", due)]
-            if await _notify(f"revisao_{state}", [doc.get("enviado_por", ""), *owners],
-                             f"[NexxusDoc] {heading}: {doc.get('codigo') or 'Documento guardado'} · {short}",
-                             _email_html(heading, intro, rows, "Revise em Documentos › Revisar: o NexxusDoc traz o documento "
-                                                               "para o novo padrão e o owner da área aprova em Documentos."), key):
+            message = _sent_notice(doc, state, date.fromisoformat(info["review_due"]))
+            if await _notify(f"revisao_{state}", [doc.get("enviado_por", ""), *owners], message["assunto"], message["html"], key):
                 marks[f"revisao_{state}"] = info["review_due"]
                 _save_notice_marks(key, marks)
 
@@ -4448,6 +4719,46 @@ def budget_home(user: dict[str, Any] = Depends(_budget_user)) -> dict[str, Any]:
             "pode_excluir": user.get("role") == "master"}
 
 
+# Budget com os numeros mascarados para quem nao e master nem owner (09/11/2026, pedido do usuario): a pessoa ve como a
+# pagina e organizada, mas NENHUM valor real sai do servidor. A estrutura vem do modelo padrao e cada numero vira um
+# valor sorteado (sem relacao com o real); textos com numeros (alertas) perdem os digitos. A tela mostra "••••".
+BUDGET_KEEP_NUMBERS = {"ano", "mes", "meses", "ordem", "ver", "versao"}
+
+
+def _budget_masked(value: Any, rnd: Any, key: str = "") -> Any:
+    if isinstance(value, bool) or key in BUDGET_KEEP_NUMBERS:
+        return value
+    if isinstance(value, (int, float)):
+        return round(rnd.uniform(0.2, 1.0) * (1 if abs(value) < 1.5 else 1000), 2)
+    if isinstance(value, str):
+        return re.sub(r"\d", "•", value)
+    if isinstance(value, list):
+        return [_budget_masked(item, rnd, key) for item in value]
+    if isinstance(value, dict):
+        return {k: _budget_masked(v, rnd, k) for k, v in value.items()}
+    return value
+
+
+@app.get("/api/budget/mascarado")
+def budget_masked(user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    import random
+    params = budget_engine.default_params()
+    full = _budget_full(params, [])
+    rnd = random.Random(20261109)
+    return {"mascarado": True,
+            "home": {"versoes": [{"id": "mascarado", "nome": "Orçamento Inbound", "ciclo": "Budget",
+                                  "criado_em": datetime.now(timezone.utc).isoformat(), "criado_por": "", "origem": "modelo"}],
+                     # o catalogo traz os valores padrao reais ("v"): passa pela mesma mascara
+                     "ciclos": [], "catalogo": _budget_masked({"escalares": budget_engine.ESCALARES, "tarifas": budget_engine.TARIFAS,
+                                                               "rubricas": [{"k": r["k"], "l": r["l"]} for r in budget_engine.RUBRICAS],
+                                                               "meses": budget_engine.MESES}, rnd),
+                     "benchmarks": {}, "modelo_disponivel": False, "pode_excluir": False},
+            "dados": {"versao": {"id": "mascarado", "nome": "Orçamento Inbound", "ciclo": "Budget", "origem": "modelo",
+                                 "criado_em": datetime.now(timezone.utc).isoformat(), "criado_por": ""},
+                      "params": _budget_masked(full["params"], rnd), "resultado": _budget_masked(full["resultado"], rnd),
+                      "alertas": [], "mudancas": [], "origem_premissas": {}, "nao_encontrados": [], "reproducao": None}}
+
+
 @app.get("/api/budget/versoes/{vid}")
 def budget_version(vid: str, user: dict[str, Any] = Depends(_budget_user)) -> dict[str, Any]:
     version = _budget_read(vid)
@@ -4545,7 +4856,7 @@ def budget_from_model(user: dict[str, Any] = Depends(_budget_user)) -> dict[str,
     if not (store / key).is_file():
         (store / key).write_bytes(content)
     version = _budget_new_version(user, f"Orçamento {preview['params']['ano']}", "Modelo aprovado (04/11/2026)", "modelo",
-                                  preview["params"], formato="modelo", arquivo="Orcamento_Inbound_2027_Resumo_Executivo_MODELO.xlsx",
+                                  preview["params"], formato="modelo", arquivo="CONFIGURE_ID.xlsx",
                                   arquivo_key=key, sha256=sha, origem_premissas=preview["origem"], nao_encontrados=[],
                                   reproducao=preview.get("reproducao"), alertas_importacao=preview["alertas"])
     return {"id": version["id"]}
@@ -4676,6 +4987,10 @@ def list_documents(user: dict[str, Any] = Depends(current_user)) -> list[dict[st
             documents.append({"id": record["id"], "area": record["area"], "process": record["process"],
                               "units": _record_units(record), "code": record.get("doc_code", ""), "code_conflict": record["id"] in conflicts and is_master,
                               **_review_info(record, settings),
+                              # Data da proxima revisao: autor, owner da area ou master trocam em Documentos.
+                              "can_change_review": record.get("status") == "vigente"
+                                                   and _can_change_review(record.get("owner_email"), record.get("area"), user),
+                              "review_changed": bool(record.get("review_due_changed")),
                               # Aprovacao direta em Documentos: owner da area (menos o autor) ou master.
                               "can_approve": _can_approve(record, user),
                               "approved_at": approval.get("decided_at", "") if record.get("status") == "vigente" else "",
@@ -5182,6 +5497,7 @@ def delete_document(record_id: str, user: dict[str, Any] = Depends(current_user)
     PGL, Automacao) e vai para levantamentos/excluidos, recuperavel; o PDF ja salvo na pasta da area no Drive nao e apagado."""
     if user.get("role") != "master":
         raise HTTPException(403, "Somente o administrador master pode excluir documentos.")
+    _refresh_review_agenda()
     record = _read_record(record_id)
     DELETED_DIR.mkdir(exist_ok=True)
     record["deleted_at"] = datetime.now(timezone.utc).isoformat()
@@ -6556,7 +6872,253 @@ def _area_reference(area: str, compact: bool = False, topic: str = "",
     if knowledge:
         reference = {"nome": area, **reference,
                      "conhecimento_interno": _compact_knowledge(knowledge, topic, units) if compact else knowledge}
+        # Levantamento das reunioes de entendimento: so os pontos e oportunidades ligados ao tema (12/11/2026).
+        notes = _meeting_knowledge(area, topic, compact)
+        if notes:
+            reference["conhecimento_interno"] = {**reference["conhecimento_interno"], "levantamento_reunioes": notes}
     return reference or None
+
+
+# ---------------------------------------------------------------------------
+# Levantamento das reunioes de entendimento (12/11/2026, pedido do usuario): as anotacoes do Gemini das reunioes com a
+# equipe viram um arquivo por reuniao em levantamento_reunioes/ (pasta compartilhada): pontos por tema, dores,
+# decisoes, proximos passos e oportunidades de automacao. As 5 primeiras foram compiladas a mao; as proximas entram
+# pela tela (Automacao > Levantamento das reunioes, so o master), lidas pelo agente no mesmo formato. O agente da
+# entrevista, da geracao e do Chat Nexxus recebe so o que for ligado ao tema (para nao pesar a conversa).
+# ---------------------------------------------------------------------------
+MEETINGS_DIR = SHARED_ROOT / "levantamento_reunioes"
+MEETING_PRIORITIES = ("Ganho rápido", "Estratégico", "Melhoria pontual", "Baixa prioridade")
+MEETINGS_USAGE = (
+    "Anotacoes das reunioes de entendimento com a equipe (como cada pessoa descreveu o trabalho, dores e oportunidades "
+    "de automacao). E contexto, nao procedimento oficial: use para entender o processo, sugerir e confirmar com a "
+    "pessoa; nunca registre como fato sem confirmacao; se divergir de um manual ou documento, vale o documento e "
+    "aponte a diferenca. Ao citar, diga 'segundo o levantamento da reuniao de dd/mm'.")
+_meetings_cache: dict[str, Any] = {"key": None, "data": []}
+
+
+def _meetings() -> list[dict[str, Any]]:
+    """Reunioes do levantamento (um JSON por reuniao), da mais antiga para a mais nova; cache pelo mtime."""
+    try:
+        files = sorted(MEETINGS_DIR.glob("*.json"))
+        key = tuple((f.name, f.stat().st_mtime) for f in files)
+    except OSError:
+        return []
+    if key == _meetings_cache["key"]:
+        return _meetings_cache["data"]
+    data = []
+    for file in files:
+        try:
+            item = json.loads(file.read_text(encoding="utf-8-sig"))
+        except (OSError, ValueError):
+            continue
+        if isinstance(item, dict) and item.get("id") and isinstance(item.get("pontos"), list):
+            data.append(item)
+    data.sort(key=lambda m: (str(m.get("data", "")), str(m.get("id", ""))))
+    _meetings_cache.update(key=key, data=data)
+    return data
+
+
+def _meeting_knowledge(area: str, topic: str = "", compact: bool = True, only_match: bool = False,
+                       wide: bool = False) -> dict[str, Any] | None:
+    """O que vai ao agente: pontos e oportunidades mais ligados ao tema. compact (entrevista) leva pouco; a geracao
+    leva mais; only_match (Chat) so vai se algo casar com a pergunta; wide (pergunta sobre as proprias reunioes) leva
+    o resumo de todas."""
+    meetings = [m for m in _meetings() if _same_area(m.get("area", ""), area)]
+    if not meetings:
+        return None
+    cut = lambda text, size: (lambda t: t if len(t) <= size else t[:size - 1].rstrip() + "…")(" ".join(str(text or "").split()))  # noqa: E731
+    when = lambda m: "/".join(reversed(str(m.get("data", "")).split("-")[1:]))  # noqa: E731
+    points = [{"reuniao": when(m), "unidades": m.get("unidades", []), "tema": p.get("tema", ""), "texto": p.get("texto", "")}
+              for m in meetings for p in m.get("pontos", []) if isinstance(p, dict) and p.get("texto")]
+    opps = [{**o, "reuniao": when(m)} for m in meetings for o in m.get("oportunidades", []) if isinstance(o, dict)]
+    words = _keywords(topic) if topic else set()
+    # Uma palavra solta em comum ("sala", "dia") nao basta quando a pergunta tem varias palavras.
+    least = 2 if len(words) >= 3 else 1
+
+    def ranked(items: list[dict[str, Any]], fields: tuple[str, ...], limit: int) -> list[dict[str, Any]]:
+        scored = [(len(words & _keywords(" ".join(str(i.get(f, "")) for f in fields))), n, i) for n, i in enumerate(items)]
+        scored = [s for s in scored if s[0] >= least] if words else []
+        return [i for _, _, i in sorted(scored, key=lambda s: (-s[0], s[1]))[:limit]]
+
+    if wide:
+        return {"como_usar": MEETINGS_USAGE,
+                "reunioes": [{"data": when(m), "titulo": m.get("titulo", ""), "unidades": m.get("unidades", []),
+                              "participantes": m.get("participantes", []), "resumo": m.get("resumo", ""),
+                              "dores": m.get("dores", []), "decisoes": m.get("decisoes", [])} for m in meetings],
+                "pontos": ranked(points, ("tema", "texto"), 12) or [cut(p["texto"], 200) for p in points[:12]],
+                "oportunidades": [{k: o.get(k) for k in ("titulo", "unidades", "prioridade", "situacao", "reuniao")} for o in opps]}
+    sizes = (5, 3, 220) if compact else (12, 6, 600)
+    chosen_points = ranked(points, ("tema", "texto"), sizes[0])
+    chosen_opps = ranked(opps, ("titulo", "processo", "hoje", "proposta"), sizes[1])
+    if only_match and not chosen_points and not chosen_opps:
+        return None
+    notes: dict[str, Any] = {"como_usar": MEETINGS_USAGE}
+    if chosen_points:
+        notes["pontos"] = [{**p, "texto": cut(p["texto"], sizes[2])} for p in chosen_points]
+    if chosen_opps:
+        notes["oportunidades"] = [{"titulo": o.get("titulo", ""), "unidades": o.get("unidades", []), "reuniao": o["reuniao"],
+                                   "hoje": cut(o.get("hoje"), sizes[2]), "proposta": cut(o.get("proposta"), sizes[2]),
+                                   **({} if compact else {"dor": cut(o.get("dor"), sizes[2]), "situacao": o.get("situacao", "")})}
+                                  for o in chosen_opps]
+    elif not chosen_points:
+        # Tema sem nada ligado: so a lista curta do que ja foi levantado.
+        notes["oportunidades_levantadas"] = [o.get("titulo", "") for o in opps][:20]
+    return notes
+
+
+MEETING_ATA_REQUIREMENTS = [
+    "Voce recebe em 'ata' as anotacoes/transcricao (Gemini) de uma reuniao de entendimento da area. Extraia SO o que foi "
+    "conversado sobre o trabalho da equipe: rotinas, sistemas, transacoes, volumes, prazos, regras, dores, decisoes e "
+    "proximos passos.",
+    "IGNORE: apresentacoes de sistemas feitas na reuniao (principalmente o NexxusDoc: telas, paginas, agente, BigQuery), "
+    "o historico profissional de quem conduz a reuniao, conversa social e trechos de compartilhamento de tela.",
+    "A transcricao automatica erra nomes e termos e as vezes atribui todas as falas a uma pessoa so: corrija pelo "
+    "contexto (ex.: 'ERSK' = Maersk, 'Loy' = carta LOI, 'DAT' = DATI, 'Flows' = Flowls, 'FUP' = follow-up) e identifique "
+    "os entrevistados pelo cabecalho 'convidado' e por contexto.equipe (nome e funcao). Quem conduz a reuniao nao entra em "
+    "participantes.",
+    "Devolva SO um JSON com: data (AAAA-MM-DD, do cabecalho), titulo, unidades (lista com Fisia e/ou Centauro), "
+    "participantes [{nome, papel}], resumo (ate 300 caracteres), pontos [{tema, texto}] (8 a 15 frases completas e "
+    "especificas, com numeros, sistemas e transacoes citados; reaproveite os temas de contexto.temas_existentes quando "
+    "servirem), dores [texto], decisoes [texto], proximos_passos [texto] e oportunidades [{titulo, unidades, processo, "
+    "hoje, dor, proposta, dados_e_sistemas [texto], ganho, impacto, complexidade, prioridade, situacao, proximo_passo, "
+    "citado_por [nome], tambem_em [id]}].",
+    "Oportunidade so quando a reuniao der base (tarefa manual, repetitiva, com dados que existem). processo = nome exato de "
+    "contexto.processos_do_inventario quando houver um correspondente; senao, um nome curto. impacto: alto, medio ou baixo; "
+    "complexidade: baixa, media ou alta. prioridade: 'Ganho rápido' (impacto alto e complexidade baixa ou media), "
+    "'Estratégico' (impacto alto e complexidade alta), 'Melhoria pontual' (impacto medio/baixo e complexidade baixa ou "
+    "media) ou 'Baixa prioridade' (impacto baixo e complexidade alta). situacao: a iniciar, proposta acordada, em "
+    "andamento, aguardando terceiro etc. tambem_em: ids de contexto.oportunidades_ja_levantadas que tratam do mesmo assunto.",
+    "Nao invente numeros, sistemas nem pessoas. Escreva em portugues do Brasil, sem travessao.",
+    "Ignore o formato {answer, sources}: devolva SO o JSON pedido, sem texto antes ou depois.",
+]
+
+
+def _meeting_parse(response: Any) -> dict[str, Any]:
+    data = _unwrap_output(response)
+    if isinstance(data, dict) and "pontos" not in data and isinstance(data.get("answer"), str):
+        text = re.sub(r"^\s*```(?:json)?\s*|\s*```\s*$", "", data["answer"].strip())
+        try:
+            data = json.loads(text)
+        except ValueError:
+            match = re.search(r"\{.*\}", text, re.S)
+            try:
+                data = json.loads(match.group(0)) if match else {}
+            except ValueError:
+                data = {}
+    return data if isinstance(data, dict) else {}
+
+
+def _meeting_clean(raw: dict[str, Any], known_opps: set[str]) -> dict[str, Any]:
+    """Formato fixo da reuniao vinda do agente (tamanhos, listas, prioridade e niveis da lista fechada)."""
+    def txt(value: Any, size: int) -> str:
+        return " ".join(str(value or "").replace("—", ",").split())[:size]
+
+    def lst(value: Any, size: int, limit: int) -> list[str]:
+        return [t for t in (txt(v, size) for v in (value if isinstance(value, list) else [])) if t][:limit]
+
+    def level(value: Any, options: tuple[str, ...], fallback: str) -> str:
+        norm = _norm(value)
+        return next((o for o in options if _norm(o) == norm), fallback)
+
+    units = [u for u in BUSINESS_UNITS if u in (raw.get("unidades") or [])] or _units_from_text(raw.get("titulo"))
+    day = txt(raw.get("data"), 10)
+    try:
+        day = date.fromisoformat(day).isoformat()
+    except ValueError:
+        day = date.today().isoformat()
+    meeting = {"data": day, "titulo": txt(raw.get("titulo"), 120) or "Reunião de entendimento", "unidades": units,
+               "participantes": [{"nome": txt(p.get("nome"), 80), "papel": txt(p.get("papel"), 160)}
+                                 for p in raw.get("participantes") or [] if isinstance(p, dict) and txt(p.get("nome"), 80)][:8],
+               "resumo": txt(raw.get("resumo"), 400),
+               "pontos": [{"tema": txt(p.get("tema"), 60) or "Geral", "texto": txt(p.get("texto"), 900)}
+                          for p in raw.get("pontos") or [] if isinstance(p, dict) and txt(p.get("texto"), 900)][:20],
+               "dores": lst(raw.get("dores"), 300, 10), "decisoes": lst(raw.get("decisoes"), 300, 10),
+               "proximos_passos": lst(raw.get("proximos_passos"), 300, 10), "oportunidades": []}
+    for o in raw.get("oportunidades") or []:
+        if not isinstance(o, dict) or not txt(o.get("titulo"), 140):
+            continue
+        impact = level(o.get("impacto"), ("alto", "médio", "baixo"), "médio")
+        effort = level(o.get("complexidade"), ("baixa", "média", "alta"), "média")
+        meeting["oportunidades"].append({
+            "titulo": txt(o.get("titulo"), 140),
+            "unidades": [u for u in BUSINESS_UNITS if u in (o.get("unidades") or [])] or units,
+            "processo": txt(o.get("processo"), 140), "hoje": txt(o.get("hoje"), 900), "dor": txt(o.get("dor"), 600),
+            "proposta": txt(o.get("proposta"), 900), "dados_e_sistemas": lst(o.get("dados_e_sistemas"), 160, 10),
+            "ganho": txt(o.get("ganho"), 400), "impacto": impact, "complexidade": effort,
+            "prioridade": level(o.get("prioridade"), MEETING_PRIORITIES, "Melhoria pontual"),
+            "situacao": txt(o.get("situacao"), 80) or "a iniciar", "proximo_passo": txt(o.get("proximo_passo"), 300),
+            "citado_por": lst(o.get("citado_por"), 80, 6),
+            "tambem_em": [t for t in lst(o.get("tambem_em"), 120, 6) if t in known_opps]})
+    meeting["oportunidades"] = meeting["oportunidades"][:12]
+    return meeting
+
+
+@app.get("/api/levantamento")
+def meetings_list(user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    """Todos os usuarios veem o levantamento (13/11/2026, pedido do usuario); so o master inclui ou exclui ata."""
+    return {"reunioes": _meetings(), "prioridades": list(MEETING_PRIORITIES), "pode_editar": _qc_master(user)}
+
+
+@app.post("/api/levantamento/ata")
+async def meetings_add(file: UploadFile = File(...), user: dict[str, Any] = Depends(require_master)) -> dict[str, Any]:
+    """Nova ata (anotacoes do Gemini em .docx, .pdf ou .txt): o agente organiza no formato do levantamento."""
+    name = Path(file.filename or "ata.docx").name
+    if Path(name).suffix.casefold() not in {".docx", ".pdf", ".txt", ".md"}:
+        raise HTTPException(400, "Envie a ata em Word (.docx), PDF ou texto (.txt).")
+    content = await file.read(10 * 1024 * 1024 + 1)
+    if len(content) > 10 * 1024 * 1024:
+        raise HTTPException(413, "A ata passa de 10 MB.")
+    digest = hashlib.sha256(content).hexdigest()
+    if any(m.get("sha256") == digest for m in _meetings()):
+        raise HTTPException(409, "Esta ata já está no levantamento.")
+    text = await asyncio.to_thread(_extract_reference_text, name, content)
+    if len(text.strip()) < 400:
+        raise HTTPException(422, "Não foi possível ler o texto da ata (o arquivo parece vazio ou é uma imagem).")
+    meetings = _meetings()
+    known = {o.get("id") for m in meetings for o in m.get("oportunidades", []) if isinstance(o, dict)}
+    area = meetings[-1].get("area") if meetings else "Logística Internacional"
+    knowledge = _area_knowledge(area) or {}
+    prompt = {"task": "answer_procedure_question", "language": "pt-BR", "question": "Organize a ata da reuniao no formato pedido.",
+              "conversation_history": [], "knowledge_base": [], "ata": {"arquivo": name, "texto": text[:120_000]},
+              "contexto": {"area": area,
+                           "equipe": [{k: m.get(k) for k in ("nome", "unidade", "frente", "funcao")}
+                                      for m in knowledge.get("equipe") or [] if isinstance(m, dict)],
+                           "processos_do_inventario": [p.get("nome") for p in knowledge.get("processos") or [] if isinstance(p, dict)],
+                           "temas_existentes": sorted({p.get("tema") for m in meetings for p in m.get("pontos", []) if isinstance(p, dict) and p.get("tema")}),
+                           "oportunidades_ja_levantadas": [{"id": o.get("id"), "titulo": o.get("titulo")}
+                                                           for m in meetings for o in m.get("oportunidades", []) if isinstance(o, dict)]},
+              "requirements": MEETING_ATA_REQUIREMENTS}
+    started = time.monotonic()
+    raw = _meeting_parse(await _send_n8n(prompt, f"ata-{uuid.uuid4().hex}"))
+    if not raw.get("pontos"):
+        raise HTTPException(502, "O agente não devolveu o levantamento da ata. Tente de novo em instantes.")
+    meeting = _meeting_clean(raw, known)
+    slug = re.sub(r"[^a-z0-9]+", "-", _norm(meeting["titulo"]))[:40].strip("-") or "reuniao"
+    meeting_id, n = f"{meeting['data']}-{slug}", 2
+    while (MEETINGS_DIR / f"{meeting_id}.json").exists():
+        meeting_id, n = f"{meeting['data']}-{slug}-{n}", n + 1
+    meeting["oportunidades"] = [{"id": f"{meeting_id}-o{i}", **o} for i, o in enumerate(meeting["oportunidades"], 1)]
+    meeting = {"id": meeting_id, **meeting, "area": area, "origem": "agente", "fonte": name, "sha256": digest,
+               "adicionado_por": user["email"], "adicionado_em": datetime.now(timezone.utc).isoformat()}
+    (MEETINGS_DIR / "atas").mkdir(parents=True, exist_ok=True)
+    (MEETINGS_DIR / "atas" / f"{meeting_id}{Path(name).suffix.casefold()}").write_bytes(content)
+    _write_atomic(MEETINGS_DIR / f"{meeting_id}.json", json.dumps(meeting, ensure_ascii=False, indent=2).encode("utf-8"))
+    _audit(user["email"], "levantamento_ata_adicionada", reuniao=meeting_id, arquivo=name,
+           oportunidades=len(meeting["oportunidades"]), segundos=round(time.monotonic() - started, 1))
+    return meeting
+
+
+@app.delete("/api/levantamento/{meeting_id}")
+def meetings_delete(meeting_id: str, user: dict[str, Any] = Depends(require_master)) -> dict[str, Any]:
+    if not re.fullmatch(r"[a-z0-9-]{6,120}", meeting_id):
+        raise HTTPException(404, "Reunião não encontrada.")
+    path = MEETINGS_DIR / f"{meeting_id}.json"
+    if not path.is_file():
+        raise HTTPException(404, "Reunião não encontrada.")
+    (MEETINGS_DIR / "excluidas").mkdir(parents=True, exist_ok=True)
+    shutil.move(str(path), str(MEETINGS_DIR / "excluidas" / f"{meeting_id}_{datetime.now():%Y%m%d%H%M%S}.json"))
+    _audit(user["email"], "levantamento_reuniao_excluida", reuniao=meeting_id)
+    return {"ok": True}
 
 
 # ---------------------------------------------------------------------------
@@ -6674,8 +7236,10 @@ def query_console(user: dict[str, Any] = Depends(current_user)) -> dict[str, Any
         used.update(id(d) for d in found)
         procs.append({**proc, "docs_sistema": found[:8], "documentado": bool(found)})
     loose = [d for d in docs if d["nexxus"] and id(d) not in used]   # entrou no sistema e ainda nao tem consulta mapeada
-    return {**{k: v for k, v in catalogue.items() if k not in ("procedimentos", "ignorar_documentos")},
-            "procedimentos": procs, "a_mapear": loose[:20], "pode_gerar": user.get("role") == "master"}
+    data = {**{k: v for k, v in catalogue.items() if k not in ("procedimentos", "ignorar_documentos")},
+            "procedimentos": procs, "a_mapear": loose[:20], "pode_gerar": _qc_can_run(user), "master": _qc_master(user),
+            "catalogo_total": len((_bq_knowledge() or {}).get("tabelas") or [])}
+    return _qc_hide_cost(data)
 
 
 # Gerar consulta (so o master, pedido do usuario): roda SO a consulta do catalogo (nunca SQL livre), pela API do
@@ -6757,7 +7321,7 @@ def _bq_rows(data: dict[str, Any]) -> tuple[list[str], list[list[str]]]:
 # Consulta editada pelo master (06/11/2026, pedido do usuario: incluir/retirar colunas antes de gerar). Travas: so
 # SELECT (o dry run do BigQuery diz o tipo; script, DML e DDL sao recusados), so tabelas dos projetos de dados abaixo,
 # teto de leitura e, na execucao, so a MESMA consulta simulada nos ultimos 15 minutos (o servidor guarda os bytes).
-QC_ALLOWED_PROJECTS = {"your-gcp-project", "your-gcp-project", "your-gcp-project"}
+QC_ALLOWED_PROJECTS = {"example-sap-project", "example-brand-project", "example-retail-project", "your-gcp-project"}
 QC_SQL_MAX = 20000
 QC_SIMS: dict[str, dict[str, Any]] = {}
 
@@ -6796,56 +7360,1671 @@ def _qc_sql(proc: dict[str, Any], sql: str) -> str:
     return text.rstrip(";").strip()
 
 
-@app.post("/api/query-console/{proc_id}/simular")
-async def query_console_simulate(proc_id: Annotated[str, StringConstraints(pattern=r"^[a-z0-9-]{2,60}$")],
-                                 payload: QuerySql | None = None,
-                                 user: dict[str, Any] = Depends(require_master)) -> dict[str, Any]:
-    catalogue, proc = _qc_proc(proc_id)
-    project = catalogue.get("projeto_cobranca") or "your-gcp-project"
-    sql = _qc_sql(proc, payload.sql if payload else "")
-    dry = await _bq_dry_job(project, sql)
+# ---------------------------------------------------------------------------
+# Query Console ampliada (12/11/2026, pedido do usuario). Ver o bloco "Query Console ampliada" no CLAUDE.md.
+#  - Quem gera consultas: o master e quem ele marcar em Configuracoes › Acessos ("Pode consultar o BigQuery", campo
+#    bigquery do cadastro). Os habilitados editam, simulam, executam, perguntam em portugues, salvam e exportam.
+#  - Onde roda: o master, pelo gcloud do proprio computador (como antes); os demais (e o master sem gcloud), pelo n8n,
+#    tarefa query_console_run, com a credencial do BigQuery do NexxusDoc ("Google BigQuery account 73", conta do master).
+#  - Custo: NINGUEM ve (pedido do usuario, inclusive o master): nada de GB, bytes, projeto de cobranca ou teto na tela.
+#    O teto por consulta (todos) e o teto diario por pessoa (quem nao e master) valem no servidor, com mensagem sem
+#    numeros; os bytes ficam so na auditoria.
+#  - Travas (as mesmas de antes, para todos): so SELECT (dry run), uma consulta so, so tabelas dos projetos de dados,
+#    execucao so do MESMO texto simulado nos ultimos 15 min, teto de bytes cobrados. O n8n confere de novo.
+# ---------------------------------------------------------------------------
+QC_DIR = SHARED_ROOT / "query_console"
+QC_SAVED_DIR = QC_DIR / "consultas"          # consultas salvas (pessoais ou compartilhadas)
+QC_FAV_DIR = QC_DIR / "favoritos"            # favoritas de cada pessoa
+QC_HIST_DIR = QC_DIR / "historico"           # ultimas execucoes de cada pessoa
+QC_USE_DIR = QC_DIR / "uso"                  # leitura do dia de cada pessoa (teto diario, nunca mostrado)
+QC_LIBRARY_PATH = _curated("query_biblioteca.json")
+QC_DAY_GB = 150                              # teto diario por pessoa (quem nao e master)
+QC_HIST_MAX = 60
+QC_TOO_BIG = ("Esta consulta é grande demais para a Query Console. Filtre um período menor, use o filtro de partição "
+              "da tabela ou leia menos colunas.")
+QC_DAY_LIMIT = "Você chegou ao limite de consultas de hoje na Query Console. Tente de novo amanhã ou fale com o administrador."
+QC_NO_RUN = ("Gerar consultas na Query Console é liberado pelo administrador master em Configurações › Acessos "
+             "(Pode consultar o BigQuery).")
+QC_N8N_FAIL = ("Não consegui executar pelo servidor do NexxusDoc agora. Confira a VPN e tente de novo; se continuar, "
+               "o fluxo do n8n pode ainda não ter a Query Console (o administrador precisa atualizá-lo).")
+
+
+def _qc_master(user: dict[str, Any]) -> bool:
+    return user.get("role") == "master"
+
+
+def _qc_can_run(user: dict[str, Any]) -> bool:
+    return _qc_master(user) or user.get("bigquery") is True
+
+
+def _qc_runner(user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    if not _qc_can_run(user):
+        raise HTTPException(403, QC_NO_RUN)
+    return user
+
+
+def _qc_hide_cost(data: Any) -> Any:
+    """Tira o que e COBRANCA (projeto cobrado, GB cobrados, teto, cache) do que vai para a tela (de todos). O TAMANHO da
+    consulta e da tabela continua, como antes (pedido do usuario em 12/11/2026): gb, gb_estimado e gb_processados."""
+    cost = {"gb_cobrados", "bytes", "limite_gb", "projeto", "projeto_cobranca", "acima_do_limite", "cache"}
+    if isinstance(data, dict):
+        return {k: _qc_hide_cost(v) for k, v in data.items() if k not in cost}
+    if isinstance(data, list):
+        return [_qc_hide_cost(v) for v in data]
+    return data
+
+
+def _gcloud_exe() -> Path:
+    return Path(os.environ.get("LOCALAPPDATA", "")) / "Google" / "Cloud SDK" / "google-cloud-sdk" / "bin" / "gcloud.cmd"
+
+
+def _qc_local(user: dict[str, Any]) -> bool:
+    """Roda pelo gcloud deste computador (so o master, se tiver o gcloud); os demais, pelo n8n."""
+    return _qc_master(user) and _gcloud_exe().is_file()
+
+
+async def _qc_n8n(mode: str, sql: str, max_bytes: int, email: str) -> dict[str, Any]:
+    message = {"task": "query_console_run", "solicitante": email,
+               "consulta": {"modo": mode, "sql": sql, "max_bytes": int(max_bytes)}}
+    try:
+        out = _unwrap_output(await _send_n8n(message, f"qc-{uuid.uuid4().hex}"))
+    except HTTPException as exc:
+        if exc.status_code in (502, 503, 504):
+            raise HTTPException(503, QC_N8N_FAIL)
+        raise
+    if not isinstance(out, dict):
+        raise HTTPException(503, QC_N8N_FAIL)
+    if not out.get("ok"):
+        raise HTTPException(422, f"O BigQuery recusou a consulta: {str(out.get('erro') or 'erro desconhecido')[:400]}")
+    return out.get("bq") if isinstance(out.get("bq"), dict) else {}
+
+
+def _qc_parse_dry(data: dict[str, Any]) -> dict[str, Any]:
+    stats = data.get("statistics") or {}
+    query = stats.get("query") or {}
+    return {"tipo": query.get("statementType", ""), "bytes": int(stats.get("totalBytesProcessed") or query.get("totalBytesProcessed") or 0),
+            "tabelas": [f"{t.get('projectId')}.{t.get('datasetId')}.{t.get('tableId')}" for t in query.get("referencedTables") or []]}
+
+
+async def _qc_dry(user: dict[str, Any], project: str, sql: str) -> dict[str, Any]:
+    if _qc_local(user):
+        return await _bq_dry_job(project, sql)
+    return _qc_parse_dry(await _qc_n8n("simular", sql, 0, user["email"]))
+
+
+async def _qc_exec(user: dict[str, Any], project: str, sql: str, limit: int) -> dict[str, Any]:
+    if _qc_local(user):
+        return await _bq_call(project, sql, False, limit)
+    data = await _qc_n8n("executar", sql, limit, user["email"])
+    if not data.get("jobComplete"):
+        raise HTTPException(504, "A consulta passou do tempo no BigQuery. Filtre um período menor e tente de novo.")
+    return data
+
+
+def _qc_project() -> str:
+    return _query_catalogue().get("projeto_cobranca") or "example-retail-project"
+
+
+def _qc_clean_sql(text: str) -> str:
+    text = re.sub(r"^\s*```(?:sql)?\s*|\s*```\s*$", "", str(text or ""), flags=re.I).strip()
+    if not text:
+        raise HTTPException(422, "Escreva a consulta (SQL) antes de simular.")
+    if ";" in text.rstrip(";"):
+        raise HTTPException(422, "Uma consulta por vez: tire o ponto e vírgula do meio do texto.")
+    return text.rstrip(";").strip()
+
+
+def _qc_day_used(email: str) -> int:
+    try:
+        data = json.loads((QC_USE_DIR / f"{_file_key(email)}.json").read_text(encoding="utf-8"))
+        return int(data.get("bytes") or 0) if data.get("dia") == date.today().isoformat() else 0
+    except (OSError, ValueError, TypeError):
+        return 0
+
+
+def _qc_day_add(email: str, amount: int) -> None:
+    QC_USE_DIR.mkdir(parents=True, exist_ok=True)
+    path = QC_USE_DIR / f"{_file_key(email)}.json"
+    path.write_text(json.dumps({"dia": date.today().isoformat(), "bytes": _qc_day_used(email) + max(0, int(amount))}),
+                    encoding="utf-8")
+
+
+async def _qc_simulate(user: dict[str, Any], sql: str, proc_id: str = "", base_sql: str = "") -> dict[str, Any]:
+    project = _qc_project()
+    dry = await _qc_dry(user, project, sql)
     if dry["tipo"] != "SELECT":
         raise HTTPException(422, f"Só consultas de leitura (SELECT). O BigQuery identificou esta como {dry['tipo'] or 'outro tipo'}.")
     outside = [t for t in dry["tabelas"] if t.split(".")[0] not in QC_ALLOWED_PROJECTS]
     if outside:
         raise HTTPException(422, "A consulta lê tabelas fora dos projetos de dados liberados: " + ", ".join(outside[:5]))
-    size, edited = dry["bytes"], sql != proc["sql"].strip()
+    size = dry["bytes"]
+    edited = bool(base_sql) and sql != base_sql.strip()
+    if size > QC_MAX_GB * 10**9:
+        raise HTTPException(413, QC_TOO_BIG)
     digest = hashlib.sha256(sql.encode("utf-8")).hexdigest()
     now = time.time()
     for key in [k for k, v in QC_SIMS.items() if v["ate"] < now]:
         QC_SIMS.pop(key, None)
     QC_SIMS[digest] = {"bytes": size, "ate": now + 15 * 60, "email": user["email"], "proc": proc_id}
-    _audit(user["email"], "query_console_simulada", procedimento=proc_id, bytes=size, projeto=project, editada=edited,
-           **({"sql": sql[:3000]} if edited else {}))
-    return {"projeto": project, "bytes": size, "gb": round(size / 1e9, 3), "limite_gb": QC_MAX_GB, "editada": edited,
-            "tabelas": dry["tabelas"], "acima_do_limite": size > QC_MAX_GB * 10**9}
+    _audit(user["email"], "query_console_simulada", procedimento=proc_id or "livre", bytes=size, projeto=project,
+           editada=edited or not proc_id, **({"sql": sql[:3000]} if edited or not proc_id else {}))
+    result = {"projeto": project, "bytes": size, "gb": round(size / 1e9, 3), "limite_gb": QC_MAX_GB, "editada": edited,
+              "tabelas": dry["tabelas"], "acima_do_limite": size > QC_MAX_GB * 10**9}
+    return _qc_hide_cost(result)
+
+
+def _qc_history_add(user: dict[str, Any], entry: dict[str, Any]) -> None:
+    QC_HIST_DIR.mkdir(parents=True, exist_ok=True)
+    path = QC_HIST_DIR / f"{_file_key(user['email'])}.json"
+    try:
+        items = json.loads(path.read_text(encoding="utf-8-sig"))
+        items = items if isinstance(items, list) else []
+    except (OSError, ValueError):
+        items = []
+    items = [entry, *items][:QC_HIST_MAX]
+    path.write_text(json.dumps(items, ensure_ascii=False), encoding="utf-8")
+
+
+async def _qc_execute(user: dict[str, Any], sql: str, proc_id: str = "", base_sql: str = "", titulo: str = "",
+                      origem: str = "") -> dict[str, Any]:
+    project = _qc_project()
+    sim = QC_SIMS.get(hashlib.sha256(sql.encode("utf-8")).hexdigest())
+    if not sim or sim["ate"] < time.time() or sim["email"] != user["email"] or sim["proc"] != proc_id:
+        raise HTTPException(409, "Simule esta consulta de novo antes de executar (a simulação vale 15 minutos e para o mesmo texto).")
+    master = _qc_master(user)
+    if sim["bytes"] > QC_MAX_GB * 10**9:
+        raise HTTPException(413, QC_TOO_BIG)
+    if not master and _qc_day_used(user["email"]) + sim["bytes"] > QC_DAY_GB * 10**9:
+        raise HTTPException(429, QC_DAY_LIMIT)
+    # teto cobrado = o simulado + 20% (a tabela cresce entre a simulacao e a execucao), minimo de 50 MB
+    limit = min(QC_MAX_GB * 10**9, max(50 * 10**6, int(sim["bytes"] * 1.2)))
+    started = time.monotonic()
+    data = await _qc_exec(user, project, sql, limit)
+    columns, rows = _bq_rows(data)
+    processed, billed = int(data.get("totalBytesProcessed") or 0), int(data.get("totalBytesBilled") or 0)
+    total = int(data.get("totalRows") or 0)
+    edited = bool(base_sql) and sql != base_sql.strip()
+    if not master:
+        _qc_day_add(user["email"], billed or processed)
+    _audit(user["email"], "query_console_executada", procedimento=proc_id or "livre", projeto=project, bytes=processed,
+           cobrados=billed, linhas=total, editada=edited or not proc_id, origem=origem or ("procedimento" if proc_id else "editor"),
+           **({"sql": sql[:3000]} if edited or not proc_id else {}))
+    _qc_history_add(user, {"id": uuid.uuid4().hex[:12], "quando": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+                           "titulo": (titulo or "Consulta")[:160], "origem": origem or ("procedimento" if proc_id else "editor"),
+                           "procedimento": proc_id, "sql": sql, "linhas": total, "colunas": columns[:60],
+                           "bytes": processed})
+    result = {"projeto": project, "colunas": columns, "linhas": rows, "total_linhas": total, "mostradas": len(rows),
+              "gb_processados": round(processed / 1e9, 3), "gb_cobrados": round(billed / 1e9, 3),
+              "cache": bool(data.get("cacheHit")), "segundos": round(time.monotonic() - started, 1)}
+    return _qc_hide_cost(result)
+
+
+# Consulta livre (editor, pergunta, biblioteca, catalogo, historico). Declarada ANTES das rotas por procedimento:
+# "consulta" teria o formato de um id de procedimento.
+class QueryFree(BaseModel):
+    sql: Annotated[str, StringConstraints(max_length=QC_SQL_MAX)] = ""
+    titulo: Annotated[str, StringConstraints(max_length=160)] = ""
+    origem: Annotated[str, StringConstraints(pattern=r"^(editor|pergunta|biblioteca|catalogo|historico|)$")] = ""
+    confirmado: bool = False
+
+
+@app.post("/api/query-console/consulta/simular")
+async def query_console_free_simulate(payload: QueryFree, user: dict[str, Any] = Depends(_qc_runner)) -> dict[str, Any]:
+    return await _qc_simulate(user, _qc_clean_sql(payload.sql))
+
+
+@app.post("/api/query-console/consulta/executar")
+async def query_console_free_run(payload: QueryFree, user: dict[str, Any] = Depends(_qc_runner)) -> dict[str, Any]:
+    if not payload.confirmado:
+        raise HTTPException(409, "Simule a consulta e confirme antes de executar.")
+    return await _qc_execute(user, _qc_clean_sql(payload.sql), titulo=payload.titulo, origem=payload.origem or "editor")
+
+
+@app.post("/api/query-console/{proc_id}/simular")
+async def query_console_simulate(proc_id: Annotated[str, StringConstraints(pattern=r"^[a-z0-9-]{2,60}$")],
+                                 payload: QuerySql | None = None,
+                                 user: dict[str, Any] = Depends(_qc_runner)) -> dict[str, Any]:
+    _, proc = _qc_proc(proc_id)
+    sql = _qc_sql(proc, payload.sql if payload else "")
+    return await _qc_simulate(user, sql, proc_id, proc["sql"])
 
 
 @app.post("/api/query-console/{proc_id}/executar")
 async def query_console_run(proc_id: Annotated[str, StringConstraints(pattern=r"^[a-z0-9-]{2,60}$")], payload: QueryRun,
-                            user: dict[str, Any] = Depends(require_master)) -> dict[str, Any]:
+                            user: dict[str, Any] = Depends(_qc_runner)) -> dict[str, Any]:
     if not payload.confirmado:
         raise HTTPException(409, "Simule a consulta e confirme antes de executar.")
-    catalogue, proc = _qc_proc(proc_id)
-    project = catalogue.get("projeto_cobranca") or "your-gcp-project"
+    _, proc = _qc_proc(proc_id)
     sql = _qc_sql(proc, payload.sql)
-    sim = QC_SIMS.get(hashlib.sha256(sql.encode("utf-8")).hexdigest())
-    if not sim or sim["ate"] < time.time() or sim["email"] != user["email"] or sim["proc"] != proc_id:
-        raise HTTPException(409, "Simule esta consulta de novo antes de executar (a simulação vale 15 minutos e para o mesmo texto).")
-    if sim["bytes"] > QC_MAX_GB * 10**9:
-        raise HTTPException(413, f"A consulta leria mais de {QC_MAX_GB} GB, o limite da Query Console.")
-    # teto cobrado = o simulado + 20% (a tabela cresce entre a simulacao e a execucao), minimo de 50 MB
-    limit = min(QC_MAX_GB * 10**9, max(50 * 10**6, int(sim["bytes"] * 1.2)))
+    return await _qc_execute(user, sql, proc_id, proc["sql"], proc.get("titulo", ""), "procedimento")
+
+
+# ---- Excel do resultado ----
+class QueryExcel(BaseModel):
+    titulo: Annotated[str, StringConstraints(max_length=160)] = "Consulta"
+    colunas: list[Annotated[str, StringConstraints(max_length=300)]] = Field(default_factory=list, max_length=400)
+    linhas: list[list[Any]] = Field(default_factory=list, max_length=QC_MAX_ROWS)
+    sql: Annotated[str, StringConstraints(max_length=QC_SQL_MAX)] = ""
+
+
+@app.post("/api/query-console/excel")
+def query_console_excel(payload: QueryExcel, _: dict[str, Any] = Depends(_qc_runner)):
+    from urllib.parse import quote
+
+    from fastapi.responses import Response
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill
+
+    book = Workbook()
+    sheet = book.active
+    sheet.title = "Resultado"
+    sheet.append([str(c) for c in payload.colunas])
+    for row in payload.linhas:
+        sheet.append([str(v if v is not None else "")[:30000] for v in row[:len(payload.colunas) or 400]])
+    for cell in sheet[1]:
+        cell.font = Font(bold=True, color="FFFFFF")
+        cell.fill = PatternFill("solid", fgColor="003D18")
+    for index, name in enumerate(payload.colunas[:400], start=1):
+        sheet.column_dimensions[sheet.cell(1, index).column_letter].width = min(48, max(12, len(str(name)) + 4))
+    sheet.freeze_panes = "A2"
+    if payload.colunas:
+        sheet.auto_filter.ref = sheet.dimensions
+    if payload.sql.strip():
+        info = book.create_sheet("Consulta")
+        info.append(["Consulta (SQL)"])
+        info["A1"].font = Font(bold=True)
+        for line in payload.sql.splitlines():
+            info.append([line])
+        info.column_dimensions["A"].width = 120
+    buffer = io.BytesIO()
+    _xl_text_only(book)
+    book.save(buffer)
+    base = re.sub(r"[^A-Za-z0-9 _-]+", "", _norm(payload.titulo)).strip().replace(" ", "_")[:60] or "consulta"
+    name = f"Query_Console_{base}_{date.today().isoformat()}.xlsx"
+    return Response(buffer.getvalue(), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    headers={"Content-Disposition": f"attachment; filename=\"{name}\"; filename*=UTF-8''{quote(name)}"})
+
+
+# ---- Biblioteca: consultas prontas da area, salvas por pessoa ou compartilhadas, favoritas e historico ----
+def _qc_library() -> list[dict[str, Any]]:
+    try:
+        data = json.loads(QC_LIBRARY_PATH.read_text(encoding="utf-8"))
+        return [q for q in data.get("consultas") or [] if isinstance(q, dict) and q.get("id") and q.get("sql")]
+    except (OSError, ValueError, AttributeError):
+        return []
+
+
+def _qc_saved() -> list[dict[str, Any]]:
+    items = []
+    for path in sorted(QC_SAVED_DIR.glob("*.json")) if QC_SAVED_DIR.is_dir() else []:
+        try:
+            item = json.loads(path.read_text(encoding="utf-8-sig"))
+            if isinstance(item, dict) and item.get("id") and item.get("sql"):
+                items.append(item)
+        except (OSError, ValueError):
+            continue
+    return sorted(items, key=lambda q: q.get("atualizado_em") or "", reverse=True)
+
+
+def _qc_json_list(path: Path) -> list[Any]:
+    try:
+        data = json.loads(path.read_text(encoding="utf-8-sig"))
+        return data if isinstance(data, list) else []
+    except (OSError, ValueError):
+        return []
+
+
+@app.get("/api/query-console/biblioteca")
+def query_console_library(user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    email = user["email"]
+    saved = _qc_saved()
+    mine = [q for q in saved if q.get("autor") == email]
+    shared = [q for q in saved if q.get("compartilhada") and q.get("autor") != email]
+    history = _qc_json_list(QC_HIST_DIR / f"{_file_key(email)}.json") if _qc_can_run(user) else []
+    data = {"prontas": _qc_library(), "minhas": mine, "compartilhadas": shared, "historico": history,
+            "favoritos": [str(x) for x in _qc_json_list(QC_FAV_DIR / f"{_file_key(email)}.json")],
+            "pode_salvar": _qc_can_run(user), "master": _qc_master(user)}
+    return _qc_hide_cost(data)
+
+
+class QuerySave(BaseModel):
+    titulo: Annotated[str, StringConstraints(strip_whitespace=True, min_length=3, max_length=160)]
+    descricao: Annotated[str, StringConstraints(strip_whitespace=True, max_length=1200)] = ""
+    sql: Annotated[str, StringConstraints(max_length=QC_SQL_MAX)]
+    compartilhada: bool = False
+    # origem desconhecida (ex.: consulta salva por script) nao derruba o Compartilhar com 422: vira "editor" (13/11/2026)
+    origem: Annotated[str, StringConstraints(max_length=40)] = ""
+
+    @field_validator("origem")
+    @classmethod
+    def _origem_conhecida(cls, value: str) -> str:
+        return value if value in {"editor", "pergunta", "biblioteca", "catalogo", "historico", "procedimento"} else "editor"
+
+
+def _qc_saved_path(item_id: str) -> Path:
+    if not re.fullmatch(r"[a-f0-9]{12}", item_id or ""):
+        raise HTTPException(404, "Consulta salva não encontrada.")
+    return QC_SAVED_DIR / f"{item_id}.json"
+
+
+@app.post("/api/query-console/biblioteca")
+def query_console_save(payload: QuerySave, user: dict[str, Any] = Depends(_qc_runner)) -> dict[str, Any]:
+    sql = _qc_clean_sql(payload.sql)
+    now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    item = {"id": uuid.uuid4().hex[:12], "titulo": payload.titulo, "descricao": payload.descricao, "sql": sql,
+            "compartilhada": payload.compartilhada, "origem": payload.origem or "editor", "autor": user["email"],
+            "autor_nome": user.get("name") or _name_from_email(user["email"]), "criado_em": now, "atualizado_em": now}
+    QC_SAVED_DIR.mkdir(parents=True, exist_ok=True)
+    _qc_saved_path(item["id"]).write_text(json.dumps(item, ensure_ascii=False, indent=1), encoding="utf-8")
+    _audit(user["email"], "query_console_salva", id=item["id"], titulo=item["titulo"], compartilhada=item["compartilhada"])
+    return item
+
+
+@app.put("/api/query-console/biblioteca/{item_id}")
+def query_console_update(item_id: str, payload: QuerySave, user: dict[str, Any] = Depends(_qc_runner)) -> dict[str, Any]:
+    path = _qc_saved_path(item_id)
+    try:
+        item = json.loads(path.read_text(encoding="utf-8-sig"))
+    except (OSError, ValueError):
+        raise HTTPException(404, "Consulta salva não encontrada.")
+    if item.get("autor") != user["email"] and not _qc_master(user):
+        raise HTTPException(403, "Só quem salvou a consulta (ou o administrador master) pode alterá-la.")
+    item.update(titulo=payload.titulo, descricao=payload.descricao, sql=_qc_clean_sql(payload.sql),
+                compartilhada=payload.compartilhada, atualizado_em=datetime.now(timezone.utc).isoformat(timespec="seconds"))
+    path.write_text(json.dumps(item, ensure_ascii=False, indent=1), encoding="utf-8")
+    _audit(user["email"], "query_console_alterada", id=item_id)
+    return item
+
+
+@app.delete("/api/query-console/biblioteca/{item_id}")
+def query_console_delete(item_id: str, user: dict[str, Any] = Depends(_qc_runner)) -> dict[str, bool]:
+    path = _qc_saved_path(item_id)
+    try:
+        item = json.loads(path.read_text(encoding="utf-8-sig"))
+    except (OSError, ValueError):
+        raise HTTPException(404, "Consulta salva não encontrada.")
+    if item.get("autor") != user["email"] and not _qc_master(user):
+        raise HTTPException(403, "Só quem salvou a consulta (ou o administrador master) pode excluí-la.")
+    path.unlink(missing_ok=True)
+    _audit(user["email"], "query_console_excluida", id=item_id, titulo=item.get("titulo"))
+    return {"ok": True}
+
+
+class QueryFav(BaseModel):
+    id: Annotated[str, StringConstraints(pattern=r"^[a-z0-9_:-]{2,80}$")]
+    favorito: bool = True
+
+
+@app.post("/api/query-console/favoritos")
+def query_console_fav(payload: QueryFav, user: dict[str, Any] = Depends(current_user)) -> dict[str, list[str]]:
+    path = QC_FAV_DIR / f"{_file_key(user['email'])}.json"
+    favs = [str(x) for x in _qc_json_list(path) if str(x) != payload.id]
+    if payload.favorito:
+        favs = [payload.id, *favs][:200]
+    QC_FAV_DIR.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(favs), encoding="utf-8")
+    return {"favoritos": favs}
+
+
+@app.delete("/api/query-console/historico")
+def query_console_history_clear(user: dict[str, Any] = Depends(current_user)) -> dict[str, bool]:
+    (QC_HIST_DIR / f"{_file_key(user['email'])}.json").unlink(missing_ok=True)
+    return {"ok": True}
+
+
+# ---- Catalogo completo do BigQuery (bigquery_conhecimento.json) ----
+def _qc_table_short(table_id: str) -> str:
+    return table_id.split(".")[-1].replace("sap_", "")
+
+
+def _qc_tcode_map() -> dict[str, tuple[str, list[str]]]:
+    """Transacao -> (descricao do grupo, tabelas SAP), a partir de bigquery_conhecimento.json."""
+    out: dict[str, tuple[str, list[str]]] = {}
+    for label, tables in ((_bq_knowledge() or {}).get("transacoes_sap") or {}).items():
+        codes, _, desc = label.partition(" (")
+        for code in codes.split("/"):
+            if code.strip():
+                out[code.strip().upper()] = (desc.rstrip(")"), list(tables))
+    return out
+
+
+def _qc_sap_id(name: str) -> str:
+    return f"example-sap-project.trusted.sap_{name.lower()}"
+
+
+@app.get("/api/query-console/catalogo")
+def query_console_catalog(q: str = "", projeto: str = "", tipo: str = "", pagina: int = 1, todos: int = 0,
+                          user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    """todos=1 (13/11/2026): devolve todas as tabelas que casam (sem as colunas) para a tela agrupar por projeto."""
+    data = _bq_knowledge()
+    if not data:
+        raise HTTPException(503, "O catálogo do BigQuery não está nesta instalação. Atualize o NexxusDoc.")
+    index = _bq_cache["index"]
+    words = _bq_tokens(q)
+    raw = q.strip().casefold()
+    scored = []
+    for item in index:
+        t = item["table"]
+        if projeto and not t["id"].startswith(projeto + "."):
+            continue
+        if tipo == "sap" and not t.get("sap"):
+            continue
+        if tipo == "outras" and t.get("sap"):
+            continue
+        score = 1
+        if raw:
+            score = (40 if raw in (item["short"], item["sap"]) else 0) + (12 if raw in t["id"].casefold() else 0) \
+                    + 5 * len(words & item["name"]) + 2 * len(words & item["desc"]) + len(words & item["cols"])
+            if not score:
+                continue
+        scored.append((score, t["id"], t))
+    scored.sort(key=lambda s: (-s[0], s[1]))
+    per = max(1, len(scored)) if todos else 30
+    pagina = 1 if todos else max(1, pagina)
+    status = _bq_status_all()
+    page = [{**{k: v for k, v in t.items() if k != "colunas"},
+             **({"situacao": s} if (s := _bq_situation(status.get(t["id"]))) else {})}
+            for _, _, t in scored[(pagina - 1) * per: pagina * per]]
+    projects: dict[str, int] = {}
+    for item in index:
+        key = item["table"]["id"].split(".")[0]
+        projects[key] = projects.get(key, 0) + 1
+    result = {"total": len(scored), "pagina": pagina, "por_pagina": per, "itens": page,
+              "projetos": [{"id": k, "tabelas": n} for k, n in sorted(projects.items())],
+              "gerado_em": data.get("gerado_em"), "resumo": data.get("resumo"), "atualizacao": data.get("atualizacao"),
+              "pode_atualizar": _qc_master(user), "atualizando": _bq_update_state["rodando"]}
+    return _qc_hide_cost(result)
+
+
+BQ_COLUMNS_FILE = ROOT / "bigquery_colunas.json"
+_bq_cols_cache: dict[str, Any] = {"mtime": None, "data": {}}
+
+
+def _qc_all_columns() -> dict[str, list]:
+    try:
+        mtime = BQ_COLUMNS_FILE.stat().st_mtime
+    except OSError:
+        return {}
+    if _bq_cols_cache["mtime"] != mtime:
+        try:
+            _bq_cols_cache.update(mtime=mtime, data=json.loads(BQ_COLUMNS_FILE.read_text(encoding="utf-8")).get("colunas") or {})
+        except (OSError, ValueError):
+            return {}
+    return _bq_cols_cache["data"]
+
+
+# ---- Atualizacao semanal do catalogo (13/11/2026, pedido do usuario) ----
+# Toda segunda-feira, com o NexxusDoc aberto no computador do master (gcloud), le SO os metadados do BigQuery (lista de
+# datasets e tabelas e, das tabelas novas, descricao, linhas, particao e colunas; nenhum dado e lido, nada e cobrado)
+# e compara com o catalogo distribuido. Grava as novas e as removidas em BQ_UPDATE_FILE (pasta compartilhada); todas as
+# maquinas juntam isso ao catalogo e ao conhecimento do agente (_bq_knowledge), sem publicar. Para incorporar de vez,
+# rodar tools/build_bigquery_conhecimento.py e publicar (a atualizacao volta a ficar vazia na segunda seguinte).
+BQ_PROJECTS = ("example-sap-project", "example-brand-project", "example-retail-project")
+BQ_SKIP_DATASETS = {"stage", "tech", "raw", "dpe_metadata"}
+BQ_TECH_COLUMNS = {"row_hash_key", "lake_arrived_at", "kafka_arrival_timestamp", "kafka_partition", "kafka_offset",
+                   "op_type", "dat_carga"}
+BQ_SAP_PREFIX = "sap_"
+BQ_UPDATE_MAX_NEW = 400
+BQ_UPDATE_LOCK = threading.Lock()
+_bq_update_state: dict[str, Any] = {"rodando": False, "erro": ""}
+
+
+def _bq_get(path: str, token: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
+    with httpx.Client(timeout=httpx.Timeout(60.0)) as client:
+        response = client.get(f"{BQ_API}/{path}", headers={"Authorization": f"Bearer {token}"}, params=params or {})
+    if response.status_code >= 400:
+        raise RuntimeError(f"BigQuery {response.status_code}: {response.text[:200]}")
+    return response.json()
+
+
+def _bq_list(path: str, key: str, token: str) -> list[dict[str, Any]]:
+    items, page = [], ""
+    for _ in range(50):
+        data = _bq_get(path, token, {"maxResults": 1000, **({"pageToken": page} if page else {})})
+        items += data.get(key) or []
+        page = data.get("nextPageToken") or ""
+        if not page:
+            break
+    return items
+
+
+def _bq_catalog_refresh(email: str = "") -> dict[str, Any]:
+    """Compara o BigQuery com o catalogo e grava as tabelas novas e removidas. So no computador do master (gcloud)."""
+    if not BQ_UPDATE_LOCK.acquire(blocking=False):
+        return {"feito": False, "motivo": "A atualização do catálogo já está em andamento."}
     started = time.monotonic()
-    data = await _bq_call(project, sql, False, limit)
-    columns, rows = _bq_rows(data)
-    processed, billed = int(data.get("totalBytesProcessed") or 0), int(data.get("totalBytesBilled") or 0)
-    edited = sql != proc["sql"].strip()
-    _audit(user["email"], "query_console_executada", procedimento=proc_id, projeto=project, bytes=processed,
-           cobrados=billed, linhas=int(data.get("totalRows") or 0), editada=edited, **({"sql": sql[:3000]} if edited else {}))
-    return {"projeto": project, "colunas": columns, "linhas": rows, "total_linhas": int(data.get("totalRows") or 0),
-            "mostradas": len(rows), "gb_processados": round(processed / 1e9, 3), "gb_cobrados": round(billed / 1e9, 3),
-            "cache": bool(data.get("cacheHit")), "segundos": round(time.monotonic() - started, 1)}
+    try:
+        _bq_update_state.update(rodando=True, erro="")
+        token = _gcloud_token()
+        base = json.loads(BQ_KNOWLEDGE_FILE.read_text(encoding="utf-8"))
+        known = {t["id"] for t in base.get("tabelas") or []}
+        live: dict[str, str] = {}
+        for project in BQ_PROJECTS:
+            for ds in _bq_list(f"{project}/datasets", "datasets", token):
+                dataset = (ds.get("datasetReference") or {}).get("datasetId", "")
+                if not dataset or dataset in BQ_SKIP_DATASETS:
+                    continue
+                for tb in _bq_list(f"{project}/datasets/{dataset}/tables", "tables", token):
+                    name = (tb.get("tableReference") or {}).get("tableId", "")
+                    if name and not name.startswith(("temp_", "_")):
+                        live[f"{project}.{dataset}.{name}"] = tb.get("type", "")
+        # tabela nova de conjunto tecnico (temporario, logs, metricas internas) nao entra no catalogo
+        new_ids = sorted(t for t in set(live) - known
+                         if not re.search(r"(^temp_|mirror_logs|dpe_)", t.split(".")[1]))[:BQ_UPDATE_MAX_NEW]
+        removed = sorted(known - set(live))
+        new_tables, columns = [], {}
+        for table_id in new_ids:
+            project, dataset, name = table_id.split(".", 2)
+            try:
+                meta = _bq_get(f"{project}/datasets/{dataset}/tables/{name}", token)
+            except RuntimeError:
+                continue
+            fields = (meta.get("schema") or {}).get("fields") or []
+            clean = lambda v, n: " ".join(str(v or "").replace("—", "-").split())[:n]  # noqa: E731
+            cols = [[f.get("name", ""), f.get("type", ""), clean(f.get("description"), 160), 1 if f.get("name") in BQ_TECH_COLUMNS else 0]
+                    for f in fields]
+            entry = {"id": table_id, "desc": clean(meta.get("description"), 220), "n_colunas": len(cols),
+                     "colunas": [[c[0], c[1], c[2][:90]] for c in cols if not c[3]][:60]}
+            if name.startswith(BQ_SAP_PREFIX):
+                entry["sap"] = name[len(BQ_SAP_PREFIX):].upper()
+            if meta.get("numRows"):
+                entry["linhas"] = int(meta["numRows"])
+            if meta.get("numBytes"):
+                entry["gb"] = round(int(meta["numBytes"]) / 1024 ** 3, 3)
+            part = (meta.get("timePartitioning") or {}).get("field") or ((meta.get("rangePartitioning") or {}).get("field"))
+            if part:
+                entry["particao"] = part
+            new_tables.append(entry)
+            columns[table_id] = cols
+        # Situacao de todas as tabelas (linhas e ultima alteracao; so metadados, sem custo), 8 por vez.
+        def status_of(table_id: str) -> tuple[str, dict[str, Any] | None]:
+            project, dataset, name = table_id.split(".", 2)
+            try:
+                return table_id, _bq_meta_status(_bq_get(f"{project}/datasets/{dataset}/tables/{name}", token,
+                                                         {"fields": "numRows,lastModifiedTime,type"}))
+            except Exception:
+                return table_id, None
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            situation = {k: v for k, v in pool.map(status_of, sorted(live)) if v}
+        BQ_STATUS_FILE.parent.mkdir(parents=True, exist_ok=True)
+        _write_atomic(BQ_STATUS_FILE, json.dumps({
+            "gerado_em": datetime.now(timezone.utc).isoformat(timespec="seconds"), "tabelas": situation,
+            "observacao": "Linhas e última alteração de cada tabela do BigQuery (só metadados). Gravado pela conferência "
+                          "semanal do catálogo. Não editar à mão."}, ensure_ascii=False).encode("utf-8"))
+        out = {"gerado_em": datetime.now(timezone.utc).isoformat(timespec="seconds"), "por": email or WINDOWS_EMAIL,
+               "tabelas_no_bigquery": len(live), "novas": new_tables, "removidas": removed, "colunas": columns,
+               "observacao": "Atualização semanal do catálogo do BigQuery (só metadados), feita pelo NexxusDoc do "
+                             "administrador master. Não editar à mão."}
+        BQ_UPDATE_FILE.parent.mkdir(parents=True, exist_ok=True)
+        temp = BQ_UPDATE_FILE.with_name(BQ_UPDATE_FILE.name + ".tmp")
+        temp.write_text(json.dumps(out, ensure_ascii=False), encoding="utf-8")
+        os.replace(temp, BQ_UPDATE_FILE)
+        _audit(email or WINDOWS_EMAIL or "sistema", "catalogo_bigquery_atualizado", novas=len(new_tables), removidas=len(removed),
+               segundos=round(time.monotonic() - started, 1))
+        return {"feito": True, "novas": len(new_tables), "removidas": len(removed), "tabelas_no_bigquery": len(live),
+                "segundos": round(time.monotonic() - started, 1)}
+    except HTTPException as exc:
+        _bq_update_state["erro"] = str(exc.detail)[:300]
+        return {"feito": False, "motivo": str(exc.detail)}
+    except Exception as exc:
+        _bq_update_state["erro"] = str(exc)[:300]
+        return {"feito": False, "motivo": f"Falha ao atualizar o catálogo: {exc}"[:400]}
+    finally:
+        _bq_update_state["rodando"] = False
+        BQ_UPDATE_LOCK.release()
+
+
+def _bq_catalog_watch() -> None:
+    """Toda segunda-feira (horario de Sao Paulo), uma vez, com o sistema aberto no computador do master."""
+    time.sleep(180)  # deixa o sistema abrir primeiro
+    while True:
+        try:
+            now = datetime.now(SAO_PAULO)
+            last = str(_bq_update_data().get("gerado_em") or "")[:10]
+            done_today = last and datetime.fromisoformat(_bq_update_data()["gerado_em"]).astimezone(SAO_PAULO).date() == now.date()
+            if now.weekday() == 0 and not done_today:
+                _bq_catalog_refresh()
+        except Exception:
+            pass
+        time.sleep(3600)
+
+
+@app.on_event("startup")
+async def _start_bq_catalog_watch() -> None:
+    if (os.name == "nt" and Path(sys.argv[0]).name == "nexus_launcher.pyw" and _gcloud_exe().is_file()
+            and MASTER_ADMIN_EMAIL and MASTER_ADMIN_EMAIL == (WINDOWS_EMAIL or "").casefold()):
+        threading.Thread(target=_bq_catalog_watch, name="catalogo-bigquery", daemon=True).start()
+
+
+@app.post("/api/query-console/catalogo/atualizar")
+async def query_console_catalog_refresh(user: dict[str, Any] = Depends(require_master)) -> dict[str, Any]:
+    if not _gcloud_exe().is_file():
+        raise HTTPException(409, "A atualização do catálogo roda pelo Google Cloud CLI (gcloud) do computador do administrador.")
+    return await asyncio.to_thread(_bq_catalog_refresh, user["email"])
+
+
+@app.get("/api/query-console/tabela")
+def query_console_table(id: Annotated[str, StringConstraints(max_length=200)],
+                        user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    data = _bq_knowledge() or {}
+    table = next((t for t in data.get("tabelas") or [] if t["id"] == id), None)
+    if not table:
+        raise HTTPException(404, "Tabela não encontrada no catálogo.")
+    procs = [{"id": p["id"], "titulo": p["titulo"]} for p in _query_catalogue().get("procedimentos") or []
+             if any(((_query_catalogue().get("tabelas") or {}).get(x["id"]) or {}).get("caminho") == id for x in p.get("tabelas") or [])]
+    tcodes = sorted(code for code, (_, tables) in _qc_tcode_map().items() if table.get("sap") in tables)
+    # Todas as colunas (13/11/2026, pedido do usuario: a ficha mostrava so 60 de negocio): bigquery_colunas.json, lido so
+    # aqui; as tecnicas do lake vao marcadas. O conhecimento que vai ao agente continua com o resumo.
+    cols = _qc_all_columns().get(id) or (_bq_update_data().get("colunas") or {}).get(id) or []
+    sit = _bq_situation(_bq_tables_status([id], _qc_master(user)).get(id))
+    result = {**table, "procedimentos": procs, "transacoes": tcodes, "colunas_todas": cols,
+              **({"situacao": sit} if sit else {})}
+    return _qc_hide_cost(result)
+
+
+# ---- Processos da area x tabelas (inventario + POPs do NexxusDoc) ----
+QC_OUTSIDE_LAKE = (("PGL", r"\bPGL\b"), ("Flowls", r"flowls"), ("DUIMP/DI", r"\bDUIMP\b|\bDI\b"),
+                   ("Siscomex/Portal Único", r"siscomex|portal [uú]nico"), ("e-CAC", r"e-?cac"),
+                   ("despachante", r"despachante"), ("armador/agente de carga", r"armador|consolidador|agente de carga"),
+                   ("Box Folder", r"box folder"), ("planilhas", r"planilha"))
+
+
+QC_NOT_TCODE = re.compile(r"^(POP|PR|ID|SOP|IT|NR|RN|DI|LI|GR|CD|BL|NF|OEA|NCM|CFOP|ICMS|IPI|PIS|ISO|IN|RFB|SLA|KPI|TCCI|PO|ASN)\b", re.I)
+
+
+def _qc_tcode_plausible(code: str) -> bool:
+    """Transacao SAP de verdade: Z/Y com digito (ZTMM192), padrao SAP (ME23N, FB60, VL31N), F-43/F-53 ou as so de letras
+    conhecidas (MIGO, MIRO...). Codigo de documento (POP-01), prefixo solto (ZTMM) e letra+numero (H025) nao contam."""
+    code = code.upper()
+    # estacoes da Nike (SP26, SU26, FA26, HO25) e CO2 tem formato de transacao e nao sao
+    if QC_NOT_TCODE.match(code) or re.fullmatch(r"(SP|SU|FA|HO)\d{2}|CO2", code):
+        return False
+    if code in TCODE_LETTERS or re.fullmatch(r"F-\d{2}|J_?1B[A-Z0-9_]{2,}", code):
+        return True
+    if code[:1] in "ZY":
+        return len(code) >= 5 and any(ch.isdigit() for ch in code)
+    return bool(re.fullmatch(r"[A-Z]{2,4}\d{1,3}[A-Z]{0,2}", code))
+
+
+def _qc_process_view(name: str, text: str, tcodes: list[str], units: list[str], origem: str,
+                     extra: dict[str, Any]) -> dict[str, Any]:
+    catalogue = _query_catalogue()
+    curated = catalogue.get("tabelas") or {}
+    tmap = _qc_tcode_map()
+    present = {t["id"] for t in (_bq_knowledge() or {}).get("tabelas") or []}
+    procs = [p for p in catalogue.get("procedimentos") or []
+             if _norm(p.get("processo")) == _norm(name) or max(_title_like(name, p.get("processo")), _title_like(name, p.get("titulo"))) >= 0.62]
+    tables: dict[str, dict[str, Any]] = {}
+    for p in procs:
+        for use in p.get("tabelas") or []:
+            path = (curated.get(use["id"]) or {}).get("caminho")
+            if path:
+                tables.setdefault(path, {"id": path, "motivo": f"consulta pronta: {p['titulo']}", "fonte": "procedimento"})
+    codes = []
+    for code in tcodes:
+        code = code.upper()
+        if code in tmap and code not in codes:
+            codes.append(code)
+            for sap in tmap[code][1]:
+                path = _qc_sap_id(sap)
+                if path in present:
+                    tables.setdefault(path, {"id": path, "motivo": f"transação {code} ({tmap[code][0]})", "fonte": "transacao"})
+    # "outras transacoes": so o que tem cara de transacao SAP (o texto do inventario traz codigos de documento como
+    # POP-01, prefixos como ZTMM e numeros de controle, que nao sao transacao)
+    others = [c for c in dict.fromkeys(t.upper() for t in tcodes) if c not in codes and _qc_tcode_plausible(c)]
+    outside = [label for label, pattern in QC_OUTSIDE_LAKE if re.search(pattern, text or "", re.I)]
+    # fase macro do processo (13/11/2026, pedido do usuario): a mesma classificacao do universo do REF. DOCS
+    return {"nome": name, "origem": origem, "unidades": units, "transacoes": codes, "fase": _refdocs_phase(text),
+            "outras_transacoes": others[:12],
+            "procedimentos": [{"id": p["id"], "titulo": p["titulo"]} for p in procs],
+            "tabelas": [{**t, "curta": _qc_table_short(t["id"])} for t in tables.values()],
+            "fora_do_lake": outside, **extra}
+
+
+@app.get("/api/query-console/processos")
+def query_console_processes(_: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    area = _area_knowledge("Logística Internacional") or {}
+    items = []
+    for proc in area.get("processos") or []:
+        if not isinstance(proc, dict) or not proc.get("nome"):
+            continue
+        text = " ".join(str(proc.get(k) or "") for k in ("nome", "detalhe", "documento_existente"))
+        codes = [c for c in TCODE_IN_TEXT.findall(text) if not c.isdigit()]
+        items.append(_qc_process_view(proc["nome"], text, codes, proc.get("unidades") or [], "Inventário da área",
+                                      {"documento": proc.get("documento_existente", ""), "controle": proc.get("controle", "")}))
+    for record in _load_records():
+        if not _same_area(record.get("area"), "Logística Internacional"):
+            continue
+        answers = record.get("answers") or {}
+        title = (record.get("document") or {}).get("title") or record.get("process", "")
+        text = " ".join([title, json.dumps(answers, ensure_ascii=False)])
+        items.append(_qc_process_view(title, text, _sap_tcodes(answers), _record_units(record), "Documento do NexxusDoc",
+                                      {"documento": record.get("doc_code", ""), "record_id": record.get("id")}))
+    with_tables = sum(1 for i in items if i["tabelas"])
+    return {"processos": items, "total": len(items), "com_tabelas": with_tables,
+            "fases": [{"id": i, "nome": n, "cor": c} for i, n, c, _ in REFDOCS_PHASES],
+            "observacao": "Tabelas ligadas pelas consultas prontas da Query Console e pelas transações SAP citadas no "
+                          "processo. O que depende da PGL, do Siscomex ou de planilhas não está no BigQuery."}
+
+
+# ---- Perguntar em portugues: o agente monta o SQL com o catalogo e as regras do lake ----
+QC_ASK_REQUIREMENTS = [
+    "Tarefa: transformar a pergunta (em portugues) numa consulta SQL do BigQuery (GoogleSQL padrao) que responda a "
+    "pergunta da area de Logistica Internacional do Grupo SBF. Responda SOMENTE um JSON valido: {\"sql\": string, "
+    "\"titulo\": string curto, \"explicacao\": string (2 a 5 frases: o que a consulta traz, de quais tabelas e com quais "
+    "filtros), \"tabelas\": [endereco completo], \"premissas\": [string], \"fora_do_lake\": [string]}.",
+    "Use SO tabelas e colunas que aparecem em bigquery (tabelas_relacionadas_a_pergunta, inbound.tabelas, "
+    "inbound.procedimentos, resumo.tabelas_sap_no_lake com as colunas mostradas) ou nos exemplos. Nunca invente tabela "
+    "ou coluna. Sempre o endereco completo entre crases: `projeto.dataset.tabela`.",
+    "So leitura: uma unica instrucao SELECT (pode usar WITH). Nunca INSERT, UPDATE, DELETE, MERGE, CREATE, DROP, ALTER, "
+    "DECLARE, SET, EXPORT ou script. Sem ponto e virgula.",
+    "Custo: tabelas do SAP em example-sap-project.trusted sao enormes e particionadas por kafka_arrival_timestamp: SEMPRE "
+    "filtre a particao (ex.: kafka_arrival_timestamp >= TIMESTAMP_SUB(CURRENT_TIMESTAMP(), INTERVAL 30 DAY)) e leia so as "
+    "colunas necessarias; nunca SELECT *. Em tabelas refined use o campo de particao indicado (particao). Sem periodo "
+    "na pergunta, use os ultimos 30 dias e diga isso em premissas. Deduplique tabelas do SAP pela chegada mais recente "
+    "quando precisar (QUALIFY ROW_NUMBER() OVER (PARTITION BY chave ORDER BY kafka_arrival_timestamp DESC) = 1).",
+    "Siga bigquery.regras_lake (empresas: 0001 = Fisia, 0002 = Centauro; BSEG sem sinal: use shkzg; MIGO aparece como "
+    "MIGO_GR/MIGO_GI na BKPF). Prefira as tabelas e ligacoes dos procedimentos da area (inbound.procedimentos), que ja "
+    "foram conferidas. Limite o resultado a no maximo 500 linhas (ORDER BY + LIMIT) quando fizer sentido.",
+    "Se a pergunta depender de dado que nao esta no lake (PGL, Flowls, DUIMP, Siscomex, despachante, armador), diga em "
+    "fora_do_lake e monte a melhor consulta possivel com o que existe; se nada no lake responder, devolva sql vazio e "
+    "explique o porque.",
+    "Se vier sql_atual, a pessoa quer AJUSTAR essa consulta: parta dela e aplique o pedido.",
+    "Se vier erro_anterior, a consulta anterior foi recusada pelo BigQuery com esse erro: corrija.",
+    "Tabela com o campo situacao ('vazia' = 0 linhas; 'parada' = sem atualizacao ha mais de 30 dias, com a data) NAO "
+    "deve ser usada: escolha outra que tenha os dados (ex.: a tabela de origem do SAP em example-sap-project.trusted). Se "
+    "so ela tiver o que foi pedido, use, mas diga logo no inicio da explicacao que ela esta vazia ou parada desde a data.",
+    "Escreva explicacao e premissas em portugues do Brasil, sem travessao.",
+]
+
+
+class QueryAsk(BaseModel):
+    pergunta: Annotated[str, StringConstraints(strip_whitespace=True, min_length=5, max_length=1500)]
+    sql_atual: Annotated[str, StringConstraints(max_length=QC_SQL_MAX)] = ""
+
+
+def _qc_ask_parse(response: Any) -> dict[str, Any]:
+    data = _unwrap_output(response)
+    if isinstance(data, dict) and "sql" not in data and isinstance(data.get("answer"), str):
+        text = re.sub(r"^\s*```(?:json)?\s*|\s*```\s*$", "", data["answer"].strip())
+        try:
+            data = json.loads(text)
+        except ValueError:
+            match = re.search(r"\{.*\}", text, re.S)
+            try:
+                data = json.loads(match.group(0)) if match else {}
+            except ValueError:
+                data = {}
+    if not isinstance(data, dict):
+        return {}
+    clean = lambda v: " ".join(str(v or "").replace("—", "-").split())  # noqa: E731
+    return {"sql": re.sub(r"^\s*```(?:sql)?\s*|\s*```\s*$", "", str(data.get("sql") or ""), flags=re.I).strip().rstrip(";"),
+            "titulo": clean(data.get("titulo"))[:160], "explicacao": clean(data.get("explicacao"))[:1500],
+            "tabelas": [str(t) for t in data.get("tabelas") or [] if isinstance(t, str)][:12],
+            "premissas": [clean(t)[:300] for t in data.get("premissas") or [] if t][:8],
+            "fora_do_lake": [clean(t)[:300] for t in data.get("fora_do_lake") or [] if t][:8]}
+
+
+async def _qc_ask_agent(prompt: dict[str, Any]) -> dict[str, Any]:
+    """Tarefa build_query_sql no n8n; se o fluxo ainda nao tiver essa tarefa, a mesma pergunta vai pela tarefa das
+    Consultas gerais (answer_procedure_question), pedindo so o JSON."""
+    try:
+        return _qc_ask_parse(await _send_n8n(prompt, f"qcsql-{uuid.uuid4().hex}"))
+    except HTTPException as exc:
+        if exc.status_code not in (500, 502):
+            raise
+    fallback = {**prompt, "task": "answer_procedure_question", "question": prompt["pergunta"], "knowledge_base": [],
+                "requirements": [*prompt["requirements"], "Ignore o formato {answer, sources}: devolva SO o JSON pedido "
+                                 "acima, sem texto antes ou depois."]}
+    return _qc_ask_parse(await _send_n8n(fallback, f"qcsql-{uuid.uuid4().hex}"))
+
+
+@app.post("/api/query-console/perguntar")
+async def query_console_ask(payload: QueryAsk, user: dict[str, Any] = Depends(_qc_runner)) -> dict[str, Any]:
+    context = await asyncio.to_thread(_bq_context, payload.pergunta, True)
+    if not context:
+        raise HTTPException(503, "O catálogo do BigQuery não está nesta instalação. Atualize o NexxusDoc.")
+    catalogue = _query_catalogue()
+    examples = sorted(catalogue.get("procedimentos") or [],
+                      key=lambda p: -len(_bq_tokens(payload.pergunta) & _bq_tokens(" ".join([p.get("titulo", ""), p.get("serve", ""), " ".join(p.get("palavras") or [])]))))[:3]
+    prompt = {"task": "build_query_sql", "language": "pt-BR", "pergunta": payload.pergunta,
+              "sql_atual": payload.sql_atual.strip(), "hoje": date.today().isoformat(), "bigquery": context,
+              "exemplos": [{"titulo": p.get("titulo"), "serve": p.get("serve"), "sql": p.get("sql")} for p in examples],
+              "requirements": QC_ASK_REQUIREMENTS}
+    started = time.monotonic()
+    answer = await _qc_ask_agent(prompt)
+    checked, warning = False, ""
+    if answer.get("sql"):
+        for attempt in range(2):
+            try:
+                await _qc_simulate(user, _qc_clean_sql(answer["sql"]))
+                checked = True
+                break
+            except HTTPException as exc:
+                if exc.status_code in (413,):
+                    warning = str(exc.detail)
+                    break
+                if exc.status_code not in (422,) or attempt:
+                    warning = str(exc.detail)
+                    break
+                fixed = await _qc_ask_agent({**prompt, "sql_atual": answer["sql"], "erro_anterior": str(exc.detail)})
+                if fixed.get("sql"):
+                    answer = {**answer, **{k: v for k, v in fixed.items() if v}}
+    # Tabela vazia ou parada: o aviso vem antes da consulta (a tela so mostra o SQL se a pessoa pedir).
+    alerts = await asyncio.to_thread(_bq_alerts, answer.get("sql", ""), answer.get("tabelas"), _qc_master(user)) \
+        if answer.get("sql") else []
+    _audit(user["email"], "query_console_pergunta", pergunta=payload.pergunta[:500], conferida=checked,
+           segundos=round(time.monotonic() - started, 1), sql=answer.get("sql", "")[:3000],
+           tabelas_sem_dados=[a["tabela"] for a in alerts])
+    return {**answer, "conferida": checked, "aviso": warning, "alertas_tabelas": alerts,
+            "segundos": round(time.monotonic() - started, 1)}
+
+
+# ---------------------------------------------------------------------------
+# Auditoria (10/11/2026, pedido do usuario): controles internos da area, recomendacoes da auditoria e solicitacoes de
+# evidencias. A pagina ESPELHA a planilha mestre de Controles Internos ("Arquivo Geral - gestora da area"):
+#  - o fluxo "NexxusDoc - Auditoria" do n8n le a planilha de hora em hora (dias uteis) e grava o espelho bruto em
+#    nexxusdoc_auditoria_planilha.json na pasta compartilhada, sem depender de alguem estar com o sistema aberto;
+#  - "Sincronizar agora" pede a leitura na hora pelo webhook do mesmo fluxo e grava auditoria/espelho_manual.json;
+#  - vale o espelho mais recente; sem nenhum, o retrato curado auditoria_base.json (10/11/2026).
+# Para cada solicitacao o agente do fluxo lista as pastas do Drive do controle e monta o ROTEIRO de evidencias (onde
+# achar cada peca, como montar, busca de e-mail, transacao SAP, precedente do ciclo anterior), com a base de estudo
+# auditoria_conhecimento.json. Nada e enviado a auditoria nem ao Connect (pedido do usuario: sem integracao).
+# Ciclo: Interim (um mes de jan a jun, desenho e efetividade), Roll Forward (um mes de jul a dez) e Remediacao.
+# ---------------------------------------------------------------------------
+AUDIT_BASE_PATH = _curated("auditoria_base.json")
+AUDIT_KNOWLEDGE_PATH = _curated("auditoria_conhecimento.json")
+# Acesso (pedido do usuario em 10/11/2026): todos veem o icone da pagina, mas por enquanto so o master e a gestora da area (gerente
+# da area) navegam nela. Os demais veem a tela de acesso restrito; a trava vale no servidor.
+AUDIT_EMAILS = {"admin@example.com"}
+AUDIT_SHEET_ID = "CONFIGURE_ID"
+AUDIT_SHEET_URL = f"https://docs.google.com/spreadsheets/d/{AUDIT_SHEET_ID}/edit"
+AUDIT_SHEET_FILE = SHARED_ROOT / "nexxusdoc_auditoria_planilha.json"   # so o n8n escreve (de hora em hora)
+AUDPAGE_DIR = SHARED_ROOT / "auditoria"
+AUDIT_MANUAL_FILE = AUDPAGE_DIR / "espelho_manual.json"                  # "Sincronizar agora" (gravado pelo app)
+AUDIT_CHANGES_FILE = AUDPAGE_DIR / "mudancas.json"                       # novidades e alteracoes das solicitacoes
+AUDIT_PLAN_DIR = AUDPAGE_DIR / "roteiros"
+# Webhook do fluxo da Auditoria no mesmo n8n: .env NEXUS_AUDIT_N8N_URL ou o endereco do fluxo principal com o caminho
+# trocado por nexxusdoc-auditoria.
+AUDIT_N8N_URL = CONFIG.get("NEXUS_AUDIT_N8N_URL") or (re.sub(r"/[^/]+/?$", "/nexxusdoc-auditoria", N8N_URL) if N8N_URL else "")
+AUDIT_JOBS: dict[str, dict[str, Any]] = {}
+AUDIT_TASKS: set[asyncio.Task] = set()
+AUDIT_NEW_DAYS = 14             # solicitacao nova ou alterada aparece destacada por 14 dias
+AUDIT_N8N_STALE_HOURS = 26      # espelho automatico sem leitura ha mais tempo = aviso na tela
+AUDIT_PLAN_ATTEMPTS = 3
+AUDIT_RETRY_AFTER = 1800        # roteiro automatico que falhou: nova tentativa so depois de 30 min
+AUDIT_TRACK_FIELDS = ("controle", "solicitacao", "periodo", "data_prevista", "status_ci", "status_area", "observacoes",
+                      "responsavel", "pasta_evidencias")
+AUDIT_MONTHS = ("janeiro", "fevereiro", "marco", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro",
+                "novembro", "dezembro")
+AUDIT_MONTHS_SHORT = ("jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez")
+AUDIT_NOT_FOUND = ("O fluxo \"NexxusDoc - Auditoria\" ainda não está ativo no n8n. Importe o arquivo do fluxo, ligue as "
+                   "credenciais e ative o fluxo; depois tente de novo.")
+AUDIT_PLAN_REQUIREMENTS = (
+    "Monte o ROTEIRO DE EVIDENCIAS desta solicitacao seguindo o formato JSON do system message. Use a solicitacao, o "
+    "controle, as recomendacoes, as outras solicitacoes do mesmo controle (ciclos anteriores), o conhecimento curado e o "
+    "acervo listado das pastas do Drive. Para cada evidencia pedida (I, II, III...) diga exatamente onde achar e como "
+    "montar, com o link do arquivo ou pasta do acervo quando existir e o precedente do ciclo anterior. Identifique a fase "
+    "(Interim, Roll Forward ou Remediacao), se o pedido e de base (populacao) ou de amostra (selecao) e o mes testado. "
+    "Nunca invente link, arquivo, data, valor ou numero de documento: o que nao estiver nos dados vira pendencia. Nada e "
+    "enviado a auditoria nem ao Connect: o roteiro e so para a area montar e conferir as evidencias.")
+
+
+def _audit_page_access(user: dict[str, Any]) -> bool:
+    return user.get("role") == "master" or str(user.get("email") or "").casefold() in AUDIT_EMAILS
+
+
+def _audit_require(user: dict[str, Any]) -> None:
+    if not _audit_page_access(user):
+        raise HTTPException(403, "Por enquanto a página Auditoria está liberada só para o administrador master e a gerência da área.")
+
+
+def _audit_head(value: str) -> str:
+    text = unicodedata.normalize("NFKD", str(value or "")).encode("ascii", "ignore").decode("ascii")
+    return " ".join(text.casefold().split())
+
+
+def _audit_text(value: Any) -> str:
+    text = str(value or "").replace("\r\n", "\n").replace("\r", "\n").strip()
+    text = text.replace(" — ", ", ").replace("—", "-")  # sem travessao na tela (regra do projeto)
+    low = text.casefold()
+    if low in {"tbd", "n/a", "na"} or low.startswith("<preencher"):
+        return ""
+    return text
+
+
+def _audit_date(value: Any) -> str:
+    text = _audit_text(value)
+    found = re.match(r"^(\d{1,2})/(\d{1,2})/(\d{4})$", text)
+    if found:
+        day, month, year = map(int, found.groups())
+        try:
+            return date(year, month, day).isoformat()
+        except ValueError:
+            return text
+    return text
+
+
+def _audit_cell(cell: Any) -> tuple[str, str]:
+    if isinstance(cell, dict):
+        return str(cell.get("v") or "").strip(), str(cell.get("l") or "").strip()
+    return ("" if cell is None else str(cell).strip()), ""
+
+
+# Cabecalhos de cada aba (normalizados, sem acento): o primeiro teste que casar define o campo. A ordem importa.
+AUDIT_CONTROL_RULES = (
+    ("ref", lambda h: h.startswith("ref") and "controle" in h), ("possui_recomendacao", lambda h: "possui recomenda" in h),
+    ("aprovacao_gerente", lambda h: "aprovacao do gerente" in h), ("chamado", lambda h: "chamado" in h),
+    ("subprocesso", lambda h: h.startswith("sub")), ("processo", lambda h: h == "processo"),
+    ("nome", lambda h: "nome do controle" in h), ("bu", lambda h: h == "bu"), ("risco", lambda h: "risco" in h),
+    ("objetivo", lambda h: h.startswith("objetivo")), ("descricao", lambda h: "descricao da atividade" in h),
+    ("evidencias", lambda h: h.startswith("evidencia")), ("frequencia", lambda h: h.startswith("frequencia")),
+    ("natureza", lambda h: "natureza" in h), ("ponto_focal_backup", lambda h: "ponto focal" in h and "backup" in h),
+    ("ponto_focal", lambda h: h.startswith("ponto focal")), ("gerente", lambda h: "gerente responsavel" in h),
+    ("n2", lambda h: h == "n2"), ("n3", lambda h: h == "n3"))
+AUDIT_REC_RULES = (
+    ("id", lambda h: h.startswith("rec#")), ("subprocesso", lambda h: h.startswith("subprocesso")),
+    ("processo", lambda h: h == "processo"), ("bu", lambda h: h == "bu"),
+    ("objetivo", lambda h: "objetivo da recomenda" in h), ("risco", lambda h: "risco que deu origem" in h),
+    ("recomendacao", lambda h: h.startswith("recomendacao")), ("classificacao", lambda h: h.startswith("class")),
+    ("comentario_origem", lambda h: "comentario de origem" in h), ("data_apresentacao", lambda h: "data de apresentacao" in h),
+    ("relacionado", lambda h: "relacionado" in h), ("controle", lambda h: h.startswith("ref")),
+    ("responsavel", lambda h: "responsavel pelo" in h), ("email", lambda h: h.startswith(("email", "e-mail"))),
+    ("plano_acao", lambda h: "plano de acao" in h), ("doc_suporte", lambda h: "documentacao suporte" in h),
+    ("novo_deadline", lambda h: "novo deadline" in h), ("deadline", lambda h: h.startswith("deadline")),
+    ("data_conclusao", lambda h: "data de conclusao" in h), ("status", lambda h: "status do plano" in h),
+    ("observacao", lambda h: h.startswith("observacao")), ("questionamentos", lambda h: "questionamentos" in h),
+    ("n2", lambda h: h == "n2"), ("n3", lambda h: h == "n3"), ("gerente", lambda h: "gerente responsavel" in h))
+AUDIT_SOL_RULES = (
+    ("id", lambda h: h.startswith("sol#")), ("controle", lambda h: h == "controle"), ("processo", lambda h: h == "processo"),
+    ("solicitacao", lambda h: h == "solicitacao"), ("periodo", lambda h: h == "periodo"), ("bu", lambda h: h == "bu"),
+    ("gestor", lambda h: h == "gestor"), ("responsavel_ci", lambda h: "responsavel ci" in h),
+    ("responsavel", lambda h: "responsavel solicitado" in h), ("data_solicitacao", lambda h: "data da solicitacao" in h),
+    ("data_prevista", lambda h: "data prevista" in h), ("status_ci", lambda h: "status controles internos" in h),
+    ("pasta_evidencias", lambda h: "pasta para evidencias" in h), ("status_area", lambda h: "status da area" in h),
+    ("observacoes", lambda h: h.startswith("observacoes")))
+AUDIT_EMAIL_RULES = (
+    ("id", lambda h: h.startswith("sol#")), ("email_responsavel", lambda h: "e-mail do responsavel" in h),
+    ("email_gestor", lambda h: "e-mail do gestor" in h), ("email_backup", lambda h: h == "backup"),
+    ("responsavel", lambda h: h == "responsavel"), ("link_planilha", lambda h: "link da planilha" in h))
+
+
+def _audit_table(rows: list[Any], rules: tuple, key: str) -> list[tuple[dict[str, str], dict[str, str], list[str]]]:
+    """Linhas de uma aba: (valores por campo, links por campo, textos fora das colunas do cabecalho)."""
+    rows = [row if isinstance(row, list) else [] for row in rows or []]
+    header_i = next((i for i, row in enumerate(rows[:10]) if sum(1 for c in row if _audit_cell(c)[0]) >= 3), None)
+    if header_i is None:
+        return []
+    colmap: dict[int, str] = {}
+    for j, cell in enumerate(rows[header_i]):
+        head = _audit_head(_audit_cell(cell)[0])
+        if not head:
+            continue
+        for field, test in rules:
+            if field not in colmap.values() and test(head):
+                colmap[j] = field
+                break
+    if key not in colmap.values():
+        return []
+    out = []
+    for row in rows[header_i + 1:]:
+        values, links, extras = {}, {}, []
+        for j, cell in enumerate(row):
+            text, link = _audit_cell(cell)
+            if j in colmap:
+                values[colmap[j]] = text
+                if link:
+                    links[colmap[j]] = link
+            elif text:
+                extras.append(text)
+        if _audit_text(values.get(key)):
+            out.append((values, links, extras))
+    return out
+
+
+def _audit_tab(raw: dict[str, Any], *names: str) -> list[Any]:
+    for title, rows in (raw.get("abas") or {}).items():
+        head = _audit_head(title)
+        if any(name in head for name in names):
+            return rows
+    return []
+
+
+def _audit_from_sheet(raw: dict[str, Any]) -> dict[str, Any]:
+    """Planilha mestre (espelho bruto do n8n) no mesmo formato do retrato auditoria_base.json."""
+    controls: dict[tuple[str, str], dict[str, Any]] = {}
+    for values, _, _ in _audit_table(_audit_tab(raw, "validacao dos controles"), AUDIT_CONTROL_RULES, "ref"):
+        item = {field: _audit_text(values.get(field)) for field, _ in AUDIT_CONTROL_RULES}
+        item["possui_recomendacao"] = _audit_head(values.get("possui_recomendacao")).startswith("sim")
+        item["ref"] = item["ref"].strip()
+        key = (item["ref"], item["bu"])
+        item["versoes"] = controls.get(key, {}).get("versoes", 0) + 1  # repetido na planilha: vale a ultima versao
+        controls[key] = item
+    recs = []
+    for values, links, _ in _audit_table(_audit_tab(raw, "lista de recomenda"), AUDIT_REC_RULES, "id"):
+        item = {field: _audit_text(values.get(field)) for field, _ in AUDIT_REC_RULES}
+        for field in ("data_apresentacao", "deadline", "data_conclusao", "novo_deadline"):
+            item[field] = _audit_date(values.get(field))
+        item["links"] = {"pasta": links.get("doc_suporte") or links.get("id") or ""}
+        item.pop("doc_suporte", None)
+        recs.append(item)
+    emails = {_audit_text(v.get("id")): v for v, _, _ in _audit_table(_audit_tab(raw, "e-mails", "emails"), AUDIT_EMAIL_RULES, "id")}
+    sols = []
+    for values, links, extras in _audit_table(_audit_tab(raw, "lista de solicita"), AUDIT_SOL_RULES, "id"):
+        item = {field: _audit_text(values.get(field)) for field, _ in AUDIT_SOL_RULES}
+        for field in ("data_solicitacao", "data_prevista"):
+            item[field] = _audit_date(values.get(field))
+        contact = emails.get(item["id"], {})
+        item.update(email_responsavel=_audit_text(contact.get("email_responsavel")),
+                    email_gestor=_audit_text(contact.get("email_gestor")), email_backup=_audit_text(contact.get("email_backup")),
+                    notificacao=next((_audit_text(x) for x in reversed(extras) if "notific" in x.casefold()), ""),
+                    links={"pasta": links.get("pasta_evidencias", ""), "selecao": links.get("periodo") or links.get("solicitacao", "")})
+        sols.append(item)
+    managers = [c["gerente"] for c in controls.values() if c.get("gerente")] + [s["gestor"] for s in sols if s.get("gestor")]
+    return {"gerencia": max(set(managers), key=managers.count) if managers else "", "controles": list(controls.values()),
+            "recomendacoes": recs, "solicitacoes": sols}
+
+
+def _audit_json(path: Path) -> Any:
+    try:
+        return json.loads(Path(_long(path)).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+
+
+def _audit_raw_sources() -> list[tuple[str, str, dict[str, Any]]]:
+    out = []
+    for path, origin in ((AUDIT_SHEET_FILE, "n8n"), (AUDIT_MANUAL_FILE, "manual")):
+        raw = _audit_json(path)
+        if isinstance(raw, dict) and isinstance(raw.get("abas"), dict) and raw["abas"]:
+            out.append((str(raw.get("lido_em") or ""), origin, raw))
+    return out
+
+
+def _audit_load() -> dict[str, Any]:
+    """Espelho mais recente da planilha (automatico do n8n ou manual); sem espelho, o retrato curado."""
+    sources = _audit_raw_sources()
+    if sources:
+        read_at, origin, raw = max(sources, key=lambda item: item[0])
+        data = _audit_from_sheet(raw)
+        if data["solicitacoes"] or data["controles"]:
+            data["fonte"] = {"tipo": "espelho", "origem": origin, "lido_em": read_at, "titulo": "Arquivo Geral - gestora da area",
+                             "url": AUDIT_SHEET_URL}
+            return data
+    base = _audit_json(AUDIT_BASE_PATH)
+    if not isinstance(base, dict):
+        raise HTTPException(503, "A base da Auditoria não está nesta instalação. Atualize o NexxusDoc.")
+    base["fonte"] = {**(base.get("fonte") or {}), "tipo": "retrato", "origem": "retrato"}
+    return base
+
+
+def _audit_mirror_status() -> dict[str, Any]:
+    raw = _audit_json(AUDIT_SHEET_FILE)
+    auto = str(raw.get("lido_em") or "") if isinstance(raw, dict) else ""
+    manual = _audit_json(AUDIT_MANUAL_FILE)
+    ativo = False
+    if auto:
+        try:
+            ativo = datetime.now(timezone.utc) - datetime.fromisoformat(auto.replace("Z", "+00:00")) < timedelta(hours=AUDIT_N8N_STALE_HOURS)
+        except ValueError:
+            ativo = False
+    return {"automatico_lido_em": auto, "automatico_ativo": ativo,
+            "manual_lido_em": str(manual.get("lido_em") or "") if isinstance(manual, dict) else "",
+            "agente_configurado": bool(AUDIT_N8N_URL)}
+
+
+def _audit_track(data: dict[str, Any], write: bool) -> dict[str, Any]:
+    """Novidades da planilha: solicitacao nova (nao existia na leitura anterior) ou alterada (prazo, status, texto)."""
+    state = _audit_json(AUDIT_CHANGES_FILE)
+    state = state if isinstance(state, dict) else {}
+    first_run = not state.get("solicitacoes")
+    seen = state.setdefault("solicitacoes", {})
+    now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    changed = False
+    for sol in data.get("solicitacoes") or []:
+        fields = {key: str(sol.get(key) or "") for key in AUDIT_TRACK_FIELDS}
+        digest = hashlib.sha256(json.dumps(fields, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()[:16]
+        record = seen.get(sol["id"])
+        if record is None:
+            seen[sol["id"]] = {"primeiro": "inicial" if first_run else now, "hash": digest, "campos": fields}
+            changed = True
+        elif record.get("hash") != digest:
+            diff = [key for key in AUDIT_TRACK_FIELDS if (record.get("campos") or {}).get(key, "") != fields[key]]
+            seen[sol["id"]] = {**record, "hash": digest, "campos": fields, "alterado_em": now, "alterados": diff}
+            changed = True
+    if changed and write and (data.get("fonte") or {}).get("tipo") == "espelho":
+        try:
+            os.makedirs(_long(AUDPAGE_DIR), exist_ok=True)
+            Path(_long(AUDIT_CHANGES_FILE)).write_text(json.dumps(state, ensure_ascii=False, indent=1), encoding="utf-8")
+        except OSError as exc:
+            print(f"Auditoria: nao gravou as novidades ({exc})", flush=True)
+    return seen
+
+
+def _audit_recent(stamp: Any) -> bool:
+    try:
+        when = datetime.fromisoformat(str(stamp).replace("Z", "+00:00"))
+    except ValueError:
+        return False
+    return datetime.now(timezone.utc) - when < timedelta(days=AUDIT_NEW_DAYS)
+
+
+def _audit_phase(sol: dict[str, Any]) -> dict[str, Any]:
+    """Fase do teste pelo periodo da solicitacao: Interim (jan a jun), Roll Forward (jul a dez) ou Remediacao."""
+    text = " ".join(str(sol.get(key) or "") for key in ("periodo", "pasta_evidencias"))
+    text = re.sub(r"\b\d{2}\.\d{2}\.\d{2}(?!\d)", " ", text)  # referencia do controle (12.04.08) nao e data
+    months: set[int] = set()
+    for found in re.finditer(r"\b(\d{1,2})/(\d{4})\b", text):          # 02/2026
+        months.add(int(found.group(1)))
+    text = re.sub(r"\b\d{1,2}/\d{4}\b", " ", text)
+    for found in re.finditer(r"\b\d{1,2}[/.](\d{1,2})(?:[/.]\d{2,4})?\b", text):  # 01/01 a 28/02, 01.01.2026
+        months.add(int(found.group(1)))
+    head = _audit_head(text)
+    months |= {i + 1 for i, name in enumerate(AUDIT_MONTHS) if name in head}
+    months = {m for m in months if 1 <= m <= 12}
+    if len(months) >= 2:
+        months = set(range(min(months), max(months) + 1))
+    whole = _audit_head(" ".join(str(sol.get(key) or "") for key in ("periodo", "solicitacao", "observacoes", "pasta_evidencias")))
+    tipo = "amostra" if "sele" in _audit_head(f"{sol.get('periodo', '')} {sol.get('pasta_evidencias', '')}") else "base"
+    if "remedia" in whole:
+        phase = "Remediação"
+    elif months and max(months) <= 6:
+        phase = "Interim"
+    elif months and min(months) >= 7:
+        phase = "Roll Forward"
+    elif months:
+        phase = "Interim e Roll Forward"
+    else:
+        phase = "A definir"
+    ordered = sorted(months)
+    label = (AUDIT_MONTHS_SHORT[ordered[0] - 1] if len(ordered) == 1 else
+             f"{AUDIT_MONTHS_SHORT[ordered[0] - 1]} a {AUDIT_MONTHS_SHORT[ordered[-1] - 1]}") if ordered else ""
+    # Ano do periodo testado (para o calendario): o que estiver escrito no periodo/pasta; senao, o da solicitacao
+    # (pedido de janeiro sobre dezembro = ano anterior).
+    years = [int(y) for y in re.findall(r"\b(20\d{2})\b", " ".join(str(sol.get(k) or "") for k in ("periodo", "pasta_evidencias")))]
+    asked = str(sol.get("data_solicitacao") or "")
+    year = max(years) if years else (int(asked[:4]) if re.match(r"^\d{4}-\d{2}", asked) else date.today().year)
+    if not years and ordered and re.match(r"^\d{4}-\d{2}", asked) and ordered[0] > int(asked[5:7]):
+        year -= 1
+    return {"fase": phase, "meses": ordered, "rotulo": label, "tipo": tipo, "ano": year}
+
+
+def _audit_done(sol: dict[str, Any]) -> bool:
+    return _audit_head(sol.get("status_area")) in {"concluido", "concluida"}
+
+
+def _audit_knowledge() -> dict[str, Any]:
+    data = _audit_json(AUDIT_KNOWLEDGE_PATH)
+    return data if isinstance(data, dict) else {}
+
+
+def _audit_cycle(data: dict[str, Any], knowledge: dict[str, Any]) -> dict[str, Any]:
+    """Quadro do ano: em que mes cada controle foi testado no Interim e no Roll Forward e o que ainda falta."""
+    rows, refs = [], []
+    for ctrl in data.get("controles") or []:
+        if ctrl["ref"] not in refs:
+            refs.append(ctrl["ref"])
+    folders = knowledge.get("pastas") or {}
+    for ref in refs:
+        ctrl = next(c for c in data["controles"] if c["ref"] == ref)
+        sols = [s for s in data.get("solicitacoes") or [] if s.get("controle") == ref]
+
+        def block(phase: str) -> dict[str, Any]:
+            chosen = [s for s in sols if s["fase"]["fase"] in (phase, "Interim e Roll Forward")]
+            if not chosen:
+                return {"situacao": "sem_pedido", "meses": [], "rotulo": "", "solicitacoes": []}
+            months = sorted({m for s in chosen for m in s["fase"]["meses"] if (m <= 6) == (phase == "Interim")})
+            label = (AUDIT_MONTHS_SHORT[months[0] - 1] if len(months) == 1 else
+                     f"{AUDIT_MONTHS_SHORT[months[0] - 1]} a {AUDIT_MONTHS_SHORT[months[-1] - 1]}") if months else ""
+            return {"situacao": "concluido" if all(_audit_done(s) for s in chosen) else "em_andamento", "meses": months,
+                    "rotulo": label, "solicitacoes": [s["id"] for s in chosen]}
+        hint = None
+        if ref == "12.04.08" and folders.get("evidencias_2026"):
+            hint = {"texto": "Evidências de julho a outubro/2026 já reunidas", "nome": folders["evidencias_2026"]["nome"],
+                    "link": folders["evidencias_2026"]["link"]}
+        rows.append({"ref": ref, "nome": ctrl.get("nome", ""), "bu": ctrl.get("bu", ""), "interim": block("Interim"),
+                     "roll_forward": block("Roll Forward"),
+                     "remediacao": [s["id"] for s in sols if s["fase"]["fase"] == "Remediação"], "roll_forward_dica": hint})
+    month = date.today().month
+    return {"ano": date.today().year, "semestre_atual": "Interim" if month <= 6 else "Roll Forward", "controles": rows,
+            "regra": (knowledge.get("ciclo_auditoria") or {}).get("resumo", "")}
+
+
+def _audit_sol_key(sol_id: str) -> str:
+    return re.sub(r"[^a-z0-9]", "", str(sol_id).casefold())[:24] or "sol"
+
+
+def _audit_sol_stamp(sol: dict[str, Any]) -> str:
+    fields = {key: str(sol.get(key) or "") for key in ("controle", "solicitacao", "periodo", "pasta_evidencias", "data_prevista")}
+    return hashlib.sha256(json.dumps(fields, sort_keys=True, ensure_ascii=False).encode("utf-8")).hexdigest()[:16]
+
+
+def _audit_plan_file(key: str) -> Path:
+    return AUDIT_PLAN_DIR / f"{key}.json"
+
+
+def _audit_plan_status(sol: dict[str, Any]) -> dict[str, Any]:
+    key = _audit_sol_key(sol["id"])
+    job = AUDIT_JOBS.get(key) or {}
+    if job.get("status") == "gerando":
+        return {"status": "gerando", "chave": key}
+    plan = _audit_json(_audit_plan_file(key))
+    if isinstance(plan, dict) and plan.get("roteiro"):
+        return {"status": "pronto" if plan.get("fonte") == _audit_sol_stamp(sol) else "desatualizado", "chave": key,
+                "gerado_em": plan.get("gerado_em", "")}
+    if job.get("status") == "erro":
+        return {"status": "erro", "chave": key, "erro": job.get("erro", "")}
+    return {"status": "sem_roteiro", "chave": key}
+
+
+AUDIT_DRIVE_ID = re.compile(r"(?:/d/|/folders/|[?&]id=)([A-Za-z0-9_-]{15,})")
+
+
+def _audit_drive_id(link: str) -> str:
+    found = AUDIT_DRIVE_ID.search(str(link or ""))
+    return found.group(1) if found else ""
+
+
+def _audit_links_in(value: Any, out: set[str]) -> None:
+    if isinstance(value, dict):
+        for item in value.values():
+            _audit_links_in(item, out)
+    elif isinstance(value, list):
+        for item in value:
+            _audit_links_in(item, out)
+    elif isinstance(value, str) and value.startswith("https://"):
+        out.add(value)
+
+
+def _audit_plan_prompt(data: dict[str, Any], sol: dict[str, Any], knowledge: dict[str, Any]) -> dict[str, Any]:
+    ref = sol.get("controle", "")
+    ctrl = (next((c for c in data["controles"] if c["ref"] == ref and c.get("bu") == sol.get("bu")), None)
+            or next((c for c in data["controles"] if c["ref"] == ref), {}))
+    kctrl = (knowledge.get("controles") or {}).get(ref) or {}
+    recs = [r for r in data.get("recomendacoes") or [] if r.get("controle") == ref]
+    folders: list[dict[str, str]] = []
+    for link, name in [((sol.get("links") or {}).get("pasta"), f"Pasta da {sol['id']}")] + \
+                      [(f"https://drive.google.com/drive/folders/{p.get('id')}", p.get("nome", "")) for p in kctrl.get("pastas") or []] + \
+                      [((r.get("links") or {}).get("pasta"), f"Pasta da {r['id']}") for r in recs]:
+        folder_id = _audit_drive_id(link or "")
+        if folder_id and "/folders/" in str(link) and folder_id not in {f["id"] for f in folders}:
+            folders.append({"id": folder_id, "nome": name})
+    others = [{"id": s["id"], "solicitacao": s.get("solicitacao", "")[:600], "periodo": s.get("periodo", ""), "fase": s["fase"],
+               "status_area": s.get("status_area", ""), "links": s.get("links") or {}}
+              for s in data.get("solicitacoes") or [] if s.get("controle") == ref and s["id"] != sol["id"]]
+    return {"task": "audit_evidence_plan", "language": "pt-BR", "web_search_allowed": False, "hoje": date.today().isoformat(),
+            "solicitacao": {key: sol.get(key) for key in ("id", "controle", "processo", "bu", "solicitacao", "periodo", "gestor",
+                                                           "responsavel", "data_solicitacao", "data_prevista", "status_ci",
+                                                           "pasta_evidencias", "status_area", "observacoes", "links", "fase")},
+            "controle": {key: ctrl.get(key, "") for key in ("ref", "nome", "bu", "processo", "subprocesso", "risco", "objetivo",
+                                                             "descricao", "evidencias", "frequencia", "natureza", "ponto_focal",
+                                                             "ponto_focal_backup", "gerente")},
+            "recomendacoes_do_controle": [{key: r.get(key, "") for key in ("id", "recomendacao", "plano_acao", "status", "deadline")}
+                                          for r in recs],
+            "outras_solicitacoes_do_controle": others,
+            "conhecimento": {"ciclo_auditoria": knowledge.get("ciclo_auditoria") or {}, "chaves_sap": knowledge.get("chaves_sap") or {},
+                             "transacoes": knowledge.get("transacoes") or {}, "controle": kctrl,
+                             "pastas_gerais": knowledge.get("pastas") or {},
+                             # Orientacoes de Controles Internos sobre IPE (prints, totalizadores, tipos de extracao).
+                             "instrucoes_ipe": knowledge.get("instrucoes_ipe") or {}},
+            "pastas_para_listar": folders[:6], "requirements": AUDIT_PLAN_REQUIREMENTS}
+
+
+def _audit_clip(value: Any, size: int) -> str:
+    text = re.sub(r"[ \t]+", " ", str(value or "")).strip().replace(" — ", ", ").replace("—", "-")
+    return text[:size]
+
+
+def _audit_clean_plan(result: Any, allowed: set[str], acervo: list[dict[str, str]] | None = None) -> dict[str, Any]:
+    """Formato fixo do roteiro e nenhum link inventado: so links do acervo listado, da base de estudo ou da planilha.
+    Local citado pelo caminho/nome de um arquivo ou pasta do acervo ganha o link dele (pedido do usuario: todo nome de
+    pasta com link)."""
+    if not isinstance(result, dict):
+        raise HTTPException(502, "O agente da Auditoria devolveu o roteiro fora do formato. Tente gerar de novo.")
+    allowed_ids = {_audit_drive_id(link) for link in allowed} - {""}
+    by_path = {_audit_head(a.get("caminho")): a.get("link", "") for a in acervo or [] if a.get("caminho")}
+    by_name = {}
+    for a in acervo or []:
+        by_name.setdefault(_audit_head(a.get("nome")), a.get("link", ""))
+
+    def link(value: Any, local: Any = "") -> str:
+        text = str(value or "").strip()
+        if text.startswith("https://") and (text in allowed or _audit_drive_id(text) in allowed_ids):
+            return text
+        place = _audit_head(local)
+        if not place:
+            return ""
+        if place in by_path:
+            return by_path[place]
+        last = _audit_head(re.split(r"\s*[/›>]\s*", str(local or "").strip())[-1])
+        return by_name.get(last, "") if len(last) >= 6 else ""
+
+    def texts(value: Any, size: int, limit: int) -> list[str]:
+        return [_audit_clip(x, size) for x in (value if isinstance(value, list) else []) if _audit_clip(x, size)][:limit]
+
+    items = []
+    for raw in (result.get("itens") if isinstance(result.get("itens"), list) else [])[:15]:
+        if not isinstance(raw, dict) or not _audit_clip(raw.get("evidencia"), 10):
+            continue
+        places = []
+        for place in (raw.get("onde") if isinstance(raw.get("onde"), list) else [])[:5]:
+            if isinstance(place, dict) and (_audit_clip(place.get("local"), 5) or link(place.get("link"))):
+                places.append({"fonte": _audit_clip(place.get("fonte"), 40), "local": _audit_clip(place.get("local"), 300),
+                               "link": link(place.get("link"), place.get("local")), "como": _audit_clip(place.get("como"), 500)})
+        prec = raw.get("precedente") if isinstance(raw.get("precedente"), dict) else {}
+        level = _audit_head(raw.get("dificuldade"))
+        items.append({"n": _audit_clip(raw.get("n"), 10), "evidencia": _audit_clip(raw.get("evidencia"), 500), "onde": places,
+                      "busca_email": _audit_clip(raw.get("busca_email"), 300), "transacao": _audit_clip(raw.get("transacao"), 60),
+                      "parametros": _audit_clip(raw.get("parametros"), 400),
+                      "precedente": {"nome": _audit_clip(prec.get("nome"), 200), "link": link(prec.get("link"), prec.get("nome"))},
+                      "criterio": _audit_clip(raw.get("criterio"), 500), "responsavel": _audit_clip(raw.get("responsavel"), 80),
+                      "dificuldade": level if level in {"facil", "media", "dificil"} else ""})
+    if not items:
+        raise HTTPException(502, "O agente da Auditoria não devolveu nenhuma evidência no roteiro. Tente gerar de novo.")
+    confidence = _audit_head(result.get("confianca"))
+    return {"resumo": _audit_clip(result.get("resumo"), 900), "fase": _audit_clip(result.get("fase"), 40),
+            "tipo": _audit_clip(result.get("tipo"), 30), "periodo_testado": _audit_clip(result.get("periodo_testado"), 120),
+            "itens": items, "passos": texts(result.get("passos"), 400, 12), "pendencias": texts(result.get("pendencias"), 400, 10),
+            "alertas": texts(result.get("alertas"), 400, 10), "confianca": confidence if confidence in {"alta", "media", "baixa"} else ""}
+
+
+def _audit_acervo(raw: Any) -> list[dict[str, str]]:
+    out = []
+    for item in (raw if isinstance(raw, list) else [])[:600]:
+        if isinstance(item, dict) and str(item.get("link") or "").startswith("https://"):
+            out.append({key: _audit_clip(item.get(key), 400) for key in ("id", "nome", "caminho", "link", "tipo", "modificado")})
+    return out
+
+
+def _audit_n8n_error(exc: HTTPException) -> HTTPException:
+    if "HTTP 404" in str(exc.detail):
+        return HTTPException(503, AUDIT_NOT_FOUND)
+    return exc
+
+
+async def _audit_plan_build(key: str, sol_id: str, email: str) -> None:
+    job = AUDIT_JOBS[key]
+    try:
+        data = await asyncio.to_thread(_audit_page_data, None)
+        sol = next(s for s in data["solicitacoes"] if s["id"] == sol_id)
+        knowledge = _audit_knowledge()
+        prompt = _audit_plan_prompt(data, sol, knowledge)
+        for attempt in range(AUDIT_PLAN_ATTEMPTS):
+            try:
+                raw = await _send_n8n(prompt, f"auditoria-{key}-{attempt + 1}", url=AUDIT_N8N_URL)
+                acervo = _audit_acervo(raw.get("acervo") if isinstance(raw, dict) else None)
+                result = _unwrap_output(raw)
+                if isinstance(result, str):
+                    result = _unwrap_output(_parse_n8n_body(result))
+                allowed: set[str] = {AUDIT_SHEET_URL}
+                _audit_links_in(knowledge, allowed)
+                _audit_links_in(prompt["solicitacao"], allowed)
+                _audit_links_in(prompt["outras_solicitacoes_do_controle"], allowed)
+                allowed |= {item["link"] for item in acervo}
+                plan = _audit_clean_plan(result, allowed, acervo)
+                break
+            except HTTPException as exc:
+                exc = _audit_n8n_error(exc)
+                if exc.status_code not in (502, 504) or attempt == AUDIT_PLAN_ATTEMPTS - 1:
+                    raise exc
+                await asyncio.sleep((6, 15)[attempt])
+        record = {"solicitacao": sol_id, "chave": key, "fonte": _audit_sol_stamp(sol),
+                  "gerado_em": datetime.now(timezone.utc).isoformat(timespec="seconds"), "gerado_por": email,
+                  "roteiro": plan, "acervo": acervo, "pastas_listadas": prompt["pastas_para_listar"]}
+        os.makedirs(_long(AUDIT_PLAN_DIR), exist_ok=True)
+        Path(_long(_audit_plan_file(key))).write_text(json.dumps(record, ensure_ascii=False, indent=1), encoding="utf-8")
+        _audit(email, "auditoria_roteiro_gerado", solicitacao=sol_id, evidencias=len(plan["itens"]), arquivos=len(acervo))
+        job.update(status="pronto", erro="")
+    except HTTPException as exc:
+        job.update(status="erro", erro=str(exc.detail if isinstance(exc.detail, str) else "Falha ao montar o roteiro."))
+    except Exception as exc:  # noqa: BLE001 - o erro vai para a tela e para o log, nunca derruba o servidor
+        print(f"Auditoria roteiro {sol_id}: {exc!r}", flush=True)
+        job.update(status="erro", erro="Não foi possível montar o roteiro. Tente novamente.")
+    finally:
+        job["fim"] = time.monotonic()
+
+
+def _audit_plan_start(sol_id: str, email: str) -> None:
+    key = _audit_sol_key(sol_id)
+    if (AUDIT_JOBS.get(key) or {}).get("status") == "gerando":
+        return
+    AUDIT_JOBS[key] = {"status": "gerando", "inicio": time.monotonic(), "erro": ""}
+    task = asyncio.get_running_loop().create_task(_audit_plan_build(key, sol_id, email))
+    AUDIT_TASKS.add(task)
+    task.add_done_callback(AUDIT_TASKS.discard)
+
+
+# Matriz de risco (11/11/2026, pedidos do usuario): um risco por controle da planilha; nota = probabilidade x impacto
+# (1 a 5 cada) CALCULADA PELO SISTEMA com todas as bases (planilha, base de estudo e roteiros do agente), sem
+# classificacao manual. Cada ponto da nota vem com o motivo e a fonte, para a area conferir e explicar a auditoria.
+#  - Probabilidade: base pela execucao (2 se o controle tem etapas manuais: planilha, e-mail, conferencia, conciliacao;
+#    senao 1) + historico do desenho (recomendacao da auditoria, recomendacao em aberto, sem aprovacao do gerente;
+#    ate +2) + historico de execucao (solicitacao atrasada, evidencia nao aceita, remediacao, 7 ou mais pecas de
+#    evidencia, pendencias no roteiro do agente; ate +2). Teto 5.
+#  - Impacto: a consequencia mais grave descrita no risco e no objetivo do controle (regulatorio com multa ou
+#    autuacao 5; fiscal/tributario, reporte regulatorio, financeiro e contabil 4; custos e operacional 3); duas ou mais
+#    naturezas de consequencia somam +1. Teto 5.
+AUDIT_RISK_BANDS = ((16, "Crítico"), (10, "Alto"), (5, "Moderado"), (1, "Baixo"))
+AUDIT_MANUAL_STEPS = re.compile(r"planilha|e-?mail|manual|confronta|cruzament|concilia", re.I)
+AUDIT_IMPACT_RULES = (  # (natureza, nivel, padrao)
+    ("Regulatório (multa ou autuação)", 5, r"\bmultas?\b|autua[cç]"),
+    ("Fiscal e tributário", 4, r"tribut|impost|cr[eé]ditos? fisca|\bfiscal|desembara[cç]o"),
+    ("Reporte regulatório", 4, r"\bgee\b|emiss[oõ]es|ifrs|regulat"),
+    ("Financeiro", 4, r"perdas? financeir|pagamentos? incorret|impacto financeiro"),
+    ("Contábil", 4, r"registro incorreto|lan[cç]amentos? incorret|diverg[eê]ncias? cont[aá]b|cont[aá]bil"),
+    ("Financeiro", 3, r"despesas?|custos?|cobran[cç]as?"),
+    ("Operacional", 3, r"atrasos?|bloqueio|armazenagem|recebimento"),
+)
+AUDIT_RISK_METHOD = {
+    "probabilidade": "Base pela execução (2 se o controle tem etapas manuais, como planilha, e-mail, conferência ou "
+                     "conciliação; senão 1), mais o histórico do desenho (recomendação da auditoria, recomendação em aberto, "
+                     "falta de aprovação do gerente: até +2) e o histórico de execução (solicitação atrasada, evidência não "
+                     "aceita, remediação, 7 ou mais peças de evidência, pendências no roteiro do agente: até +2). Máximo 5.",
+    "impacto": "A consequência mais grave descrita no risco e no objetivo do controle: regulatória com multa ou autuação "
+               "(5); fiscal ou tributária, reporte regulatório, financeira ou contábil (4); custos ou operacional (3). "
+               "Duas ou mais naturezas de consequência somam +1. Máximo 5.",
+    "fontes": "Planilha de Controles Internos (controles, recomendações e solicitações), base de estudo da área e roteiros "
+              "de evidências do agente. A nota é recalculada a cada leitura da planilha.",
+}
+
+
+def _audit_risk_key(ctrl: dict[str, Any]) -> str:
+    return re.sub(r"[^a-z0-9]", "", f"{ctrl.get('ref', '')}{ctrl.get('bu', '')}".casefold())[:40] or "risco"
+
+
+def _audit_evidence_count(text: str) -> int:
+    romans = set(re.findall(r"(?<![A-Za-z])([IVX]{1,4})\)", text or ""))
+    numbered = re.findall(r"(?m)^\s*\d{1,2}[.)]\s", text or "")
+    return max(len(romans), len(numbered))
+
+
+def _audit_risk_score(ctrl: dict[str, Any], recs: list[dict[str, Any]], sols: list[dict[str, Any]]) -> dict[str, Any]:
+    """Probabilidade e impacto calculados, com cada fator (motivo, pontos e fonte)."""
+    today = date.today().isoformat()
+    fp: list[dict[str, Any]] = []
+    manual = AUDIT_MANUAL_STEPS.search(ctrl.get("descricao", ""))
+    p = 2 if manual else 1
+    fp.append({"pontos": p, "motivo": "Base: controle com etapas manuais (" + manual.group(0).lower() + ")" if manual
+               else "Base: controle sem etapas manuais descritas", "fonte": "Descrição do controle (planilha)"})
+    design: list[tuple[str, str]] = []
+    if recs:
+        design.append((f"Recomendação da auditoria sobre o controle ({', '.join(r['id'] for r in recs)})", "Lista de Recomendações"))
+    open_recs = [r for r in recs if _audit_head(r.get("status")) != "concluido"]
+    if open_recs:
+        design.append((f"Recomendação em aberto ({', '.join(r['id'] + ': ' + (r.get('status') or 'em aberto') for r in open_recs)})",
+                       "Lista de Recomendações"))
+    if not ctrl.get("aprovacao_gerente") and not ctrl.get("chamado"):
+        design.append(("Controle sem aprovação do gerente nem chamado registrado", "Validação dos controles"))
+    execution: list[tuple[str, str]] = []
+    late = [s["id"] for s in sols if not _audit_done(s) and s.get("data_prevista") and s["data_prevista"] < today]
+    if late:
+        execution.append((f"Solicitação atrasada ({', '.join(late)})", "Lista de Solicitação"))
+    refused = [s["id"] for s in sols if s.get("status_ci") and _audit_head(s.get("status_ci")) != "aceito"]
+    if refused:
+        execution.append((f"Evidência ainda não aceita por Controles Internos ({', '.join(refused)})", "Lista de Solicitação"))
+    remed = [s["id"] for s in sols if (s.get("fase") or {}).get("fase") == "Remediação"]
+    if remed:
+        execution.append((f"Teste em remediação ({', '.join(remed)})", "Lista de Solicitação"))
+    pieces = _audit_evidence_count(ctrl.get("evidencias", ""))
+    if pieces >= 7:
+        execution.append((f"{pieces} peças de evidência por item testado", "Validação dos controles"))
+    pending = 0
+    for s in sols:
+        plan = _audit_json(_audit_plan_file(_audit_sol_key(s["id"])))
+        if isinstance(plan, dict) and isinstance(plan.get("roteiro"), dict):
+            pending += len(plan["roteiro"].get("pendencias") or [])
+    if pending:
+        execution.append((f"{pending} pendência(s) apontada(s) nos roteiros de evidências", "Roteiro do agente"))
+    for group in (design, execution):
+        for k, (motivo, fonte) in enumerate(group):
+            pts = 1 if k < 2 else 0
+            fp.append({"pontos": pts, "motivo": motivo + ("" if pts else " (já no limite do grupo)"), "fonte": fonte})
+            p += pts
+    p = min(5, p)
+    text = f"{ctrl.get('risco', '')} {ctrl.get('objetivo', '')}"
+    natures: dict[str, tuple[int, str]] = {}
+    for nature, level, pattern in AUDIT_IMPACT_RULES:
+        found = re.search(rf"\w*(?:{pattern})\w*", text, re.I)  # a palavra inteira ("autuação", nao "autuaç")
+        if found and level > natures.get(nature, (0, ""))[0]:
+            natures[nature] = (level, found.group(0).lower())
+    # Impacto = a MAIOR consequencia (nao soma); as outras aparecem como "tambem no risco"; 2+ naturezas = +1.
+    ordered = sorted(natures.items(), key=lambda x: -x[1][0])
+    fi = [{"pontos": level, "tipo": "maior" if k == 0 else "tambem",
+           "motivo": f"{nature}: \"{term}\"" + (" (maior consequência)" if k == 0 else " (também no risco)"),
+           "fonte": "Descrição do risco (planilha)"} for k, (nature, (level, term)) in enumerate(ordered)]
+    i = ordered[0][1][0] if ordered else 2
+    if not natures:
+        fi.append({"pontos": 2, "tipo": "maior", "motivo": "Sem consequência grave descrita no risco", "fonte": "Descrição do risco (planilha)"})
+    if len(natures) >= 2 and i < 5:
+        fi.append({"pontos": 1, "tipo": "soma", "motivo": f"{len(natures)} naturezas de consequência ao mesmo tempo", "fonte": "Descrição do risco (planilha)"})
+        i += 1
+    return {"p": p, "i": min(5, i), "fatores_p": fp, "fatores_i": fi}
+
+
+def _audit_risks(data: dict[str, Any], knowledge: dict[str, Any]) -> list[dict[str, Any]]:
+    recs = data.get("recomendacoes") or []
+    sols = data.get("solicitacoes") or []
+    out = []
+    for n, ctrl in enumerate(data.get("controles") or [], start=1):
+        kctrl = (knowledge.get("controles") or {}).get(ctrl.get("ref"), {})
+        mine_recs = [r for r in recs if r.get("controle") == ctrl.get("ref") and (not r.get("bu") or r.get("bu") == ctrl.get("bu"))]
+        mine_sols = [s for s in sols if s.get("controle") == ctrl.get("ref") and (not s.get("bu") or s.get("bu") == ctrl.get("bu"))]
+        calc = _audit_risk_score(ctrl, mine_recs, mine_sols)
+        score = calc["p"] * calc["i"]
+        evento = kctrl.get("risco_curto") or re.split(r"(?<=[a-z\)])[,.;] ", ctrl.get("risco", ""))[0][:140]
+        out.append({"codigo": f"R{n:02d}", "chave": _audit_risk_key(ctrl), "controle": ctrl.get("ref", ""), "bu": ctrl.get("bu", ""),
+                    "nome_controle": ctrl.get("nome", ""), "evento": evento, "tema": kctrl.get("tema", ctrl.get("subprocesso", "")),
+                    "descricao": ctrl.get("risco", ""),
+                    "recomendacoes_abertas": [r["id"] for r in mine_recs if _audit_head(r.get("status")) != "concluido"],
+                    "p": calc["p"], "i": calc["i"], "nota": score,
+                    "classe": next(name for floor, name in AUDIT_RISK_BANDS if score >= floor),
+                    "fatores_p": calc["fatores_p"], "fatores_i": calc["fatores_i"]})
+    return out
+
+
+def _audit_page_data(email: str | None) -> dict[str, Any]:
+    data = _audit_load()
+    knowledge = _audit_knowledge()
+    seen = _audit_track(data, write=email is not None)
+    for ctrl in data.get("controles") or []:
+        folders = ((knowledge.get("controles") or {}).get(ctrl.get("ref")) or {}).get("pastas") or []
+        ctrl["pastas"] = [{"nome": f.get("nome", ""), "link": f"https://drive.google.com/drive/folders/{f['id']}"}
+                          for f in folders if f.get("id")]
+    for sol in data.get("solicitacoes") or []:
+        sol.setdefault("links", {})
+        sol["fase"] = _audit_phase(sol)
+        record = seen.get(sol["id"]) or {}
+        sol["novo"] = record.get("primeiro") not in (None, "inicial") and _audit_recent(record.get("primeiro"))
+        sol["alterado"] = bool(record.get("alterado_em")) and _audit_recent(record.get("alterado_em")) and not sol["novo"]
+        sol["alterados"] = (record.get("alterados") or []) if sol["alterado"] else []
+        sol["roteiro"] = _audit_plan_status(sol)
+    data["ciclo"] = _audit_cycle(data, knowledge)
+    data["riscos"] = _audit_risks(data, knowledge)
+    data["matriz"] = {**(knowledge.get("matriz_de_risco") or {}), "metodo": AUDIT_RISK_METHOD}
+    ipe = knowledge.get("instrucoes_ipe") or {}
+    data["ipe"] = {"pdf": ipe.get("arquivo", ""), "pptx": ipe.get("arquivo_original", ""), "resumo": ipe.get("resumo", "")}
+    data["espelho"] = _audit_mirror_status()
+    folders = knowledge.get("pastas") or {}
+    data["pastas"] = {key: {"nome": folders[key].get("nome", ""), "link": folders[key].get("link", "")}
+                      for key in ("gerencia", "evidencias_2026", "programacao_importados") if key in folders}
+    data["hoje"] = date.today().isoformat()
+    return data
+
+
+@app.get("/api/auditoria")
+async def audit_page(user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    _audit_require(user)
+    data = await asyncio.to_thread(_audit_page_data, user["email"])
+    # Automatico: solicitacao em aberto sem roteiro ganha o roteiro sozinha (uma por vez; com o fluxo configurado).
+    if AUDIT_N8N_URL and not any(job.get("status") == "gerando" for job in AUDIT_JOBS.values()):
+        for sol in data["solicitacoes"]:
+            job = AUDIT_JOBS.get(sol["roteiro"]["chave"]) or {}
+            recent_error = job.get("status") == "erro" and time.monotonic() - job.get("fim", 0) < AUDIT_RETRY_AFTER
+            if not _audit_done(sol) and sol["roteiro"]["status"] in {"sem_roteiro", "desatualizado"} and not recent_error:
+                _audit_plan_start(sol["id"], user["email"])
+                sol["roteiro"] = {"status": "gerando", "chave": sol["roteiro"]["chave"]}
+                break
+    return data
+
+
+@app.post("/api/auditoria/sincronizar")
+async def audit_sync(user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    """Le a planilha mestre na hora (pelo fluxo da Auditoria no n8n) e grava o espelho manual."""
+    _audit_require(user)
+    if not AUDIT_N8N_URL:
+        raise HTTPException(503, "O endereço do n8n não está configurado nesta instalação.")
+    try:
+        result = await _send_n8n({"task": "audit_sheet_read", "planilha": AUDIT_SHEET_ID}, f"auditoria-planilha-{int(time.time())}",
+                                 url=AUDIT_N8N_URL)
+    except HTTPException as exc:
+        raise _audit_n8n_error(exc) from exc
+    raw = _unwrap_output(result)
+    if not isinstance(raw, dict) or not isinstance(raw.get("abas"), dict) or not raw["abas"]:
+        raise HTTPException(502, "O n8n não devolveu a planilha mestre. Confira se a conta do Google do fluxo tem acesso a ela.")
+    parsed = _audit_from_sheet(raw)
+    if not parsed["solicitacoes"] and not parsed["controles"]:
+        raise HTTPException(502, "A planilha mestre veio sem as abas esperadas (Validação dos controles, Lista de Solicitação).")
+    raw["lido_em"] = str(raw.get("lido_em") or datetime.now(timezone.utc).isoformat(timespec="seconds"))
+    raw["origem"] = "manual"
+    os.makedirs(_long(AUDPAGE_DIR), exist_ok=True)
+    Path(_long(AUDIT_MANUAL_FILE)).write_text(json.dumps(raw, ensure_ascii=False), encoding="utf-8")
+    _audit(user["email"], "auditoria_planilha_sincronizada", solicitacoes=len(parsed["solicitacoes"]),
+           controles=len(parsed["controles"]))
+    return {"lido_em": raw["lido_em"], "solicitacoes": len(parsed["solicitacoes"]), "controles": len(parsed["controles"])}
+
+
+class AuditPlanGenerate(BaseModel):
+    refazer: bool = False
+
+
+@app.get("/api/auditoria/roteiro/{key}")
+async def audit_plan_get(key: Annotated[str, StringConstraints(pattern=r"^[a-z0-9]{2,24}$")],
+                         user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    _audit_require(user)
+    data = await asyncio.to_thread(_audit_page_data, None)
+    sol = next((s for s in data["solicitacoes"] if _audit_sol_key(s["id"]) == key), None)
+    if not sol:
+        raise HTTPException(404, "Solicitação não encontrada na planilha.")
+    plan = _audit_json(_audit_plan_file(key))
+    return {"solicitacao": sol["id"], **sol["roteiro"], **({"roteiro": plan.get("roteiro"), "acervo_total": len(plan.get("acervo") or []),
+            "pastas_listadas": plan.get("pastas_listadas") or [], "gerado_por": plan.get("gerado_por", "")}
+            if isinstance(plan, dict) else {})}
+
+
+@app.post("/api/auditoria/roteiro/{key}")
+async def audit_plan_generate(key: Annotated[str, StringConstraints(pattern=r"^[a-z0-9]{2,24}$")], payload: AuditPlanGenerate,
+                              user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    _audit_require(user)
+    if not AUDIT_N8N_URL:
+        raise HTTPException(503, "O endereço do n8n não está configurado nesta instalação.")
+    data = await asyncio.to_thread(_audit_page_data, None)
+    sol = next((s for s in data["solicitacoes"] if _audit_sol_key(s["id"]) == key), None)
+    if not sol:
+        raise HTTPException(404, "Solicitação não encontrada na planilha.")
+    if sol["roteiro"]["status"] == "pronto" and not payload.refazer:
+        return sol["roteiro"]
+    _audit_plan_start(sol["id"], user["email"])
+    return {"status": "gerando", "chave": key}
 
 
 # ---------------------------------------------------------------------------
@@ -7816,10 +9995,10 @@ NOTIFY_CATEGORIES: dict[str, tuple[str, str]] = {
     "chat": ("Respostas do agente no Chat Nexxus", "Quando o agente responder e você estiver em outra janela ou página."),
     "geracao": ("Documento gerado", "Quando o PDF ficar pronto e você estiver em outra janela."),
     "vpn": ("VPN desligada", "Quando a VPN GlobalProtect cair: sem ela o agente, os e-mails e o BigQuery não respondem."),
-    "atualizacao": ("Nova versão do NexxusDoc", "Quando o administrador publicar uma versão nova: um clique em Atualizar, sem reinstalar."),
-}
+    "consulta": ("Consulta da Query Console pronta", "Quando a consulta montada ou o resultado ficar pronto e você estiver em outra aba, página ou janela."),
+}   # "atualizacao" saiu em 11/11/2026: a versão nova entra sozinha, sem aviso nem clique
 NOTIFY_DEFAULTS: dict[str, bool] = {"enabled": True, "sound": True, **{key: True for key in NOTIFY_CATEGORIES}}
-NOTIFY_PAGES = {"home", "chat", "docs", "automation", "pgl", "config"}
+NOTIFY_PAGES = {"home", "chat", "docs", "automation", "pgl", "config", "query"}
 NOTIFY_GAP_SECONDS = 7     # um aviso por vez: o proximo so aparece depois que o balao anterior some
 NOTIFY_SUMMARY_FROM = 3    # 3 ou mais na fila viram um aviso so, com o resumo
 _TOAST_SCRIPT = r"""
@@ -7835,6 +10014,7 @@ $toast.Group = 'nexxusdoc'
 """
 _notify_queue: list[dict[str, Any]] = []
 _notify_lock = threading.Lock()
+_notify_file_lock = threading.Lock()   # leitura e gravacao do arquivo de cada pessoa (chaves enviadas e historico)
 _notify_state: dict[str, Any] = {"thread": None, "registered": False, "last_error": "", "last_sent": None, "shown_at": 0.0}
 
 
@@ -7879,6 +10059,40 @@ def _notify_register() -> None:
     _notify_state["registered"] = True
 
 
+TAB_PROTOCOL = "nexxusdoc"
+
+
+def _tab_protocol_ok() -> bool:
+    """Registra (so HKCU, sem administrador) o protocolo nexxusdoc: apontando para o atalho desta instalacao, para o
+    clique na notificacao ir para a aba ja aberta. Sem pythonw/atalho (servidor aberto a mao), fica o endereco http."""
+    if os.name != "nt":
+        return False
+    if _notify_state.get("protocolo") is not None:
+        return _notify_state["protocolo"]
+    ok = False
+    try:
+        import winreg
+        pyw = Path(sys.executable).with_name("pythonw.exe")
+        launcher = ROOT / "nexus_launcher.pyw"
+        if pyw.is_file() and launcher.is_file():
+            key = winreg.CreateKey(winreg.HKEY_CURRENT_USER, rf"Software\Classes\{TAB_PROTOCOL}")
+            try:
+                winreg.SetValueEx(key, "", 0, winreg.REG_SZ, "URL:NexxusDoc")
+                winreg.SetValueEx(key, "URL Protocol", 0, winreg.REG_SZ, "")
+            finally:
+                winreg.CloseKey(key)
+            cmd = winreg.CreateKey(winreg.HKEY_CURRENT_USER, rf"Software\Classes\{TAB_PROTOCOL}\shell\open\command")
+            try:
+                winreg.SetValueEx(cmd, "", 0, winreg.REG_SZ, f'"{pyw}" "{launcher}" "%1"')
+            finally:
+                winreg.CloseKey(cmd)
+            ok = True
+    except Exception:
+        ok = False
+    _notify_state["protocolo"] = ok
+    return ok
+
+
 def _notify_worker() -> None:
     """Mostra um aviso por vez, com intervalo, para os baloes nao aparecerem um em cima do outro. Se juntar muitos
     (ex.: varios itens do sino ao abrir o sistema), sai um aviso so com o resumo."""
@@ -7913,10 +10127,12 @@ def _notify_worker() -> None:
 
 
 def _toast_xml(title: str, body: str, page: str, sound: bool) -> str:
-    port = CONFIG.get("NEXUS_PORT") or "8790"
     page, _, pane = str(page).partition(":")  # "config:drivescan" abre Configuracoes nessa secao
     query = f"page={page if page in NOTIFY_PAGES else 'home'}" + (f"&pane={pane}" if re.fullmatch(r"[a-z]{2,20}", pane) else "")
-    target = escape(f"http://127.0.0.1:{port}/?{query}", {'"': "&quot;"})
+    # 12/11/2026: o clique abre pelo protocolo nexxusdoc: (o atalho), que leva a aba JA ABERTA para a pagina; antes o
+    # endereco http abria sempre uma aba nova (e no navegador padrao, nao no Chrome).
+    target = escape(f"{TAB_PROTOCOL}:abrir?{query}" if _tab_protocol_ok() else
+                    f"http://127.0.0.1:{CONFIG.get('NEXUS_PORT') or '8790'}/?{query}", {'"': "&quot;"})
     title = escape(" ".join(str(title).split())[:120])
     body = escape(" ".join(str(body).split())[:300])
     audio = "" if sound else '<audio silent="true"/>'
@@ -7925,21 +10141,34 @@ def _toast_xml(title: str, body: str, page: str, sound: bool) -> str:
             f'<action content="Abrir o NexxusDoc" activationType="protocol" arguments="{target}"/></actions>{audio}</toast>')
 
 
+NOTIFY_HISTORY_DAYS = 14
+
+
 def _win_notify(email: str, category: str, title: str, body: str, page: str = "home", key: str = "",
-            force: bool = False) -> bool:
+            force: bool = False, history: bool = True) -> bool:
     """Envia (em segundo plano) uma notificacao do Windows, se a pessoa permitir essa categoria. A chave evita repetir
-    o mesmo aviso (ex.: a mesma aprovacao pendente a cada abertura do sistema)."""
+    o mesmo aviso (ex.: a mesma aprovacao pendente a cada abertura do sistema). history (13/11/2026, pedido do usuario:
+    "recebo as notificacoes no Windows, mas elas nao aparecem no sino"): o aviso fica guardado para o sino mostrar; os
+    que ja nascem do sino (aprovacao, revisao...) e o teste nao entram, para nao aparecer duas vezes."""
     try:
         prefs = _notify_prefs(email)
         if not force and (not prefs["enabled"] or not prefs.get(category, False)):
             return False
-        if key:
-            data = _notify_data(email)
-            sent = list(data.get("enviadas") or [])
-            if key in sent:
-                return False
-            data["enviadas"] = [*sent, key][-500:]
-            _notify_save(email, data)
+        if key or (history and category != "teste"):
+            with _notify_file_lock:
+                data = _notify_data(email)
+                if key:
+                    sent = list(data.get("enviadas") or [])
+                    if key in sent:
+                        return False
+                    data["enviadas"] = [*sent, key][-500:]
+                if history and category != "teste":
+                    limit = (datetime.now(timezone.utc) - timedelta(days=NOTIFY_HISTORY_DAYS)).isoformat()
+                    data["historico"] = [h for h in data.get("historico") or [] if str(h.get("quando", "")) >= limit][-79:] + [{
+                        "id": uuid.uuid4().hex[:12], "categoria": category, "titulo": " ".join(str(title).split())[:160],
+                        "texto": " ".join(str(body).split())[:300], "pagina": page,
+                        "quando": datetime.now(timezone.utc).isoformat(timespec="seconds")}]
+                _notify_save(email, data)
         tag = key or category
         with _notify_lock:
             # O mesmo aviso ainda na fila (ex.: duas respostas seguidas do agente) e trocado pelo mais novo.
@@ -7984,11 +10213,12 @@ def notify_status(user: dict[str, Any] = Depends(current_user)) -> dict[str, Any
 
 @app.put("/api/notificacoes")
 def notify_save_prefs(payload: NotifyPrefs, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
-    data = _notify_data(user["email"])
-    prefs = _notify_prefs(user["email"])
-    prefs.update({key: value for key, value in payload.preferencias.items() if key in NOTIFY_DEFAULTS})
-    data["preferencias"] = prefs
-    _notify_save(user["email"], data)
+    with _notify_file_lock:
+        data = _notify_data(user["email"])
+        prefs = _notify_prefs(user["email"])
+        prefs.update({key: value for key, value in payload.preferencias.items() if key in NOTIFY_DEFAULTS})
+        data["preferencias"] = prefs
+        _notify_save(user["email"], data)
     return _notify_status(user["email"])
 
 
@@ -8011,17 +10241,27 @@ def notify_send(payload: NotifySend, user: dict[str, Any] = Depends(current_user
 def notify_bell(payload: NotifyBell, user: dict[str, Any] = Depends(current_user)) -> dict[str, int]:
     """Itens do sino (aprovacoes, ajustes, revisoes, ciencia): na primeira vez so registra o que ja existia (sem uma
     enxurrada de avisos); depois avisa os novos, no maximo 3 de cada vez."""
-    data = _notify_data(user["email"])
     items = [item for item in payload.itens if item.categoria in NOTIFY_CATEGORIES and item.chave]
-    if not data.get("sino_iniciado"):
-        data.update(sino_iniciado=True, enviadas=[*(data.get("enviadas") or []), *[i.chave for i in items]][-500:])
-        _notify_save(user["email"], data)
-        return {"sent": 0}
+    with _notify_file_lock:
+        data = _notify_data(user["email"])
+        if not data.get("sino_iniciado"):
+            data.update(sino_iniciado=True, enviadas=[*(data.get("enviadas") or []), *[i.chave for i in items]][-500:])
+            _notify_save(user["email"], data)
+            return {"sent": 0}
     sent = 0
     for item in items:
-        if sent < 3 and _win_notify(user["email"], item.categoria, item.titulo, item.texto, item.pagina, item.chave):
+        if sent < 3 and _win_notify(user["email"], item.categoria, item.titulo, item.texto, item.pagina, item.chave,
+                                    history=False):
             sent += 1
     return {"sent": sent}
+
+
+@app.get("/api/notificacoes/historico")
+def notify_history(user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    """Avisos enviados ao Windows nos ultimos 14 dias (mais novo primeiro), para o sino."""
+    limit = (datetime.now(timezone.utc) - timedelta(days=NOTIFY_HISTORY_DAYS)).isoformat()
+    items = [h for h in _notify_data(user["email"]).get("historico") or [] if str(h.get("quando", "")) >= limit]
+    return {"itens": list(reversed(items))}
 
 
 # ---------------------------------------------------------------------------
@@ -8245,7 +10485,7 @@ def _guess_code(text: str) -> str:
 
 def _doc_author(text: Any) -> str:
     """Quem elaborou o documento: quadro 'Elaborador | Avaliador | Aprovador' (nomes na linha de baixo),
-    'Elaborador(a): Nome' ou 'Autor: Nome'. Cargo depois do nome sai (ex.: 'Tran Uyen Gerente Executiva')."""
+    'Elaborador(a): Nome' ou 'Autor: Nome'. Cargo depois do nome sai (ex.: 'gestora da area Uyen Gerente Executiva')."""
     text = re.sub(r"\[(?:Pagina|Paragrafo|Slide|Linha|Aba|Tabela)[^\]]*\]\s*", "", str(text or ""))
     patterns = [(r"Elaborador(?:a)?\s*\|\s*Avaliador(?:a)?(?:\s*\|\s*Aprovador(?:a)?)?\s*\n\s*([^|\n]{3,90})", re.I),
                 (r"\bElaborad(?:or|ora|o por)\s*:\s*([^|\n]{3,90}?)(?=\s+Aprovad|\s+Avaliad|\s*\||\s*$|\n)", re.I | re.M),
@@ -8683,6 +10923,7 @@ def _sent_blocked(choice: SentChoice, meta: dict[str, Any]) -> str:
 async def sent_confirm(payload: SentConfirm, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
     """Grava as escolhas: guardar e revisar ficam em documentos_enviados (nada se perde); o primeiro 'revisar' ja abre
     a revisao no Chat Nexxus e os demais ficam em Documentos com 'Revisar' (uma revisao por vez)."""
+    _refresh_review_agenda()
     area = _user_area(user)
     if not area and any(c.acao != "descartar" for c in payload.itens):
         raise HTTPException(409, "Sua área ainda não está definida no cadastro. Peça ao administrador.")
@@ -8778,6 +11019,8 @@ def external_documents(user: dict[str, Any] = Depends(current_user)) -> list[dic
                       "created_at": doc.get("enviado_em", ""), "last_review": doc.get("ultima_revisao", ""),
                       **_due_state(_to_date(doc.get("proxima_revisao")), today, notice),
                       "review_source": doc.get("fonte_datas", ""), "pending_review": bool(doc.get("revisao_pendente")),
+                      "can_change_review": _can_change_review(owner, doc.get("area"), user),
+                      "review_changed": bool(doc.get("revisao_alterada")),
                       "open_url": f"/api/envios/{doc['id']}/arquivo", "file_name": doc.get("arquivo", ""),
                       "can_revise": bool(doc.get("texto")),
                       "can_delete": is_master or owner.casefold() == user["email"].casefold()})
@@ -8879,6 +11122,7 @@ def sent_delete(doc_id: str, user: dict[str, Any] = Depends(current_user)) -> di
     doc = _sent_read(doc_id)
     if user.get("role") != "master" and doc.get("enviado_por", "").casefold() != user["email"].casefold():
         raise HTTPException(403, "Somente quem enviou o documento ou o administrador master pode excluir.")
+    _refresh_review_agenda()
     target = SENT_DIR / "excluidos"
     target.mkdir(parents=True, exist_ok=True)
     doc["excluido_em"], doc["excluido_por"] = datetime.now(timezone.utc).isoformat(), user["email"]
@@ -8907,7 +11151,7 @@ CLOUD_IGNORE = tuple(f"NexxusDoc/{name}" for name in (
 CLOUD_CODE_DIRS = ("static", "assets", "workflows")
 CLOUD_CODE_FILES = {"publicacao.json", "publicacao.sig", "n8n_acesso.json", "nuvem_acesso.json", "questionnaire.json",
                     "policy_questionnaire.json", "modelos_referencias_por_area.json", "conhecimento_interno_por_area.json",
-                    "pgl_processos.json", "base_manuais.json", "query_console.json", "requirements.txt", ".env.example",
+                    "pgl_processos.json", "base_manuais.json", "query_console.json", "query_biblioteca.json", "bigquery_conhecimento.json", "bigquery_colunas.json", "auditoria_base.json", "auditoria_conhecimento.json", "novidades.json", "requirements.txt", ".env.example",
                     "NEXXUSDOC_PASTA_COMPARTILHADA.txt", "PASTA_MOVIDA.json"}
 CLOUD_CODE_SUFFIXES = (".py", ".pyw", ".bat", ".md", ".docx", ".sig")
 CLOUD_MAX_BYTES = 25 * 1024 * 1024
@@ -9206,6 +11450,241 @@ def cloud_synced() -> dict[str, Any]:
     return {"ok": True}
 
 
+# ---------------------------------------------------------------------------
+# BigQuery nas Consultas gerais (12/11/2026, pedido do usuario: o agente nao sabia dizer que tabelas existem nem ligar
+# tabela a processo). bigquery_conhecimento.json (FILES; gerado por tools/build_bigquery_conhecimento.py a partir do
+# catalogo bigquery/catalogo_tabelas.json, do dicionario e das regras do projeto text_sql e do query_console.json).
+# Vai ao agente SO quando a pergunta envolve BigQuery/tabelas/dados ou cita uma tabela: resumo dos projetos, regras
+# do lake, mapa da Logistica Internacional (procedimentos x tabelas, o que nao esta no lake), transacao SAP x tabela
+# e as tabelas do catalogo mais ligadas a pergunta, com as colunas. Pelo app, sem mexer no n8n. A aba Perguntar da
+# Query Console usa o mesmo contexto (force=True).
+# ---------------------------------------------------------------------------
+BQ_KNOWLEDGE_FILE = ROOT / "bigquery_conhecimento.json"
+# Atualizacao semanal do catalogo (13/11/2026, pedido do usuario: toda segunda-feira, pelo gcloud do computador do
+# master, com o sistema aberto): tabelas novas e removidas, gravadas na pasta compartilhada para todas as maquinas.
+BQ_UPDATE_FILE = SHARED_ROOT / "bigquery" / "catalogo_atualizacao.json"
+BQ_INTENT = re.compile(r"big ?query|\btabelas?\b|data ?lake|\blake\b|\bcolunas?\b|\bsql\b|\bquery\b|\bdataset|"
+                       r"base de dados|banco de dados|parti[cç][aã]o|dicion[aá]rio de dados|\bonde (est[aã]o|ficam|encontro) os dados",
+                       re.I)
+BQ_TOP_TABLES = 10
+BQ_TOP_COLUMNS = 35
+_bq_cache: dict[str, Any] = {"mtime": None, "data": None, "index": []}
+
+
+def _bq_tokens(text: Any) -> set[str]:
+    """Palavras sem acento, com plural simples (pedidos = pedido) e partes de nomes com '_' separadas."""
+    return {w[:-1] if len(w) > 4 and w.endswith("s") else w for w in _keywords(text)}
+
+
+def _bq_update_data() -> dict[str, Any]:
+    """Atualizacao semanal do catalogo (BQ_UPDATE_FILE, na pasta compartilhada; feita pelo computador do master)."""
+    try:
+        data = json.loads(BQ_UPDATE_FILE.read_text(encoding="utf-8"))
+        if not isinstance(data, dict):
+            return {}
+        if isinstance(data.get("novas"), list):   # conjuntos tecnicos fora (arquivo gravado antes do filtro)
+            data["novas"] = [t for t in data["novas"] if not (isinstance(t, dict) and str(t.get("id", "")).count(".") >= 2
+                             and re.search(r"(^temp_|mirror_logs|dpe_)", str(t["id"]).split(".")[1]))]
+        return data
+    except (OSError, ValueError):
+        return {}
+
+
+# Situacao das tabelas (13/11/2026, pedido do usuario: "quando a tabela estiver vazia e sem atualizacao, o agente devera
+# informar isso antes de dar a opcao da consulta"). Linhas e ultima alteracao de cada tabela (so metadados, sem custo):
+# a conferencia semanal do master grava BQ_STATUS_FILE (todas as maquinas leem); no computador do master (gcloud) o
+# Perguntar ainda confere na hora as tabelas da consulta. Vazia = 0 linhas; parada = sem alteracao ha mais de 30 dias.
+BQ_STATUS_FILE = SHARED_ROOT / "bigquery" / "tabelas_situacao.json"
+BQ_STALE_DAYS = 30
+_bq_status_cache: dict[str, Any] = {"mtime": None, "data": {}}
+_bq_live_status: dict[str, tuple[float, dict[str, Any]]] = {}
+
+
+def _bq_status_all() -> dict[str, dict[str, Any]]:
+    try:
+        mtime = BQ_STATUS_FILE.stat().st_mtime
+    except OSError:
+        return {}
+    if _bq_status_cache["mtime"] != mtime:
+        try:
+            tables = json.loads(BQ_STATUS_FILE.read_text(encoding="utf-8-sig")).get("tabelas")
+        except (OSError, ValueError, AttributeError):
+            tables = {}
+        _bq_status_cache.update(mtime=mtime, data=tables if isinstance(tables, dict) else {})
+    return _bq_status_cache["data"]
+
+
+def _bq_meta_status(meta: dict[str, Any]) -> dict[str, Any]:
+    """Linhas e data da ultima alteracao a partir do tables.get do BigQuery."""
+    info: dict[str, Any] = {"tipo": meta.get("type", "")}
+    if meta.get("numRows") is not None:
+        info["linhas"] = int(meta["numRows"])
+    if meta.get("lastModifiedTime"):
+        info["atualizada"] = datetime.fromtimestamp(int(meta["lastModifiedTime"]) / 1000, timezone.utc).date().isoformat()
+    return info
+
+
+def _bq_situation(info: dict[str, Any] | None) -> dict[str, Any] | None:
+    """{'situacao': 'vazia'|'parada', ...} quando a tabela nao serve para consulta; None quando esta ok ou sem dado.
+    Visao (VIEW) e tabela externa nao tem linhas nem alteracao que valham: ficam de fora."""
+    if not info or "VIEW" in str(info.get("tipo", "")).upper().replace("MATERIALIZED_VIEW", "") or info.get("tipo") == "EXTERNAL":
+        return None
+    when = str(info.get("atualizada") or "")[:10]
+    if info.get("linhas") == 0:
+        return {"situacao": "vazia", "linhas": 0, "atualizada": when}
+    try:
+        if when and (date.today() - date.fromisoformat(when)).days > BQ_STALE_DAYS:
+            return {"situacao": "parada", "linhas": info.get("linhas"), "atualizada": when}
+    except ValueError:
+        pass
+    return None
+
+
+def _bq_tables_status(ids: set[str] | list[str], live: bool = False) -> dict[str, dict[str, Any] | None]:
+    """Situacao das tabelas: do arquivo semanal; com live (master com gcloud), conferida na hora (cache de 1 h)."""
+    stored = _bq_status_all()
+    out = {i: stored.get(i) for i in ids}
+    if not live or not ids or not _gcloud_exe().is_file():
+        return out
+    token = ""
+    for table_id in ids:
+        cached = _bq_live_status.get(table_id)
+        if cached and time.monotonic() - cached[0] < 3600:
+            out[table_id] = cached[1]
+            continue
+        try:
+            token = token or _gcloud_token()
+            project, dataset, name = table_id.split(".", 2)
+            info = _bq_meta_status(_bq_get(f"{project}/datasets/{dataset}/tables/{name}", token,
+                                           {"fields": "numRows,lastModifiedTime,type"}))
+        except Exception:
+            continue
+        _bq_live_status[table_id] = (time.monotonic(), info)
+        out[table_id] = info
+    return out
+
+
+def _bq_alerts(sql: str, tables: list[str] | None = None, live: bool = False) -> list[dict[str, Any]]:
+    """Tabelas da consulta que estao vazias ou paradas, com o texto do aviso."""
+    ids = {m for m in re.findall(r"`?([a-z0-9-]+\.[a-zA-Z0-9_]+\.[a-zA-Z0-9_]+)`?", sql or "")}
+    ids |= {t for t in tables or [] if isinstance(t, str) and t.count(".") == 2}
+    alerts = []
+    for table_id, info in sorted(_bq_tables_status(ids, live).items()):
+        sit = _bq_situation(info)
+        if not sit:
+            continue
+        when = "/".join(reversed(sit["atualizada"].split("-"))) if sit.get("atualizada") else ""
+        text = (f"A tabela {table_id.split('.')[-1]} está vazia no BigQuery (0 linhas)"
+                + (f" e sem atualização desde {when}" if when else "") if sit["situacao"] == "vazia"
+                else f"A tabela {table_id.split('.')[-1]} está sem atualização desde {when}: os dados mais recentes não estão nela")
+        alerts.append({"tabela": table_id, **sit, "texto": text + "."})
+    return alerts
+
+
+def _bq_knowledge() -> dict[str, Any] | None:
+    try:
+        mtime = BQ_KNOWLEDGE_FILE.stat().st_mtime
+    except OSError:
+        return None
+    try:
+        mtime = (mtime, BQ_UPDATE_FILE.stat().st_mtime)
+    except OSError:
+        mtime = (mtime, None)
+    if _bq_cache["mtime"] != mtime:
+        try:
+            data = json.loads(BQ_KNOWLEDGE_FILE.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return None
+        # Junta a atualizacao semanal: tabelas novas entram (marcadas), as que sumiram do BigQuery saem.
+        update = _bq_update_data()
+        gone = set(update.get("removidas") or [])
+        new = [t for t in update.get("novas") or [] if isinstance(t, dict) and t.get("id")]
+        have = {t["id"] for t in data.get("tabelas") or []}
+        data["tabelas"] = [t for t in data.get("tabelas") or [] if t["id"] not in gone] + \
+                          [{**t, "nova": True} for t in new if t["id"] not in have]
+        if update.get("gerado_em"):
+            data["atualizacao"] = {"quando": update["gerado_em"], "novas": len(new), "removidas": len(gone)}
+            (data.get("resumo") or {})["total_tabelas"] = len(data["tabelas"])
+        index = []
+        for table in data.get("tabelas") or []:
+            short = table["id"].split(".")[-1]
+            index.append({"name": _bq_tokens(short) | _bq_tokens(table.get("sap", "")),
+                          "short": short.casefold(), "sap": str(table.get("sap") or "").casefold(),
+                          "desc": _bq_tokens(table.get("desc", "")),
+                          "cols": _bq_tokens(" ".join(f"{c[0]} {c[2]}" for c in table.get("colunas") or [])),
+                          "table": table})
+        _bq_cache.update(mtime=mtime, data=data, index=index)
+    return _bq_cache["data"]
+
+
+def _bq_context(query: str, force: bool = False) -> dict[str, Any] | None:
+    """force=True (aba Perguntar da Query Console): manda sempre, mesmo sem palavra de BigQuery na pergunta."""
+    data = _bq_knowledge()
+    if not data:
+        return None
+    lowered = query.casefold()
+    raw = set(re.findall(r"[a-z0-9_/]{3,}", lowered))
+    mentioned = [i for i in _bq_cache["index"] if i["short"] in raw or (i["sap"] and i["sap"] in raw)]
+    if not force and not BQ_INTENT.search(query) and not mentioned:
+        return None
+    words = _bq_tokens(query) - {"tabela", "bigquery", "big", "query", "dado", "lake", "coluna", "campo", "base", "qual",
+                                 "quai", "onde", "tem", "existe", "sistema", "nexxusdoc"}
+    scored = []
+    for item in _bq_cache["index"]:
+        score = (5 * len(words & item["name"]) + 2 * len(words & item["desc"]) + len(words & item["cols"])
+                 + (20 if item in mentioned else 0))
+        if score:
+            scored.append((score, item["table"]))
+    scored.sort(key=lambda s: s[0], reverse=True)
+    status = _bq_status_all()
+    related = [{**{k: v for k, v in t.items() if k not in ("colunas", "gb")},
+                **({"situacao": f"{s['situacao']}" + (f" desde {s['atualizada']}" if s.get("atualizada") else "")}
+                   if (s := _bq_situation(status.get(t["id"]))) else {}),
+                "colunas": t.get("colunas", [])[:BQ_TOP_COLUMNS]} for _, t in scored[:BQ_TOP_TABLES]]
+    return {"resumo": data.get("resumo"), "regras_lake": data.get("regras_lake"), "inbound": data.get("inbound"),
+            "transacoes_sap": data.get("transacoes_sap"), "tabelas_relacionadas_a_pergunta": related,
+            "catalogo_gerado_em": data.get("gerado_em")}
+
+
+def _chat_recover(value: Any) -> Any:
+    """Resposta das Consultas gerais que nao veio como JSON valido: tira o campo answer do texto (JSON quebrado) ou,
+    se o agente respondeu em texto corrido, usa o proprio texto como resposta."""
+    if not isinstance(value, str) or not value.strip():
+        return value
+    text = re.sub(r"^```(?:json)?\s*|\s*```$", "", value.strip(), flags=re.I)
+    match = re.search(r'"answer"\s*:\s*"((?:[^"\\]|\\.)*)', text, re.S)
+    if match:
+        raw = match.group(1)
+        try:
+            answer = json.loads(f'"{raw}"')
+        except ValueError:
+            answer = raw.replace("\\n", "\n").replace('\\"', '"').replace("\\\\", "\\")
+        return {"answer": answer, "sources": [], "manual_sources": [], "system_pages": []}
+    if not text.lstrip().startswith("{") and len(text) > 40:
+        return {"answer": text, "sources": [], "manual_sources": [], "system_pages": []}
+    return value
+
+
+BIGQUERY_CHAT_REQUIREMENT = (
+    "Quando houver o campo bigquery, a pergunta envolve o BigQuery (data lake do Grupo SBF). Fontes: bigquery.resumo "
+    "(projetos, datasets, quantas tabelas e quais tabelas do SAP existem no lake), bigquery.regras_lake (fatos "
+    "verificados: particoes, chaves, empresas, armadilhas), bigquery.inbound (os procedimentos da Logistica "
+    "Internacional com as tabelas e colunas de cada um, as tabelas mais usadas pela area, o que NAO esta no lake e fatos "
+    "verificados), bigquery.transacoes_sap (transacao SAP -> tabelas do SAP que ela grava ou mostra) e "
+    "bigquery.tabelas_relacionadas_a_pergunta (tabelas do catalogo mais ligadas a pergunta, com descricao, particao e "
+    "colunas). Responda o que existe, para que serve, onde fica (sempre o endereco completo projeto.dataset.tabela) e "
+    "as colunas principais. LIGUE TABELA A PROCESSO: use bigquery.inbound.procedimentos e as transacoes SAP citadas nos "
+    "documentos e manuais (knowledge_base, official_manuals) para dizer em que processo da area cada tabela ajuda e "
+    "quais tabelas servem a um processo. Se o processo depende de dado que nao esta no lake (PGL, Flowls, DUIMP, "
+    "Siscomex, despachante), diga isso claramente. Nunca invente tabela, coluna ou valor: so as das fontes; se a tabela "
+    "pedida nao aparecer, diga que nao encontrou no catalogo e sugira termos ou tabelas parecidas. Para pergunta ampla "
+    "('o que tem no BigQuery'), de uma visao organizada por projeto e destaque as tabelas uteis para a area. Nao fale "
+    "de custo, GB nem cobranca. Se a pessoa quiser rodar uma consulta: indique a pagina Query Console (aba Perguntar: "
+    "a pessoa escreve em portugues e o NexxusDoc monta o SQL; executar e para quem o administrador habilitou em "
+    "Configuracoes › Acessos). Pode mostrar um exemplo curto de SQL quando pedirem, so com tabelas e colunas das "
+    "fontes e sempre filtrando a particao das tabelas grandes.")
+
+
 @app.post("/api/chat")
 async def chat(payload: ChatMessage, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
     # O NexxusDoc consulta TODAS as areas: o catalogo vai completo e o conteudo integral vai para os
@@ -9264,7 +11743,16 @@ async def chat(payload: ChatMessage, user: dict[str, Any] = Depends(current_user
                         for m in _relevant_manuals(query) if visible(m)]
     history = [{"role": item.get("role"), "content": item.get("content", "")[:4000]}
                for item in payload.history[-20:] if item.get("role") in {"user", "assistant"} and item.get("content")]
+    bigquery = await asyncio.to_thread(_bq_context, query)
+    # Levantamento das reunioes de entendimento: so o que casar com a pergunta (ou o resumo de todas, quando a pergunta
+    # e sobre as proprias reunioes).
+    meetings_wide = bool(re.search(r"\b(reunia|reunio|levantamento|entendimento|atas?)\w*", _norm(payload.message)))
+    meetings_notes = _meeting_knowledge(user.get("area") or (_team_member(user["email"]) or {}).get("area", "")
+                                        or "Logística Internacional", query, compact=False, only_match=True,
+                                        wide=meetings_wide)
     prompt = {"task": "answer_procedure_question", "language": "pt-BR", "question": payload.message,
+              **({"bigquery": bigquery} if bigquery else {}),
+              **({"levantamento_reunioes": meetings_notes} if meetings_notes else {}),
               "conversation_history": history, "document_catalogue": catalogue,
               "knowledge_base": knowledge, "manual_catalogue": manual_catalogue, "official_manuals": official_manuals,
               "system_guide": system_guide, "user_email": user["email"],
@@ -9285,7 +11773,12 @@ async def chat(payload: ChatMessage, user: dict[str, Any] = Depends(current_user
                   "Itens com tipo 'Documento enviado' foram enviados por pessoas da area e guardados como estao (fora do "
                   "padrao do NexxusDoc). Cite como 'documento enviado ao NexxusDoc', inclua o manual_id em manual_sources "
                   "e trate como os localizados (se divergir, vale o mais recente).",
-                  "Voce e o NexxusDoc, agente de conhecimento operacional do Grupo SBF. Responda somente com base nas fontes fornecidas (documentos, manuais e system_guide); nao invente regra, processo ou funcao do sistema.",
+                  "Voce e o NexxusDoc, agente de conhecimento operacional do Grupo SBF. Responda somente com base nas fontes fornecidas (documentos, manuais, system_guide e, quando vier, bigquery); nao invente regra, processo, tabela ou funcao do sistema.",
+                  *([BIGQUERY_CHAT_REQUIREMENT] if bigquery else []),
+                  *(["levantamento_reunioes tambem e fonte: anotacoes das reunioes de entendimento com a equipe (pontos, "
+                     "dores e oportunidades de automacao, com a data da reuniao). Use quando ajudar a responder, citando "
+                     "'segundo o levantamento da reuniao de dd/mm'; e o relato das pessoas, nao procedimento oficial: se "
+                     "divergir de um manual ou documento, vale o documento e aponte a diferenca."] if meetings_notes else []),
                   "Consultas gerais: responda tambem perguntas sobre o proprio NexxusDoc (como usar, onde fica cada funcao, "
                   "quem pode fazer o que, por que algo nao aparece, avisos, erros e status). Fontes: system_guide.guia_de_uso "
                   "(o guia de uso por pagina, o mesmo do tour guiado), system_guide.duvidas_frequentes (as Duvidas "
@@ -9310,7 +11803,11 @@ async def chat(payload: ChatMessage, user: dict[str, Any] = Depends(current_user
                   "Tambem responda perguntas sobre procedimentos e politicas ja cadastrados no NexxusDoc, incluindo existencia, tipo do documento, titulo/nome, area, autor pelo e-mail corporativo e data e hora de criacao no fuso de Sao Paulo. Use created_at_local exatamente; nao confunda criacao com vigencia ou ultima revisao.",
                   "Cite os documentos do NexxusDoc pelos record_id, titulo, area e versao quando forem relevantes. Diferencie politica, procedimento, manual da area e ponto pendente.",
                   "Responda em JSON valido {answer: string, sources: [{record_id, title, area, version}], manual_sources: [manual_id], system_pages: [numero]}."]}
-    response = _unwrap_output(await _send_n8n(prompt, f"chat-{uuid.uuid4().hex}"))
+    # Resposta com JSON mal formado (12/11/2026, visto no teste real: o modelo as vezes escapa mal um caractere): o app
+    # recupera o texto da resposta e, se nem assim der, pede de novo UMA vez antes de mostrar erro.
+    response = _chat_recover(_unwrap_output(await _send_n8n(prompt, f"chat-{uuid.uuid4().hex}")))
+    if not isinstance(response, dict) or not isinstance(response.get("answer"), str):
+        response = _chat_recover(_unwrap_output(await _send_n8n(prompt, f"chat-{uuid.uuid4().hex}")))
     if not isinstance(response, dict) or not isinstance(response.get("answer"), str):
         raise HTTPException(502, "O NexxusDoc não devolveu uma resposta válida. Tente perguntar novamente.")
     allowed_ids = {item["record_id"] for item in catalogue}
@@ -9333,8 +11830,64 @@ async def chat(payload: ChatMessage, user: dict[str, Any] = Depends(current_user
         number = int(page) if str(page).isdigit() else 0
         if number in sent_pages and all(s["page"] != number for s in system_sources):
             system_sources.append({"page": number, "section": sent_pages[number]})
-    return {"answer": response["answer"], "sources": sources, "manual_sources": manual_sources,
-            "system_sources": system_sources}
+    result = {"answer": response["answer"], "sources": sources, "manual_sources": manual_sources,
+              "system_sources": system_sources}
+    await asyncio.to_thread(_chat_history_add, user["email"], payload.message, result)
+    return result
+
+
+# Historico das Consultas gerais (11/11/2026, pedido do usuario): fica guardado por pessoa (sobrevive a sair, deslogar
+# ou atualizar a pagina) e mantem as conversas dos ULTIMOS 3 DIAS EM QUE HOUVE CONVERSA, nao 3 dias corridos: quem
+# conversou 4 dias seguidos ve sempre os 3 mais recentes. "Limpar conversa" apaga o historico da pessoa.
+CHAT_HISTORY_DIR = SHARED_ROOT / "consultas_historico"
+CHAT_HISTORY_DAYS = 3
+CHAT_HISTORY_MAX = 300
+
+
+def _chat_history_path(email: str) -> Path:
+    return CHAT_HISTORY_DIR / f"{_file_key(email)}.json"
+
+
+def _chat_history_read(email: str) -> list[dict[str, Any]]:
+    try:
+        items = json.loads(Path(_long(_chat_history_path(email))).read_text(encoding="utf-8-sig")).get("itens")
+    except (OSError, ValueError, AttributeError):
+        return []
+    return [item for item in items if isinstance(item, dict) and item.get("dia")] if isinstance(items, list) else []
+
+
+def _chat_history_keep(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    days = sorted({item["dia"] for item in items}, reverse=True)[:CHAT_HISTORY_DAYS]
+    return [item for item in items if item["dia"] in days][-CHAT_HISTORY_MAX:]
+
+
+def _chat_history_add(email: str, question: str, result: dict[str, Any]) -> None:
+    now = datetime.now(ZoneInfo("America/Sao_Paulo"))
+    items = _chat_history_read(email) + [{"t": now.isoformat(timespec="seconds"), "dia": now.date().isoformat(),
+                                          "pergunta": question[:4000], "resposta": str(result.get("answer") or "")[:20000],
+                                          "sources": result.get("sources") or [], "manual_sources": result.get("manual_sources") or [],
+                                          "system_sources": result.get("system_sources") or []}]
+    try:
+        os.makedirs(_long(CHAT_HISTORY_DIR), exist_ok=True)
+        Path(_long(_chat_history_path(email))).write_text(
+            json.dumps({"email": email, "itens": _chat_history_keep(items)}, ensure_ascii=False), encoding="utf-8")
+    except OSError as exc:  # o historico nunca derruba a resposta
+        print(f"Historico das consultas: nao gravou ({exc})", flush=True)
+
+
+@app.get("/api/chat/historico")
+def chat_history(user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    return {"itens": _chat_history_keep(_chat_history_read(user["email"])), "dias": CHAT_HISTORY_DAYS}
+
+
+@app.delete("/api/chat/historico")
+def chat_history_clear(user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    try:
+        Path(_long(_chat_history_path(user["email"]))).unlink(missing_ok=True)
+    except OSError as exc:
+        raise HTTPException(500, f"Não foi possível apagar o histórico ({exc}).") from exc
+    _audit(user["email"], "consultas_historico_apagado")
+    return {"apagado": True}
 
 
 class _AdapterAddresses(ctypes.Structure):
@@ -9610,11 +12163,15 @@ def _versions() -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 # Backup diario de todo o sistema (05/11/2026, pedido do usuario: se alguem apagar a pasta do Drive, recarregar dele).
 # UM arquivo so, substituido a cada dia (economia de espaco), na pasta privada do master (Meu Drive dele, ninguem mais
-# ve), feito pelo NexxusDoc do master quando estiver aberto. Trava: pasta muito menor que no backup anterior (ex.:
-# alguem apagou boa parte) = NAO substitui o backup bom e avisa o master; so ele libera ("substituir mesmo assim").
+# ve), feito pelo NexxusDoc do master quando estiver aberto. Pasta muito menor que no backup anterior (ex.: alguem
+# apagou boa parte, ou o master apagou arquivos de teste): desde 12/11/2026 o backup NAO trava mais (antes esperava o
+# master liberar e ficou dias sem backup); o anterior e guardado a parte (NexxusDoc_backup_antes_da_reducao.zip, um
+# arquivo so, o da ultima reducao), o do dia e feito e o master e avisado.
 # ---------------------------------------------------------------------------
 BACKUP_ZIP = "NexxusDoc_backup.zip"
 BACKUP_INFO = "NexxusDoc_backup.json"
+BACKUP_KEPT_ZIP = "NexxusDoc_backup_antes_da_reducao.zip"
+BACKUP_KEPT_INFO = "NexxusDoc_backup_antes_da_reducao.json"
 BACKUP_SKIP_DIRS = {"backups", "__pycache__", "tmp", "previews", "node_modules"}
 BACKUP_CHECK_SECONDS = 3600
 BACKUP_MIN_RATIO = 0.7          # abaixo de 70% do backup anterior = suspeito
@@ -9661,7 +12218,7 @@ def _backup_problems(new: dict[str, int], old: dict[str, Any]) -> list[str]:
     return problems
 
 
-def _run_backup(force: bool = False, accept_drop: bool = False) -> dict[str, Any]:
+def _run_backup(force: bool = False) -> dict[str, Any]:
     folder = _backup_dir()
     if not folder or _cadastro_secret() is None:
         return {"feito": False, "motivo": "O backup roda só no computador do administrador master."}
@@ -9698,26 +12255,36 @@ def _run_backup(force: bool = False, accept_drop: bool = False) -> dict[str, Any
         if broken:
             raise RuntimeError(f"o arquivo {broken} ficou corrompido no backup")
         problems = _backup_problems(counts, previous)
-        if problems and not accept_drop:
-            _backup_state["suspeito"] = {"quando": datetime.now(timezone.utc).isoformat(), "problemas": problems}
-            _audit(WINDOWS_EMAIL, "backup_bloqueado", problemas=problems)
-            _win_notify(WINDOWS_EMAIL, "aprovacoes", "Backup do NexxusDoc NÃO foi substituído",
-                        "A pasta compartilhada está bem menor que no último backup: " + "; ".join(problems)[:200]
-                        + ". O backup bom foi mantido. Confira em Configurações › Health System.", "config:health",
-                        force=True)
-            return {"feito": False, "bloqueado": True, "problemas": problems, **previous}
         os.makedirs(_long(folder), exist_ok=True)
         target = folder / BACKUP_ZIP
+        kept = ""
+        # 12/11/2026 (pedido do usuario: apagar os PDFs de teste travou o backup): reducao grande NAO trava mais o
+        # backup. Antes de substituir, o backup anterior e guardado a parte (um arquivo so, o da ultima reducao), e o
+        # backup do dia e feito normalmente. Se a reducao foi um acidente, a copia de antes dela continua la.
+        if problems and target.is_file():
+            kept_zip = folder / BACKUP_KEPT_ZIP
+            shutil.copyfile(_long(target), _long(kept_zip.with_name(BACKUP_KEPT_ZIP + ".novo")))
+            os.replace(_long(kept_zip.with_name(BACKUP_KEPT_ZIP + ".novo")), _long(kept_zip))
+            (folder / BACKUP_KEPT_INFO).write_text(json.dumps({**previous, "guardado_em": datetime.now(timezone.utc).isoformat(),
+                                                               "motivo": problems}, ensure_ascii=False, indent=2),
+                                                   encoding="utf-8")
+            kept = str(kept_zip)
         shutil.copyfile(temp, _long(target.with_name(BACKUP_ZIP + ".novo")))
         os.replace(_long(target.with_name(BACKUP_ZIP + ".novo")), _long(target))
         info = {"dia": today, "criado_em": datetime.now(timezone.utc).isoformat(), "contagem": counts,
                 "tamanho_original": size, "tamanho_zip": target.stat().st_size,
-                "segundos": round(time.monotonic() - started, 1), "local": str(target),
-                "liberado_pelo_master": bool(problems)}
+                "segundos": round(time.monotonic() - started, 1), "local": str(target)}
+        if problems:
+            info["reducao"] = {"problemas": problems, "anterior_guardado": kept}
         (folder / BACKUP_INFO).write_text(json.dumps(info, ensure_ascii=False, indent=2), encoding="utf-8")
         _backup_state["suspeito"] = None
         _audit(WINDOWS_EMAIL, "backup_feito", arquivos=counts["arquivos"], tamanho_zip=info["tamanho_zip"],
-               liberado_pelo_master=bool(problems))
+               reducao=problems or None, anterior_guardado=kept or None)
+        if problems:
+            _win_notify(WINDOWS_EMAIL, "aprovacoes", "Backup feito, com a pasta menor que antes",
+                        "; ".join(problems)[:180] + ". O backup anterior foi guardado à parte. Se não apagou nada de "
+                        "propósito, confira em Configurações › Health System.", "config:health",
+                        key=f"backup-reducao-{today}", force=True)
         return {"feito": True, **info}
     except Exception as exc:
         _backup_state["erro"] = str(exc)[:300]
@@ -9733,8 +12300,7 @@ def _backup_watch() -> None:
     time.sleep(120)  # deixa o sistema abrir primeiro
     while True:
         try:
-            if not _backup_state["suspeito"]:
-                _run_backup()
+            _run_backup()   # reducao da pasta nao trava mais (12/11/2026): guarda o anterior a parte e segue
         except Exception:
             pass
         time.sleep(BACKUP_CHECK_SECONDS)
@@ -9754,13 +12320,13 @@ def _protection_status() -> dict[str, Any]:
             "pasta_privada_label": str(PRIVATE_DIR or ""),
             "cadastro": {"assinado": _cadastro_valid(_read_bytes(ACCESS_FILE), _read_bytes(CADASTRO_SIG_FILE)),
                          "alerta": _cadastro_state["alerta"], "restaurado_em": _cadastro_state["restaurado_em"]},
-            "backup": {**{k: info.get(k) for k in ("dia", "criado_em", "contagem", "tamanho_zip", "segundos", "local")},
-                       "rodando": _backup_state["rodando"], "erro": _backup_state["erro"],
-                       "suspeito": _backup_state["suspeito"]}}
+            "backup": {**{k: info.get(k) for k in ("dia", "criado_em", "contagem", "tamanho_zip", "segundos", "local",
+                                                   "reducao")},
+                       "rodando": _backup_state["rodando"], "erro": _backup_state["erro"]}}
 
 
 class BackupRun(BaseModel):
-    substituir_mesmo_assim: bool = False
+    substituir_mesmo_assim: bool = False   # sem efeito desde 12/11/2026 (a reducao nao trava mais); mantido por compatibilidade
 
 
 @app.post("/api/backup")
@@ -9768,7 +12334,7 @@ async def backup_now(payload: BackupRun, master: dict[str, Any] = Depends(requir
     if _cadastro_secret() is None or not PRIVATE_DIR:
         raise HTTPException(409, "O backup roda só no computador do administrador master (pasta privada e chave do "
                                  "cadastro configuradas).")
-    result = await asyncio.to_thread(_run_backup, True, payload.substituir_mesmo_assim)
+    result = await asyncio.to_thread(_run_backup, True)
     return {**result, "protecao": _protection_status()}
 
 
@@ -9797,14 +12363,15 @@ async def health_system(task: str = "todas", user: dict[str, Any] = Depends(curr
     if today["calls"] >= 3 and today["error_rate"] >= 15:
         warn.append(f"{today['error_rate']}% das chamadas ao n8n falharam hoje.")
     if not versions["up_to_date"]:
-        warn.append("Há uma versão publicada mais nova: use o botão Atualizar no topo.")
+        warn.append("Há uma versão publicada mais nova: ela entra sozinha assim que nada estiver em andamento.")
     protection = _protection_status() if user.get("role") == "master" else None
     if protection:
         if protection["cadastro"]["alerta"]:
             warn.append(protection["cadastro"]["alerta"])
-        if protection["backup"]["suspeito"]:
-            bad.append("Backup diário bloqueado: a pasta compartilhada está bem menor que no último backup.")
-        elif protection["master_local"] and protection["backup"]["erro"]:
+        if protection["backup"].get("reducao"):
+            warn.append("O último backup foi feito com a pasta compartilhada menor que antes; o backup anterior foi "
+                        "guardado à parte.")
+        if protection["master_local"] and protection["backup"]["erro"]:
             warn.append("O último backup diário falhou: " + protection["backup"]["erro"])
     level = "bad" if bad else "warn" if warn else "ok"
     return {"now": datetime.now(timezone.utc).isoformat(timespec="seconds"), "task": task,
@@ -9818,15 +12385,72 @@ async def health_system(task: str = "todas", user: dict[str, Any] = Depends(curr
 
 
 # ---------------------------------------------------------------------------
-# Aviso de versao nova (05/11/2026, pedido do usuario): quem esta com o sistema aberto ve "Atualizar" no topo (e o
-# aviso do Windows) assim que o administrador publica; um clique reinicia o servidor pelo atalho, que aplica a
-# publicacao assinada como sempre (nada de reinstalar, nada de codigo do Drive executado antes da verificacao).
+# Atualizacao AUTOMATICA (11/11/2026, pedido do usuario; antes havia o botao "Atualizar" no topo, de 05/11/2026):
+# quando o administrador publica, o sistema se atualiza sozinho, sem clique, e a tela so mostra que esta atualizando.
+# O reinicio e o mesmo de antes (o atalho aplica a publicacao assinada; nada de reinstalar, nada de codigo do Drive
+# executado antes da verificacao). Para nao "engolir" trabalho, so reinicia quando NADA esta em andamento:
+#   - no servidor: pedido que grava ou chama o agente (contado no track_activity), resumo executivo, fluxo As Is,
+#     roteiro da auditoria e backup diario em curso;
+#   - nas abas abertas: cada aba avisa (POST /api/atualizacao/ocupado) quando tem algo que so existe nela (texto
+#     digitado e nao enviado, print na bandeja, arquivo escolhido, respostas marcadas, quadro aberto, tour etc.).
+# Ocupado = tenta de novo depois; a entrevista e o resto ja gravado voltam sozinhos quando a tela recarrega.
 # ---------------------------------------------------------------------------
 INSTALLED_PUBLICATION = ROOT / "publicacao_instalada.json"   # gravado pelo atalho ao aplicar a publicacao
-UPDATE_CHECK_SECONDS = 120
-UPDATE_WATCH_SECONDS = 300
+UPDATE_CHECK_SECONDS = 60
+UPDATE_WATCH_SECONDS = 120
+UPDATE_BUSY_TTL = 150        # aviso de "ocupado" de uma aba vale 150 s (aba em segundo plano manda com atraso)
+UPDATE_IDLE_SECONDS = 600    # sem nenhuma aba aberta ha 10 min, o proprio servidor se atualiza
+# GARANTIA (pedido do usuario: "o sistema nao pode ficar sem atualizar"): pronta ha 15 min, a versao nova entra mesmo
+# com aba "ocupada" (texto digitado, quadro aberto, pessoa usando). So espera o trabalho REAL do servidor (pedido em
+# curso, montagem em segundo plano, backup), que termina sozinho. A tela guarda o texto digitado e devolve depois.
+UPDATE_FORCE_SECONDS = 900
+UPDATE_JOB_MAX_SECONDS = 1200   # montagem "gerando" ha mais de 20 min = travada; nao segura a atualizacao
 _update_lock = threading.Lock()
-_update_state: dict[str, Any] = {"checked": 0.0, "value": None, "files_ok": ""}
+_update_state: dict[str, Any] = {"checked": 0.0, "value": None, "files_ok": "", "aplicando": False,
+                                 "desde": 0.0, "desde_versao": ""}
+_update_inflight: dict[str, int] = {"n": 0}
+_update_busy_tabs: dict[str, tuple[float, str]] = {}
+
+
+def _update_pending_seconds(status: dict[str, Any]) -> float:
+    if not status.get("disponivel") or _update_state["desde_versao"] != status.get("nova"):
+        return 0.0
+    return time.monotonic() - _update_state["desde"]
+
+
+def _update_busy(except_tab: str = "", tabs: bool = True) -> str:
+    """Motivo para NAO reiniciar agora ("" = pode). tabs=False: so o trabalho real do servidor."""
+    if _update_inflight["n"] > 0:
+        return "um pedido em andamento"
+    now = time.monotonic()
+    for label, jobs in (("o resumo executivo", SUMMARY_JOBS), ("o fluxo As Is", FLOW_JOBS),
+                        ("o roteiro da auditoria", AUDIT_JOBS)):
+        if any(isinstance(job, dict) and job.get("status") == "gerando"
+               and now - float(job.get("inicio") or 0) < UPDATE_JOB_MAX_SECONDS for job in list(jobs.values())):
+            return f"{label} sendo montado"
+    if BACKUP_LOCK.locked():
+        return "o backup diário"
+    if not tabs:
+        return ""
+    for tab, (until, why) in list(_update_busy_tabs.items()):
+        if until <= now:
+            _update_busy_tabs.pop(tab, None)
+        elif tab != except_tab:
+            return why or "trabalho aberto numa aba"
+    return ""
+
+
+def _update_restart(email: str, status: dict[str, Any], origem: str) -> None:
+    _update_state["aplicando"] = True   # daqui em diante nenhum pedido novo comeca (track_activity responde 503)
+    _audit(email or "sistema", "atualizacao_aplicada", de=status["instalada"], para=status["nova"], origem=origem)
+
+    def go() -> None:
+        time.sleep(0.8)   # responde antes de o servidor sair
+        deadline = time.monotonic() + 120
+        while _update_inflight["n"] > 0 and time.monotonic() < deadline:   # pedido que entrou no meio do caminho
+            time.sleep(0.5)
+        app.state.reiniciar()
+    threading.Thread(target=go, name="atualizacao-reinicio", daemon=True).start()
 
 
 def _installed_version() -> str:
@@ -9834,6 +12458,26 @@ def _installed_version() -> str:
         return str(json.loads(INSTALLED_PUBLICATION.read_text(encoding="utf-8")).get("versao") or "")
     except (OSError, ValueError, AttributeError):
         return ""
+
+
+UPDATE_NOTES = "novidades.json"   # o que muda em cada publicacao (FILES, assinado junto com o codigo)
+
+
+def _update_notes() -> list[dict[str, Any]]:
+    """O que a versao nova traz (11/11/2026, pedido do usuario: ao clicar em Atualizar, dizer resumidamente o que
+    muda): as entradas do novidades.json da publicacao no Drive mais novas do que as da copia instalada. So e chamado
+    quando a publicacao esta assinada e com todos os arquivos conferidos (mismatched_files vazio)."""
+    def read(folder: Path) -> list[dict[str, Any]]:
+        try:
+            items = json.loads((folder / UPDATE_NOTES).read_text(encoding="utf-8")).get("versoes")
+        except (OSError, ValueError, AttributeError):
+            return []
+        return [i for i in items if isinstance(i, dict) and isinstance(i.get("id"), int)] if isinstance(items, list) else []
+    installed = max((i["id"] for i in read(ROOT)), default=None)
+    notes = sorted(read(SHARED_ROOT), key=lambda i: i["id"], reverse=True)
+    notes = [i for i in notes if installed is None or i["id"] > installed][: (1 if installed is None else 6)]
+    return [{"data": str(i.get("data") or ""), "titulo": str(i.get("titulo") or "")[:120],
+             "itens": [str(x)[:300] for x in (i.get("itens") or []) if str(x).strip()][:12]} for i in notes]
 
 
 def _update_status(fresh: bool = False) -> dict[str, Any]:
@@ -9855,25 +12499,41 @@ def _update_status(fresh: bool = False) -> dict[str, Any]:
                     if _update_state["files_ok"] != new and not assinatura.mismatched_files(SHARED_ROOT, manifest):
                         _update_state["files_ok"] = new
                     ready = _update_state["files_ok"] == new
-                    value.update(nova=new, disponivel=ready, sincronizando=not ready)
+                    if ready and _update_state["desde_versao"] != new:
+                        _update_state.update(desde=time.monotonic(), desde_versao=new)
+                    value.update(nova=new, disponivel=ready, sincronizando=not ready,
+                                 novidades=_update_notes() if ready else [])
         except Exception:  # o aviso nunca atrapalha o sistema
             pass
         _update_state.update(checked=time.monotonic(), value=value)
         return value
 
 
+def _update_watch_once() -> str:
+    """Uma conferencia do vigia. Devolve o que fez (para os testes)."""
+    status = _update_status(fresh=True)
+    if not (status["disponivel"] and status["pode_reiniciar"]) or _update_state["aplicando"]:
+        return "nada"
+    idle = time.monotonic() - getattr(app.state, "last_activity", time.monotonic())
+    if idle >= UPDATE_IDLE_SECONDS and not _update_busy():
+        _update_restart(WINDOWS_EMAIL, status, "servidor sem uso")
+        return "sem uso"
+    if _update_pending_seconds(status) >= UPDATE_FORCE_SECONDS and not _update_busy(tabs=False):
+        _update_restart(WINDOWS_EMAIL, status, "garantia de 15 min")
+        return "garantia"
+    return "esperando"
+
+
 def _update_watch() -> None:
-    """Aviso do Windows (uma vez por versao) quando a versao nova estiver pronta para instalar."""
+    """Vigia do servidor (a cada 2 min): sem nenhuma aba aberta ha 10 min, atualiza quando nada esta em andamento; e,
+    como GARANTIA, atualiza mesmo com aba ocupada quando a versao nova esta pronta ha 15 min (a tela guarda o texto
+    digitado e devolve depois de recarregar). Com a tela aberta e livre, quem atualiza antes e a propria tela."""
     while True:
+        time.sleep(UPDATE_WATCH_SECONDS)
         try:
-            status = _update_status(fresh=True)
-            if status["disponivel"] and WINDOWS_EMAIL:
-                _win_notify(WINDOWS_EMAIL, "atualizacao", "Nova versão do NexxusDoc",
-                            "Clique em Atualizar, no topo do NexxusDoc: leva poucos segundos e não precisa reinstalar.",
-                            "home", key=f"atualizacao-{status['nova']}")
+            _update_watch_once()
         except Exception:
             pass
-        time.sleep(UPDATE_WATCH_SECONDS)
 
 
 @app.on_event("startup")
@@ -9887,26 +12547,114 @@ def update_status(_: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
     return _update_status()
 
 
+class UpdateTab(BaseModel):
+    aba: Annotated[str, StringConstraints(strip_whitespace=True, max_length=40)] = ""
+    motivo: Annotated[str, StringConstraints(strip_whitespace=True, max_length=160)] = ""
+
+
+@app.post("/api/atualizacao/ocupado")
+def update_tab_busy(body: UpdateTab, _: dict[str, Any] = Depends(current_user)) -> dict[str, bool]:
+    """A aba avisa que tem trabalho que so existe nela (motivo) ou que ficou livre (motivo vazio)."""
+    if not body.aba:
+        raise HTTPException(422, "Aba não informada.")
+    if body.motivo:
+        if body.aba not in _update_busy_tabs and len(_update_busy_tabs) >= 50:
+            _update_busy_tabs.pop(min(_update_busy_tabs, key=lambda k: _update_busy_tabs[k][0]), None)
+        _update_busy_tabs[body.aba] = (time.monotonic() + UPDATE_BUSY_TTL, body.motivo)
+    else:
+        _update_busy_tabs.pop(body.aba, None)
+    return {"ok": True}
+
+
 @app.post("/api/atualizacao/aplicar")
-def apply_update(user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
-    """Reinicia pelo atalho (ele aplica a publicacao assinada e sobe o servidor de novo; a tela recarrega sozinha)."""
+def apply_update(body: UpdateTab | None = None, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    """Pedido automatico da tela (sem clique): reinicia pelo atalho (ele aplica a publicacao assinada e sobe o
+    servidor de novo; a tela recarrega sozinha). Com trabalho em andamento responde 409 com 'ocupado' e a tela tenta
+    de novo depois."""
     status = _update_status(fresh=True)
     if not status["disponivel"]:
         raise HTTPException(409, "Não há versão nova pronta para instalar neste computador.")
-    restart = getattr(app.state, "reiniciar", None)
-    if not callable(restart):
-        raise HTTPException(409, "Para atualizar, feche o NexxusDoc e abra de novo pelo atalho.")
-    _audit(user["email"], "atualizacao_aplicada", de=status["instalada"], para=status["nova"])
-    threading.Timer(0.8, restart).start()   # responde antes de o servidor sair
+    if not callable(getattr(app.state, "reiniciar", None)):
+        raise HTTPException(409, {"message": "Para atualizar, feche o NexxusDoc e abra de novo pelo atalho.",
+                                  "sem_atalho": True})
+    if _update_state["aplicando"]:
+        return {"reiniciando": True, "de": status["instalada"], "para": status["nova"]}
+    forced = _update_pending_seconds(status) >= UPDATE_FORCE_SECONDS
+    busy = _update_busy(except_tab=(body.aba if body else ""), tabs=not forced)
+    if busy:
+        raise HTTPException(409, {"message": f"Atualização adiada: {busy}.", "ocupado": busy})
+    _update_restart(user["email"], status, "tela")
     return {"reiniciando": True, "de": status["instalada"], "para": status["nova"]}
+
+
+# ---------------------------------------------------------------------------
+# UMA aba so (12/11/2026, pedido do usuario). A aba mais nova que abre (atalho, link da notificacao, F5, outra acao)
+# fica ativa e a anterior e desativada na hora (mesmo navegador: BroadcastChannel; outro navegador: consulta a cada
+# 2 s). O clique na notificacao (e o atalho) NAO abre aba nova quando o sistema ja esta aberto: o atalho
+# (nexus_launcher.pyw, chamado pelo protocolo nexxusdoc:) pede POST /api/aba/ir, traz a janela do navegador para a
+# frente e a aba ativa vai sozinha para a pagina do aviso. So abre aba nova se a janela nao for encontrada.
+# ---------------------------------------------------------------------------
+TAB_ALIVE_SECONDS = 90     # aba em segundo plano consulta com atraso (o navegador espaca os timers)
+TAB_GO_SECONDS = 60
+_tab_lock = threading.Lock()
+_tab_state: dict[str, Any] = {"id": "", "visto": 0.0, "ir": None}
+
+
+class TabClaim(BaseModel):
+    aba: Annotated[str, StringConstraints(pattern=r"^[a-z0-9]{6,40}$")]
+
+
+class TabGo(BaseModel):
+    page: Annotated[str, StringConstraints(max_length=20)] = ""
+    pane: Annotated[str, StringConstraints(max_length=20)] = ""
+
+
+@app.post("/api/aba", dependencies=[Depends(local_owner)])
+def tab_claim(body: TabClaim) -> dict[str, bool]:
+    with _tab_lock:
+        _tab_state.update(id=body.aba, visto=time.monotonic(), ir=None)
+    return {"ativa": True}
+
+
+@app.get("/api/aba/{aba}", dependencies=[Depends(local_owner)])
+def tab_check(aba: str) -> dict[str, Any]:
+    with _tab_lock:
+        if not _tab_state["id"]:
+            return {"ativa": False, "livre": True}     # servidor reiniciou: a aba que perguntar assume
+        if aba != _tab_state["id"]:
+            return {"ativa": False}
+        _tab_state["visto"] = time.monotonic()
+        go = _tab_state["ir"]
+        _tab_state["ir"] = None
+    if go and time.monotonic() - go["t"] < TAB_GO_SECONDS:
+        return {"ativa": True, "ir": {"page": go["page"], "pane": go["pane"]}}
+    return {"ativa": True}
+
+
+@app.post("/api/aba/ir", dependencies=[Depends(local_owner)])
+def tab_go(body: TabGo) -> dict[str, bool]:
+    """Pedido do atalho (clique na notificacao): ha aba ativa? Se houver e vier pagina, ela vai para la."""
+    page = body.page if body.page in NOTIFY_PAGES else ""
+    pane = body.pane if re.fullmatch(r"[a-z]{2,20}", body.pane or "") else ""
+    with _tab_lock:
+        alive = bool(_tab_state["id"]) and time.monotonic() - _tab_state["visto"] < TAB_ALIVE_SECONDS
+        if alive and page:
+            _tab_state["ir"] = {"page": page, "pane": pane, "t": time.monotonic()}
+    return {"aberta": alive}
 
 
 @app.get("/api/health", dependencies=[Depends(local_owner)])
 def health() -> dict[str, str]:
     # "app": "nexus" permite ao iniciador distinguir o NexxusDoc de outro sistema local.
+    # atualizado_em (12/11/2026): quando ESTE computador aplicou a versao (mostrado abaixo do nome, no topo).
+    try:
+        applied = datetime.fromtimestamp(INSTALLED_PUBLICATION.stat().st_mtime, timezone.utc).isoformat(timespec="seconds")
+    except OSError:
+        applied = ""
     return {"app": "nexus", "status": "ok", "n8n": "configurado" if N8N_URL else "nao_configurado",
             "windows_email": "detectado" if WINDOWS_EMAIL else "nao_detectado",
-            "output_dir": str(OUTPUT_DIR), "shared_root": str(SHARED_ROOT), "versao": _installed_version()}
+            "output_dir": str(OUTPUT_DIR), "shared_root": str(SHARED_ROOT), "versao": _installed_version(),
+            "atualizado_em": applied}
 
 
 if __name__ == "__main__":

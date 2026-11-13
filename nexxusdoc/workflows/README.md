@@ -24,3 +24,7 @@ flowchart LR
 A API local consulta o endereço de resultado até a resposta ficar pronta, preservando a mensagem caso precise tentar novamente. O histórico da conversa é mantido no Python; o workflow recebe a rodada e o contexto preparado para ela.
 
 O conteúdo de anexos é dado de entrada, não uma instrução autorizada para alterar regras, executar ações ou divulgar informação.
+
+## Auditoria
+
+`nexxusdoc_auditoria_n8n.json` demonstra a busca e a preparação de um roteiro de evidências. A exportação pública está desativada, sem credenciais, IDs reais, planilha mestre ou documentos de auditoria. `system_message_auditoria.md` é um modelo genérico do contrato de resposta; regras e fontes internas precisam ser configuradas somente em ambiente autorizado. O fluxo não faz entrega automática de evidências ao Connect.

@@ -41,19 +41,131 @@ TITLE = "NexxusDoc - Normas e Procedimentos"
 CLOUD_MODE = (CONFIG.get("NEXUS_MODO") or "").strip().casefold() == "nuvem"
 
 
-def open_browser() -> None:
+def open_browser(url: str = "") -> None:
     """Abre SEMPRE no Chrome quando instalado (pedido do usuario em 05/11/2026; antes so no modo nuvem, e o Edge, navegador
     padrao, abria nas demais): e nele que esta a conta Google do Grupo SBF (foto do avatar e pontes do Apps Script).
     Sem Chrome, o navegador padrao."""
     import os
     import subprocess
+    url = url or URL
     for base in (os.environ.get("PROGRAMFILES", ""), os.environ.get("PROGRAMFILES(X86)", ""),
                  os.environ.get("LOCALAPPDATA", "")):
         chrome = Path(base) / "Google" / "Chrome" / "Application" / "chrome.exe"
         if base and chrome.is_file():
-            subprocess.Popen([str(chrome), URL])
+            subprocess.Popen([str(chrome), url])
             return
-    webbrowser.open(URL)
+    webbrowser.open(url)
+
+
+# Uma aba so (12/11/2026, pedido do usuario): o clique na notificacao chega aqui pelo protocolo nexxusdoc:
+# ("nexxusdoc:abrir?page=docs&pane=..."). Com o NexxusDoc ja aberto, a aba ativa vai para a pagina e a janela do
+# navegador vem para a frente, sem aba nova; o atalho da Area de Trabalho faz o mesmo (so traz a janela).
+PAGE_TITLE = "NexxusDoc | Normas e Procedimentos"   # <title> do static/index.html
+BROWSERS = {"chrome.exe", "msedge.exe"}
+
+
+def _target() -> tuple[str, str]:
+    from urllib.parse import parse_qs, urlsplit
+    arg = next((a for a in sys.argv[1:] if a.lower().startswith("nexxusdoc:")), "")
+    query = parse_qs(urlsplit(arg).query) if arg else {}
+    page = (query.get("page") or [""])[0]
+    pane = (query.get("pane") or [""])[0]
+    ok = lambda v: v if v.isascii() and v.isalpha() and 2 <= len(v) <= 20 else ""  # noqa: E731
+    return ok(page), ok(pane)
+
+
+TARGET_PAGE, TARGET_PANE = _target()
+
+
+def target_url() -> str:
+    if not TARGET_PAGE:
+        return URL
+    return f"{URL}?page={TARGET_PAGE}" + (f"&pane={TARGET_PANE}" if TARGET_PANE else "")
+
+
+def browser_windows() -> list:
+    """Janelas do Chrome/Edge cuja aba visivel e o NexxusDoc: [(hwnd, programa, pid)]."""
+    from ctypes import wintypes
+    user32, kernel32 = ctypes.windll.user32, ctypes.windll.kernel32
+    user32.GetWindowTextLengthW.argtypes = [wintypes.HWND]
+    user32.GetWindowTextW.argtypes = [wintypes.HWND, wintypes.LPWSTR, ctypes.c_int]
+    user32.IsWindowVisible.argtypes = [wintypes.HWND]
+    user32.GetWindowThreadProcessId.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.DWORD)]
+    kernel32.OpenProcess.restype = wintypes.HANDLE
+    kernel32.QueryFullProcessImageNameW.argtypes = [wintypes.HANDLE, wintypes.DWORD, wintypes.LPWSTR,
+                                                    ctypes.POINTER(wintypes.DWORD)]
+    kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
+    found: list = []
+
+    def exe_of(hwnd) -> tuple[str, int]:
+        pid = wintypes.DWORD()
+        user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+        handle = kernel32.OpenProcess(0x1000, False, pid.value)   # PROCESS_QUERY_LIMITED_INFORMATION
+        if not handle:
+            return "", pid.value
+        try:
+            size = wintypes.DWORD(1024)
+            buf = ctypes.create_unicode_buffer(1024)
+            ok = kernel32.QueryFullProcessImageNameW(handle, 0, buf, ctypes.byref(size))
+            return (Path(buf.value).name.lower() if ok else ""), pid.value
+        finally:
+            kernel32.CloseHandle(handle)
+
+    @ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+    def each(hwnd, _):
+        if not user32.IsWindowVisible(hwnd):
+            return True
+        length = user32.GetWindowTextLengthW(hwnd)
+        if length <= 0:
+            return True
+        buf = ctypes.create_unicode_buffer(length + 1)
+        user32.GetWindowTextW(hwnd, buf, length + 1)
+        if buf.value.startswith(PAGE_TITLE):
+            exe, pid = exe_of(hwnd)
+            if exe in BROWSERS:
+                found.append((hwnd, exe, pid))
+        return True
+
+    user32.EnumWindows(each, 0)
+    return found
+
+
+def focus_browser_window() -> bool:
+    """Traz para a frente a janela do Chrome/Edge cuja aba visivel e o NexxusDoc. False = nao achou."""
+    from ctypes import wintypes
+    found = browser_windows()
+    if not found:
+        return False
+    user32 = ctypes.windll.user32
+    user32.IsIconic.argtypes = [wintypes.HWND]
+    user32.ShowWindow.argtypes = [wintypes.HWND, ctypes.c_int]
+    user32.SetForegroundWindow.argtypes = [wintypes.HWND]
+    user32.GetForegroundWindow.restype = wintypes.HWND
+    hwnd = found[0][0]
+    if user32.IsIconic(hwnd):
+        user32.ShowWindow(hwnd, 9)   # SW_RESTORE
+    user32.SetForegroundWindow(hwnd)
+    if user32.GetForegroundWindow() != hwnd:
+        # O Windows so deixa trocar a janela da frente apos uma tecla: um Alt solto libera a troca.
+        user32.keybd_event(0x12, 0, 0, 0)
+        user32.keybd_event(0x12, 0, 2, 0)
+        user32.SetForegroundWindow(hwnd)
+    return True
+
+
+def show_existing_or_open() -> None:
+    """Sistema ja aberto: leva a aba ativa para a pagina (se veio da notificacao) e traz a janela; senao, abre."""
+    try:
+        request = urllib.request.Request(f"{URL}api/aba/ir", method="POST", headers={"Content-Type": "application/json"},
+                                         data=json.dumps({"page": TARGET_PAGE, "pane": TARGET_PANE}).encode("utf-8"))
+        with urllib.request.urlopen(request, timeout=3) as response:
+            alive = bool(json.loads(response.read()).get("aberta"))
+    except Exception:
+        alive = False
+    if alive and focus_browser_window():
+        print(f"Aba ja aberta trazida para a frente ({TARGET_PAGE or 'sem pagina'}).", flush=True)
+        return
+    open_browser(target_url())
 
 
 def wait_for_drive(folder: Path, seconds: int = 90) -> bool:
@@ -99,9 +211,10 @@ def follow_moved_folder(source: Path) -> Path:
         return source
     if not found:
         print(f"Pasta do projeto movida para {target}, mas ela nao esta acessivel neste computador.", flush=True)
-        message("O NexxusDoc mudou de pasta no Google Drive (SeuProjeto > NexxusDoc).\n\n"
-                "Para continuar recebendo dados e atualizações: no navegador, abra 'Compartilhados comigo', clique com o "
-                "botão direito na pasta SeuProjeto > Organizar > Adicionar atalho > Meu Drive. Depois abra o NexxusDoc de novo.")
+        message("O NexxusDoc mudou de pasta no Google Drive (Drives compartilhados > Sua Area > Nexxus > NexxusDoc).\n\n"
+                "Para continuar recebendo dados e atualizações, peça acesso ao drive compartilhado Sua Area (ou à "
+                "pasta Nexxus). Se recebeu acesso só à pasta Nexxus: no navegador, abra 'Compartilhados comigo', clique com "
+                "o botão direito na pasta Nexxus > Organizar > Adicionar atalho > Meu Drive. Depois abra o NexxusDoc de novo.")
         return source
     env_path = ROOT / ".env"
     lines = [line for line in env_path.read_text(encoding="utf-8-sig").splitlines()
@@ -199,7 +312,7 @@ def wait_and_open(timeout: float = 90, browser: bool = True) -> bool:
     while time.monotonic() < deadline:
         if nexus_running():
             if browser:
-                open_browser()
+                show_existing_or_open()
             return True
         time.sleep(0.3)
     return False
@@ -251,7 +364,7 @@ def main() -> None:
         while port_in_use() and time.monotonic() < deadline:
             time.sleep(0.5)
     if nexus_running():
-        open_browser()
+        show_existing_or_open()
         return
     if port_in_use():
         message(f"A porta {PORT} está sendo usada por outro programa.\n\n"

@@ -202,3 +202,13 @@
 .bg-table.clean .tog{color:#4d7a1a}
 .bg-table.clean .mut,.bg-table.clean td.mut{color:#9aa69e}
 .bg-table.clean .pos{color:#b42318}.bg-table.clean .neg{color:#0e6f8f}
+
+/* Usuario comum (09/11/2026): numeros mascarados ("••••") e graficos desfocados; os valores reais nem chegam a tela. */
+#page-budget.bg-masked .bg-chart svg,#page-budget.bg-masked .bg-split{filter:blur(5px);opacity:.75;pointer-events:none}
+#page-budget.bg-masked [data-bgtip]{pointer-events:none}
+.bg-mask-badge{display:inline-flex;align-items:center;gap:8px;padding:8px 14px;border-radius:999px;border:1px solid #f4b74066;
+  background:#f4b74014;color:#f6d38a;font-weight:700;font-size:13px}
+.bg-mask-badge svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.bg-mask-note{display:flex;gap:10px;align-items:flex-start;margin:0 0 14px;padding:11px 14px;border-radius:12px;border:1px solid #f4b74055;
+  background:#f4b7400f;color:#e9dcc0;font-size:13px;line-height:1.45}
+.bg-mask-note svg{width:18px;height:18px;flex:none;margin-top:1px;fill:none;stroke:#f4b740;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}

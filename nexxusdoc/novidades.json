@@ -1,0 +1,120 @@
+{
+  "observacao": "O que muda em cada publicação, mostrado ao clicar em Atualizar (até 6 itens no total, sem títulos). Ao publicar algo novo, acrescente uma entrada com o próximo id, com itens de uma linha, para o usuário.",
+  "versoes": [
+    {
+      "id": 1,
+      "data": "2026-11-11",
+      "titulo": "Auditoria, histórico das consultas e novidades da versão",
+      "itens": [
+        "Auditoria: aba Matriz de risco e calendário no Ciclo do ano.",
+        "Auditoria: links diretos para as pastas do Drive e orientações de IPE.",
+        "Auditoria: e-mail automático quando surgir solicitação nova.",
+        "Consultas gerais: conversa guardada dos últimos 3 dias."
+      ]
+    },
+    {
+      "id": 2,
+      "data": "2026-11-11",
+      "titulo": "Tela do Atualizar mais resumida",
+      "itens": [
+        "Atualizar: quadro mais resumido, com o código da versão nova."
+      ]
+    },
+    {
+      "id": 3,
+      "data": "2026-11-11",
+      "titulo": "Matriz de risco automática",
+      "itens": [
+        "Auditoria: matriz de risco calculada pelo sistema, com o motivo de cada ponto.",
+        "Auditoria: tabelas mais altas e página ajustada para notebook."
+      ]
+    },
+    {
+      "id": 4,
+      "data": "2026-11-11",
+      "titulo": "Atualização automática",
+      "itens": [
+        "O NexxusDoc se atualiza sozinho, sem botão, sem perder o que está sendo feito."
+      ]
+    },
+    {
+      "id": 5,
+      "data": "2026-11-12",
+      "titulo": "Uma aba só",
+      "itens": [
+        "O NexxusDoc funciona em uma aba só: ao abrir outra, a anterior é desativada.",
+        "Clique na notificação leva à aba já aberta, sem abrir outra.",
+        "Backup diário não trava mais quando arquivos são apagados de propósito."
+      ]
+    },
+    {
+      "id": 6,
+      "data": "2026-11-12",
+      "titulo": "Query Console ampliada",
+      "itens": [
+        "Query Console: pergunte em português e o NexxusDoc monta a consulta.",
+        "Query Console: catálogo do BigQuery, processos × tabelas e Minhas consultas.",
+        "Chat Nexxus: responde sobre as tabelas do BigQuery da área.",
+        "Versão e data da última atualização abaixo do nome, no topo."
+      ]
+    },
+    {
+      "id": 7,
+      "data": "2026-11-13",
+      "titulo": "Query Console mais organizada",
+      "itens": [
+        "Catálogo do BigQuery agrupado por projeto, com todas as colunas de cada tabela.",
+        "Processos × tabelas agrupados pela fase do processo.",
+        "Minhas consultas com seções que se recolhem.",
+        "Perguntar: consulta nova limpa o editor."
+      ]
+    },
+    {
+      "id": 8,
+      "data": "2026-11-13",
+      "titulo": "Catálogo atualizado toda semana",
+      "itens": [
+        "Catálogo do BigQuery conferido toda segunda-feira, com as tabelas novas marcadas.",
+        "Perguntar: barra de progresso e consulta (SQL) organizada em linhas.",
+        "Resultado com muitas colunas rola só na tabela.",
+        "A consulta continua ao trocar de aba ou de página, e um aviso chega quando fica pronta."
+      ]
+    },
+    {
+      "id": 9,
+      "data": "2026-11-13",
+      "titulo": "Aviso de tabela sem dados",
+      "itens": [
+        "Query Console: aviso antes da consulta quando a tabela está vazia ou sem atualização.",
+        "Catálogo do BigQuery: tabelas vazias e paradas marcadas.",
+        "Nova consulta pronta: pedidos Nike da Fisia no formato da OTR."
+      ]
+    },
+    {
+      "id": 10,
+      "data": "2026-11-13",
+      "titulo": "Sino com os avisos do Windows",
+      "itens": [
+        "Os avisos que chegam no Windows também ficam no sino por 14 dias.",
+        "Query Console: círculo girando no lugar do resultado enquanto a consulta executa."
+      ]
+    },
+    {
+      "id": 11,
+      "data": "2026-11-13",
+      "titulo": "Levantamento das reuniões para todos",
+      "itens": [
+        "Automação: nova visão Levantamento das reuniões, com as oportunidades de automação e os principais pontos."
+      ]
+    },
+    {
+      "id": 12,
+      "data": "2026-11-13",
+      "titulo": "Consultas da equipe",
+      "itens": [
+        "Query Console: nova seção Consultas da equipe, com todas as consultas compartilhadas.",
+        "Compartilhar uma consulta salva não dá mais erro."
+      ]
+    }
+  ]
+}
