@@ -35,7 +35,7 @@ HOST = "127.0.0.1"
 PORT = int(CONFIG.get("NEXUS_PORT") or 8790)
 IDLE_SECONDS = int(CONFIG.get("NEXUS_IDLE_MINUTES") or 30) * 60
 URL = f"http://{HOST}:{PORT}/"
-TITLE = "NexxusDoc - Normas e Procedimentos"
+TITLE = "NexxusDoc"
 # Sem o Google Drive para computador (instalado em modo nuvem): a tela sincroniza a copia local da pasta pela ponte do
 # Apps Script, que precisa da conta Google do Grupo SBF no navegador.
 CLOUD_MODE = (CONFIG.get("NEXUS_MODO") or "").strip().casefold() == "nuvem"
@@ -60,7 +60,16 @@ def open_browser(url: str = "") -> None:
 # Uma aba so (12/11/2026, pedido do usuario): o clique na notificacao chega aqui pelo protocolo nexxusdoc:
 # ("nexxusdoc:abrir?page=docs&pane=..."). Com o NexxusDoc ja aberto, a aba ativa vai para a pagina e a janela do
 # navegador vem para a frente, sem aba nova; o atalho da Area de Trabalho faz o mesmo (so traz a janela).
-PAGE_TITLE = "NexxusDoc | Normas e Procedimentos"   # <title> do static/index.html
+PAGE_TITLE = "NexxusDoc"   # <title> do static/index.html (23/11/2026: so "NexxusDoc", pedido do usuario)
+
+
+def is_page_title(title: str) -> bool:
+    """Titulo da janela do navegador com a aba do sistema na frente: "NexxusDoc - Google Chrome", "NexxusDoc e mais 2
+    paginas - ... - Microsoft Edge". Nao vale "NexxusDoc · aba desativada" nem outras paginas "NexxusDoc · ..."."""
+    if not title.startswith(PAGE_TITLE):
+        return False
+    resto = title[len(PAGE_TITLE):]
+    return resto == "" or (resto.startswith(" ") and not resto.lstrip().startswith(("·", "|", ":")))
 BROWSERS = {"chrome.exe", "msedge.exe"}
 
 
@@ -120,7 +129,7 @@ def browser_windows() -> list:
             return True
         buf = ctypes.create_unicode_buffer(length + 1)
         user32.GetWindowTextW(hwnd, buf, length + 1)
-        if buf.value.startswith(PAGE_TITLE):
+        if is_page_title(buf.value):
             exe, pid = exe_of(hwnd)
             if exe in BROWSERS:
                 found.append((hwnd, exe, pid))

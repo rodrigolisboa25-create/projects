@@ -42,6 +42,16 @@ from pydantic import BaseModel, Field, StringConstraints, field_validator
 from typing import Annotated
 
 import budget_engine  # pagina Budget (motor do orcamento; openpyxl so e carregado ao importar planilha)
+import budget_resultados  # pagina Budget, aba Resultados (bridges de custo e Ferramenta de Controle)
+import budget_resultados_saida  # pagina Budget, aba Resultados (PowerPoint e Excel para baixar)
+import budget_resultados_edicao  # pagina Budget, aba MBR (alterar valores pela base em Excel)
+import budget_final  # pagina Resultados, aba Apresentacao Final
+import budget_final_pptx  # pagina Resultados, aba Apresentacao Final (PowerPoint)
+import embarques  # pagina Embarques (indice da pasta Sua Area > Processos)
+import proforma  # pagina Embarques, aba Planilha proforma (DuckDB so e carregado ao usar)
+import pgl_relatorios  # pagina PGL, subpagina Relatorios da PGL (FUP que chega por e-mail, gravado pelo n8n)
+import custos  # pagina Custos (MIROs de debito posterior da PGL, por processo; montagem do layout)
+import frete  # aba Frete internacional da pagina Custos (faturas da Asia Shipping e da DMS conferidas pelo BID)
 
 # reportlab, python-docx, openpyxl, python-pptx e pypdf sao importados sob demanda
 # (build_pdf e _extract_reference_text) para o servidor subir em poucos segundos.
@@ -93,7 +103,7 @@ VPN_ADAPTER_PATTERN = re.compile(CONFIG.get("NEXUS_VPN_ADAPTER_PATTERN") or
                                  re.I)
 _vpn_cache: dict[str, Any] = {"checked": 0.0, "value": None}
 
-app = FastAPI(title="NexxusDoc - Normas e Procedimentos", version="0.2.0")
+app = FastAPI(title="NexxusDoc", version="0.2.0")
 app.add_middleware(SessionMiddleware, secret_key=CONFIG.get("SESSION_SECRET") or secrets.token_urlsafe(48),
                    session_cookie="nexus_session", same_site="lax", https_only=False,
                    max_age=8 * 60 * 60)
@@ -176,6 +186,7 @@ class UserUpdate(BaseModel):
     role: Literal["user", "owner"] | None = None
     docs_folder: Annotated[str, StringConstraints(strip_whitespace=True, max_length=1000)] | None = None
     bigquery: bool | None = None  # pode consultar o BigQuery (dados do SAP); so o master altera
+    frete_param: bool | None = None  # pode alterar os parametros da validacao de frete (alem de master e owners); so o master altera
 
 
 class WorkflowDecision(BaseModel):
@@ -439,19 +450,31 @@ def _write_access(data: dict[str, Any]) -> None:
 
 
 CADASTRO_WATCH_SECONDS = 60
+# Soluco do Google Drive para computador (o arquivo some ou fica ilegivel por um instante durante a sincronizacao): so
+# restaura se a diferenca continuar numa segunda leitura, alguns segundos depois (13/11/2026: um alarme falso restaurou
+# o cadastro sem ninguem ter mexido; no Drive o arquivo era o mesmo desde 19/10).
+CADASTRO_CONFIRM_SECONDS = 10
 
 
-def _cadastro_guard() -> str:
+def _cadastro_guard(confirm_seconds: float = CADASTRO_CONFIRM_SECONDS) -> str:
     """Computador do master: a copia compartilhada tem de ser igual a privada. Diferente (editada ou apagada no Drive)
-    = restaura da privada. Sem copia privada ainda = cria a partir da compartilhada assinada. Devolve o que fez."""
+    nas DUAS leituras = restaura da privada. Sem copia privada ainda = cria a partir da compartilhada assinada.
+    Devolve o que fez ("restaurado", "oscilou", "copia_privada_criada", "assinado" ou "")."""
     private = _private_cadastro()
     if not private or _cadastro_secret() is None:
         return ""
-    with CADASTRO_LOCK:
-        shared = (_read_bytes(ACCESS_FILE), _read_bytes(CADASTRO_SIG_FILE))
-        mine = (_read_bytes(private[0]), _read_bytes(private[1]))
-        if _cadastro_valid(*mine):
-            if shared != mine:
+    for attempt in range(2):
+        with CADASTRO_LOCK:
+            shared = (_read_bytes(ACCESS_FILE), _read_bytes(CADASTRO_SIG_FILE))
+            mine = (_read_bytes(private[0]), _read_bytes(private[1]))
+            if not _cadastro_valid(*mine):
+                break
+            if shared == mine:
+                if attempt:
+                    _audit(WINDOWS_EMAIL, "cadastro_oscilou", motivo="leitura diferente que se normalizou sozinha")
+                    return "oscilou"
+                return ""
+            if attempt:
                 _publish_cadastro(*mine)
                 _cadastro_state["restaurado_em"] = datetime.now(timezone.utc).isoformat()
                 _audit(WINDOWS_EMAIL, "cadastro_restaurado", motivo="copia da pasta compartilhada diferente da privada",
@@ -460,7 +483,9 @@ def _cadastro_guard() -> str:
                             "O cadastro foi alterado ou apagado fora do NexxusDoc na pasta compartilhada. "
                             "Voltei a versão assinada da sua pasta privada.", "config:access", force=True)
                 return "restaurado"
-            return ""
+        time.sleep(confirm_seconds)   # fora da trava: o master pode salvar acessos enquanto espera
+    with CADASTRO_LOCK:
+        shared = (_read_bytes(ACCESS_FILE), _read_bytes(CADASTRO_SIG_FILE))
         if _cadastro_valid(*shared):
             _publish_cadastro(*shared)
             return "copia_privada_criada"
@@ -508,7 +533,9 @@ def current_user(request: Request) -> dict[str, Any]:
     role = _effective_role(email, registry)
     # Consulta ao BigQuery (dados do SAP): so o master e quem o master liberar no cadastro.
     return {"email": email, "name": _display_name({**registry, "email": email}), "area": registry.get("area", ""),
-            "role": role, "active": True, "bigquery": role == "master" or registry.get("bigquery") is True}
+            "role": role, "active": True, "bigquery": role == "master" or registry.get("bigquery") is True,
+            # parametros da validacao de frete: master, owners e quem o master liberar (24/11/2026, pedido do usuario)
+            "frete_param": role in {"master", "owner"} or registry.get("frete_param") is True}
 
 
 # ---------------------------------------------------------------------------
@@ -1593,7 +1620,7 @@ def logout(request: Request) -> dict[str, bool]:
 @app.get("/api/auth/me")
 def who_am_i(user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
     # Somente os dados de quem esta logado (a sessao e da conta Windows desta maquina).
-    return {**{key: user[key] for key in ("email", "name", "role", "area", "bigquery")},
+    return {**{key: user[key] for key in ("email", "name", "role", "area", "bigquery")}, "frete_param": bool(user.get("frete_param")),
             "docs_folder": _folder_label(_user_docs_folder(user["email"])), "auditoria": _audit_page_access(user)}
 
 
@@ -1611,7 +1638,8 @@ def admin_users(admin: dict[str, Any] = Depends(require_admin)) -> dict[str, Any
                      "docs_folder": _folder_label(_resolve_location(item.get("docs_folder")) or default_docs),
                      "docs_folder_path": str(_resolve_location(item.get("docs_folder")) or default_docs or ""),
                      "docs_folder_custom": bool(item.get("docs_folder")),
-                     "bigquery": _effective_role(key, item) == "master" or item.get("bigquery") is True}
+                     "bigquery": _effective_role(key, item) == "master" or item.get("bigquery") is True,
+                     "frete_param": item.get("frete_param") is True}
                     for key, item in access["users"].items()
                     if is_master or _same_area(item.get("area"), admin["area"])),
                    key=lambda item: (_norm(item["area"]), {"master": 0, "owner": 1}.get(item["role"], 2), item["email"]))
@@ -1701,11 +1729,18 @@ def change_user_access(payload: UserUpdate, admin: dict[str, Any] = Depends(requ
             target["bigquery"] = True
         else:
             target.pop("bigquery", None)
+    if payload.frete_param is not None:
+        if admin["role"] != "master":
+            raise HTTPException(403, "Somente o administrador master libera a alteração dos parâmetros do frete.")
+        if payload.frete_param:
+            target["frete_param"] = True
+        else:
+            target.pop("frete_param", None)
     target.update({"updated_at": datetime.now(timezone.utc).isoformat(), "updated_by": admin["email"]})
     _write_access(access)
     _audit(admin["email"], "acesso_alterado", alvo=email, ativo=target["active"], area=target.get("area", ""),
            perfil=target["role"], pasta_documentos=_folder_label(_user_docs_folder(email, target)),
-           bigquery=bool(target.get("bigquery")))
+           bigquery=bool(target.get("bigquery")), parametros_frete=bool(target.get("frete_param")))
     return {"email": email, "active": target["active"], "area": target.get("area", ""), "role": target["role"]}
 
 
@@ -1813,6 +1848,26 @@ async def _send_n8n(message: dict[str, Any], session_id: str, url: str | None = 
         return await _send_n8n_once(message, session_id + "-r", url)
 
 
+# Conexao que nem abre (ConnectError em milesimos de segundo): o pedido nao chegou ao n8n, entao e seguro tentar de
+# novo, inclusive e-mail. 13/11/2026: o usuario teve de clicar 3 vezes em gerar o documento (duas falhas instantaneas
+# "sem conexao" e a terceira deu certo); o endereco do n8n alterna entre dois pares de IPs e a VPN oscila.
+N8N_CONNECT_TRIES = 4
+
+
+async def _n8n_post(client: httpx.AsyncClient, target: str, payload: dict[str, Any], headers: dict[str, str],
+                    timeout: httpx.Timeout, task: str) -> tuple[httpx.Response, str]:
+    for n in range(N8N_CONNECT_TRIES):
+        try:
+            async with client.stream("POST", target, json=payload, headers=headers, timeout=timeout) as response:
+                return response, (await response.aread()).decode("utf-8", errors="replace")
+        except httpx.ConnectError:
+            if n == N8N_CONNECT_TRIES - 1:
+                raise
+            print(f"n8n {task}: a conexão não abriu (tentativa {n + 1}); tentando de novo", flush=True)
+            await asyncio.sleep(0.8 * (n + 1))
+    raise httpx.ConnectError("sem conexão")  # nao chega aqui
+
+
 async def _send_n8n_once(message: dict[str, Any], session_id: str, url: str | None = None) -> Any:
     target = url or N8N_URL
     if not N8N_URL or not target:
@@ -1838,8 +1893,7 @@ async def _send_n8n_once(message: dict[str, Any], session_id: str, url: str | No
                 per_try = (httpx.Timeout(connect=20.0, read=N8N_ACCEPT_SECONDS, write=60.0, pool=20.0)
                            if quick and not last else timeout)
                 try:
-                    async with client.stream("POST", target, json=payload, headers=headers, timeout=per_try) as response:
-                        body = (await response.aread()).decode("utf-8", errors="replace")
+                    response, body = await _n8n_post(client, target, payload, headers, per_try, message.get("task", ""))
                 except httpx.ReadTimeout:
                     if last:
                         raise
@@ -2002,6 +2056,20 @@ KNOWLEDGE_REQUIREMENT = ("Inclua uma secao 'Base de conhecimento e sistemas rela
                          "e cite esses itens nos passos em que sao usados. Nao invente itens fora da lista.")
 
 
+# Foco nas melhorias (19/11/2026, pedido do usuario, vale para o SISTEMA TODO): o agente nao deve querer automatizar o
+# processo inteiro ("vira dispersao"); le o documento e aponta melhoria/automacao so onde ha necessidade real. Usado na
+# analise de automacao do POP, no Fluxo As Is (POPs e documentos de fora), na ficha tecnica SAP, nas atas das reunioes
+# e no resumo executivo.
+IMPROVEMENT_FOCUS_RULE = (
+    "FOCO NAS MELHORIAS (regra do sistema todo): nao proponha automatizar o processo inteiro nem cada etapa. Leia o "
+    "documento e aponte melhoria ou automacao SO onde houver necessidade real e evidencia no proprio documento (ou nas "
+    "respostas/dores informadas): tarefa manual e repetitiva com volume relevante, retrabalho ou erro recorrente, espera "
+    "ou gargalo, digitacao de dados que ja existem em outro sistema ou documento, risco ou controle fraco, dor relatada. "
+    "Etapas que exigem julgamento ou analise caso a caso, decisao de gestao, negociacao, contato com terceiro ou orgao "
+    "publico, ou que ja funcionam bem ficam como estao e nao viram melhoria. Poucas propostas bem fundamentadas valem "
+    "mais que muitas: se o processo nao tiver o que justifique, devolva poucas ou nenhuma. Cada proposta diz em que "
+    "evidencia se baseia e nao repete a mesma ideia em etapas diferentes.")
+
 # Script SAP GUI (04/11/2026, pedido do usuario): o SAP GUI grava a navegacao em VBS e isso automatiza extracoes de
 # relatorios/arquivos e digitacao repetitiva. Texto unico usado na analise de automacao do POP (Oportunidades), na ficha
 # tecnica SAP S/4HANA (Transacoes SAP), nas melhorias do Fluxo As Is, na entrevista e no resumo executivo (agente local).
@@ -2044,7 +2112,8 @@ AUTOMATION_REQUIREMENT = (
     "passos de tela, que extrai relatorio ou arquivo do SAP (exportar para Excel, baixar relatorio) ou digita no SAP "
     "dados que ja estao numa planilha; cite o passo, a transacao, o que o script faz e para onde vai o arquivo (pode ser "
     "o primeiro passo de uma automacao maior, ex.: script extrai a ZTMM192 e o n8n cruza com a planilha). Fora desses "
-    "casos (ver QUANDO NAO INDICAR), nao cite script. Referencia: " + SAP_GUI_SCRIPT_GUIDE)
+    "casos (ver QUANDO NAO INDICAR), nao cite script. Referencia: " + SAP_GUI_SCRIPT_GUIDE + " " + IMPROVEMENT_FOCUS_RULE
+    + " opportunities so com as etapas que realmente precisam (lista curta ou vazia quando o processo nao justificar).")
 
 SAP_INTERVIEW_REQUIREMENT = (
     "SAP: sempre que a pessoa mencionar o SAP (ou o processo indicar uso do SAP) em uma etapa, pergunte qual transacao "
@@ -2692,6 +2761,53 @@ def _procedure_records(area: str = "", unit: str = "") -> list[dict[str, Any]]:
             and (unit not in BUSINESS_UNITS or unit in _record_units(r))]
 
 
+FLOW_EFFORT_TO_COMPLEXITY = {"baixo": "baixa", "medio": "media", "alto": "alta"}
+
+
+def _automation_flow_rows(area: str = "", unit: str = "") -> list[dict[str, Any]]:
+    """Documentos oficiais, enviados e localizados com Fluxo As Is montado e em dia (19/11/2026, pedido do usuario):
+    as melhorias de AUTOMACAO do fluxo entram no Mapa de automacao, marcadas como vindas do fluxo. Nao ha horas
+    economizadas por melhoria (o fluxo traz impacto e esforco); o esforco atual e a estimativa do fluxo."""
+    rows: list[dict[str, Any]] = []
+    try:
+        names = sorted(p.stem for p in Path(_long(FLOW_DIR)).glob("*.json") if FLOW_EXTERNAL_ID.fullmatch(p.stem))
+    except OSError:
+        return rows
+    for ext_id in names:
+        record = _flow_external(ext_id)
+        if not record or (area and not _same_area(record.get("area"), area)):
+            continue
+        if unit in BUSINESS_UNITS and record.get("units") and unit not in record["units"]:
+            continue
+        saved = _flow_read(ext_id)
+        flow = saved.get("fluxo") or {}
+        if not flow or saved.get("fonte") != _flow_stamp(record):
+            continue  # fluxo ainda nao montado ou de uma versao anterior do documento
+        steps = {n["id"]: n.get("titulo", "") for n in flow.get("etapas", [])}
+        hours = (flow.get("estimativa") or {}).get("horas_mes")
+        try:
+            pseudo = _summary_record(ext_id)  # resumo executivo pelo agente local, como nos POPs
+        except HTTPException:
+            pseudo = None
+        for index, imp in enumerate(flow.get("melhorias", [])):
+            if imp.get("categoria") != "automacao":
+                continue
+            where = "; ".join(steps[s] for s in imp.get("etapas", []) if steps.get(s))
+            text = f"{imp.get('titulo', '')}. {imp.get('descricao', '')}".strip()
+            potential, complexity = imp.get("impacto", ""), FLOW_EFFORT_TO_COMPLEXITY.get(imp.get("esforco", ""), "")
+            rows.append({"record_id": ext_id, "opp_index": index,
+                         "resumo": _summary_status(pseudo, index) if pseudo else "", "area": record.get("area", ""),
+                         "process": record.get("process", ""), "units": record.get("units", []),
+                         "opportunity": f"{where}: {text}" if where else text, "solution_type": "",
+                         "potential": potential, "complexity": complexity,
+                         "script_sap": _sap_script_hint(f"{where} {text}"),
+                         "hours_per_month": hours, "hours_per_month_estimated": bool(hours), "hours_saved": None,
+                         "ganho": imp.get("ganho", ""), "quadrant": _quadrant(None, potential, complexity),
+                         "origem": "fluxo", "origem_label": f"Fluxo As Is · {record.get('origin_label', '')}",
+                         "open_url": record.get("link", "")})
+    return rows
+
+
 def _automation_rows(area: str = "", unit: str = "") -> list[dict[str, Any]]:
     """Oportunidades levantadas nos procedimentos criados ou revisados pela equipe (uma linha por etapa)."""
     rows = []
@@ -2709,7 +2825,8 @@ def _automation_rows(area: str = "", unit: str = "") -> list[dict[str, Any]]:
                          "hours_per_month": automation.get("hours_per_month_current"),
                          "hours_saved": opp.get("estimated_hours_saved_month"),
                          "quadrant": _quadrant(opp.get("estimated_hours_saved_month"), opp.get("potential", ""),
-                                               opp.get("complexity", ""))})
+                                               opp.get("complexity", "")), "origem": "entrevista"})
+    rows += _automation_flow_rows(area, unit)
     order = list(QUADRANT_LABELS)
     for row in rows:
         row["quadrant_label"] = QUADRANT_LABELS[row["quadrant"]]
@@ -2724,6 +2841,7 @@ def automation_map(area: str = "", unidade: str = "", _: dict[str, Any] = Depend
     areas = sorted({r.get("area", "") for r in _procedure_records()} - {""}, key=_norm)
     return {"rows": rows, "areas": areas,
             "summary": {"processes": len(procedures), "analysed": len(analysed),
+                        "flow_docs": len({r["record_id"] for r in rows if r.get("origem") == "fluxo"}),
                         "hours_per_month": round(sum(r["automation"].get("hours_per_month_current") or 0 for r in analysed), 1),
                         "hours_saved": round(sum(r["hours_saved"] or 0 for r in rows), 1),
                         "quadrants": {key: sum(1 for r in rows if r["quadrant"] == key) for key in QUADRANT_LABELS}}}
@@ -2762,6 +2880,7 @@ FIDELIDADE AOS DADOS (o mais importante)
 - Pré-requisitos e riscos: só os de oportunidade.pre_requisitos, oportunidade.riscos_e_controles, script_sap_gui ou o que decorre diretamente da descrição da oportunidade.
 - Script do SAP: no Grupo SBF o próprio usuário grava e roda o script no SAP GUI dele. NUNCA diga que é preciso permissão, liberação ou habilitação da equipe Basis, da TI ou de qualquer equipe técnica para usar script do SAP.
 - Não repita a mesma informação em seções diferentes.
+- Fale só da etapa desta oportunidade: não amplie a proposta para automatizar o processo inteiro. O que exige julgamento continua com o analista.
 
 ESTRUTURA: exatamente estes 6 títulos, nesta ordem, cada um começando com "## ".
 ## Situação atual
@@ -2825,6 +2944,29 @@ def _summary_read(record_id: str, index: int) -> dict[str, Any] | None:
         return json.loads(Path(_long(_summary_path(record_id, index))).read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return None
+
+
+def _summary_record(record_id: str) -> dict[str, Any]:
+    """Registro para o resumo executivo: POP do NexxusDoc ou, desde 19/11/2026 (pedido do usuario), documento oficial
+    com Fluxo As Is (man-/env-/loc-): as melhorias do fluxo viram as oportunidades, na mesma ordem (indice) do Mapa."""
+    if not FLOW_EXTERNAL_ID.fullmatch(record_id):
+        return _read_record(record_id)
+    record = _flow_external(record_id)
+    saved = _flow_read(record_id)
+    flow = saved.get("fluxo") or {}
+    if not record or not flow:
+        raise HTTPException(404, "O Fluxo As Is deste documento ainda não foi montado.")
+    steps = {n["id"]: n.get("titulo", "") for n in flow.get("etapas", [])}
+    est = flow.get("estimativa") or {}
+    opps = [{"step": "; ".join(steps[s] for s in m.get("etapas", []) if steps.get(s)),
+             "description": f"{m.get('titulo', '')}. {m.get('descricao', '')}".strip() + (f" Ganho: {m['ganho']}" if m.get("ganho") else ""),
+             "solution_type": "", "potential": m.get("impacto", ""),
+             "complexity": FLOW_EFFORT_TO_COMPLEXITY.get(m.get("esforco", ""), ""), "estimated_hours_saved_month": None,
+             "prerequisites": "", "risks_controls": ""} for m in flow.get("melhorias", [])]
+    return {**record, "answers": {"unidade_negocio": ", ".join(record.get("units") or [])},
+            "document": {**record["document"], "purpose": flow.get("resumo", "")},
+            "automation": {"summary": f"{flow.get('resumo', '')} Esforço estimado pelo Fluxo As Is: {est.get('base', '')}".strip(),
+                           "hours_per_month_current": est.get("horas_mes"), "opportunities": opps}}
 
 
 def _summary_input(record: dict[str, Any], index: int) -> dict[str, Any]:
@@ -2927,7 +3069,7 @@ async def _summary_build(record_id: str, index: int, email: str) -> None:
     key = _summary_key(record_id, index)
     job = SUMMARY_JOBS[key]
     try:
-        record = _read_record(record_id)
+        record = _summary_record(record_id)
         data = _summary_input(record, index)
         body = {"model": LOCAL_LLM_MODEL, "stream": False, "think": False, "keep_alive": "10m",
                 "options": {"temperature": 0.3, "num_ctx": 8192, "num_predict": 1100},
@@ -2962,7 +3104,7 @@ async def _summary_build(record_id: str, index: int, email: str) -> None:
 
 
 async def _summary_view(record_id: str, index: int, user: dict[str, Any]) -> dict[str, Any]:
-    record = _read_record(record_id)
+    record = _summary_record(record_id)
     data = _summary_input(record, index)
     saved = _summary_read(record_id, index)
     job = SUMMARY_JOBS.get(_summary_key(record_id, index)) or {}
@@ -2987,7 +3129,7 @@ async def automation_summary(record_id: str, index: int, user: dict[str, Any] = 
 @app.post("/api/automation/resumo/{record_id}/{index}")
 async def automation_summary_generate(record_id: str, index: int,
                                       user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
-    record = _read_record(record_id)
+    record = _summary_record(record_id)
     _summary_input(record, index)
     if user.get("role") != "master":
         raise HTTPException(403, SUMMARY_MASTER_ONLY)
@@ -3016,15 +3158,16 @@ def automation_export(area: str = "", unidade: str = "", _: dict[str, Any] = Dep
     sheet = book.active
     sheet.title = "Oportunidades"
     header = ["Área", "Processo", "Oportunidade", "Tipo de solução", "Potencial", "Complexidade", "Esforço atual (h/mês)",
-              "Economia estimada (h/mês)", "Prioridade"]
+              "Economia estimada (h/mês)", "Prioridade", "Origem"]
     sheet.append(header)
     for row in rows:
         sheet.append([row["area"], row["process"], row["opportunity"], row["solution_type"], row["potential"],
-                      row["complexity"], row["hours_per_month"], row["hours_saved"], row["quadrant_label"]])
+                      row["complexity"], row["hours_per_month"], row["hours_saved"], row["quadrant_label"],
+                      row.get("origem_label") or "Entrevista do NexxusDoc"])
     for cell in sheet[1]:
         cell.font = Font(bold=True, color="FFFFFF")
         cell.fill = PatternFill("solid", fgColor="003D18")
-    for column, width in zip("ABCDEFGHI", (22, 32, 60, 28, 11, 13, 16, 18, 20)):
+    for column, width in zip("ABCDEFGHIJ", (22, 32, 60, 28, 11, 13, 16, 18, 20, 30)):
         sheet.column_dimensions[column].width = width
     sheet.freeze_panes = "A2"
     sheet.auto_filter.ref = sheet.dimensions
@@ -3359,6 +3502,9 @@ SAP_ASSESSMENT_REQUIREMENTS = [
     "transacao e, se houver, a variante/layout; em como_validar, o teste de gravacao e reproducao com um usuario-chave. "
     "Compare com as opcoes dentro do SAP (job com variante, BAPI) e diga quando o script e o melhor ganho rapido e "
     "quando nao e. Referencia: " + SAP_GUI_SCRIPT_GUIDE,
+    "Opcoes de automacao so na transacao em que o processo mostra necessidade real (volume, digitacao repetida, "
+    "retrabalho, controle fraco). Transacao usada para consulta eventual, analise caso a caso ou que ja funciona bem: "
+    "diga em uso_no_processo que nao precisa de automacao e deixe opcoes vazio. " + IMPROVEMENT_FOCUS_RULE,
     "Pesquisa web: pode consultar a documentacao oficial da SAP (help.sap.com, SAP Notes publicas) uma vez para "
     "confirmar objetos citados; cite as fontes em 'fontes'.",
     "Finalize com perguntas objetivas para a equipe de Tech SAP por transacao (configuracao atual, volume, "
@@ -4582,7 +4728,7 @@ BUDGET_MAX_BYTES = 20 * 1024 * 1024
 
 def _budget_user(user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
     if user.get("role") not in {"master", "owner"}:
-        raise HTTPException(403, "A página Budget é só para o administrador master e os owners.")
+        raise HTTPException(403, "A página Resultados é só para o administrador master e os owners.")
     return user
 
 
@@ -4633,6 +4779,25 @@ def _budget_benchmarks() -> dict[str, Any]:
         return {**budget_engine.BENCHMARKS_PADRAO, **{k: v for k, v in data.items() if isinstance(v, dict)}}
     except (OSError, ValueError):
         return dict(budget_engine.BENCHMARKS_PADRAO)
+
+
+def _res_ferramenta(ano: Any) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+    """Ferramenta de Controle e bridge mais recentes da Fisia no ano anterior ao do orcamento."""
+    try:
+        alvo = str(int(ano) - 1)
+    except (TypeError, ValueError):
+        return None, None
+    ativos = _res_active(_res_index())
+    comps = sorted((k[2] for k in ativos if k[0] == "ferramenta" and k[1] == "fisia" and k[2].startswith(alvo)), reverse=True)
+    if not comps:
+        return None, None
+    bid = ativos.get(("bridge", "fisia", comps[0]))
+    return _res_json(RES_DIR / "bases" / f"{ativos[('ferramenta', 'fisia', comps[0])]}.json", None), _res_json(RES_DIR / "bases" / f"{bid}.json", None) if bid else None
+
+
+def _budget_fc(params: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any] | None]:
+    """Forecast do ano anterior sempre pelo 10+2 mais recente: Painel, Comparativo, Excel e Apresentacao Final com o mesmo numero."""
+    return budget_final.aplicar_forecast(params, _res_ferramenta(params.get("ano"))[0])
 
 
 def _budget_full(params: dict[str, Any], import_alerts: list[dict[str, Any]] | None = None) -> dict[str, Any]:
@@ -4762,15 +4927,16 @@ def budget_masked(user: dict[str, Any] = Depends(current_user)) -> dict[str, Any
 @app.get("/api/budget/versoes/{vid}")
 def budget_version(vid: str, user: dict[str, Any] = Depends(_budget_user)) -> dict[str, Any]:
     version = _budget_read(vid)
-    full = _budget_full(version["params"], [a for a in version.get("alertas_todos") or [] if a.get("onde") != "Premissas"])
-    return {"versao": _budget_summary(version), "params": full["params"], "resultado": full["resultado"],
+    params, base_fc = _budget_fc(version["params"])
+    full = _budget_full(params, [a for a in version.get("alertas_todos") or [] if a.get("onde") != "Premissas"])
+    return {"versao": _budget_summary(version), "params": full["params"], "forecast_base": base_fc, "resultado": full["resultado"],
             "alertas": full["alertas"], "mudancas": version.get("mudancas") or [], "origem_premissas": version.get("origem_premissas") or {},
             "nao_encontrados": version.get("nao_encontrados") or [], "reproducao": version.get("reproducao")}
 
 
 @app.post("/api/budget/simular")
 def budget_simulate(payload: BudgetSim, user: dict[str, Any] = Depends(_budget_user)) -> dict[str, Any]:
-    full = _budget_full(payload.params)
+    full = _budget_full(_budget_fc(payload.params)[0])
     return {"resultado": full["resultado"], "alertas": full["alertas"], "erros": full["erros"]}
 
 
@@ -4869,7 +5035,8 @@ def budget_save(payload: BudgetSave, user: dict[str, Any] = Depends(_budget_user
     params, errors = budget_engine.clean_params(payload.params)
     if errors:
         raise HTTPException(422, "Premissas inválidas: " + "; ".join(errors[:5]))
-    old, _ = budget_engine.clean_params(base["params"])
+    old, _ = budget_engine.clean_params(_budget_fc(base["params"])[0])
+    params, _ = budget_engine.clean_params(_budget_fc(params)[0])
     changes = _budget_changes(old, params)
     if not changes:
         raise HTTPException(409, "Nenhuma premissa foi alterada.")
@@ -4888,7 +5055,7 @@ def budget_export(vid: str, user: dict[str, Any] = Depends(_budget_user)):
         raise HTTPException(404, "O modelo não está nesta instalação.")
     sub = (f"FISIA · Logística internacional de inbound · valores em R$ · {version.get('nome', '')} · "
            f"gerado pelo NexxusDoc em {datetime.now(SAO_PAULO).strftime('%d/%m/%Y')}")
-    data = budget_engine.exportar_modelo(version["params"], BUDGET_MODELO, sub)
+    data = budget_engine.exportar_modelo(_budget_fc(version["params"])[0], BUDGET_MODELO, sub)
     _audit(user["email"], "budget_exportado", versao=vid)
     ano = version["params"].get("ano", "")
     from urllib.parse import quote
@@ -4912,13 +5079,364 @@ def budget_original(vid: str, user: dict[str, Any] = Depends(_budget_user)):
 @app.delete("/api/budget/versoes/{vid}")
 def budget_delete(vid: str, user: dict[str, Any] = Depends(_budget_user)) -> dict[str, bool]:
     if user.get("role") != "master":
-        raise HTTPException(403, "Só o administrador master exclui versões do Budget.")
+        raise HTTPException(403, "Só o administrador master exclui versões do orçamento.")
     _budget_read(vid)
     folder = BUDGET_DIR / "excluidas"
     folder.mkdir(parents=True, exist_ok=True)
     os.replace(BUDGET_DIR / "versoes" / f"{vid}.json", folder / f"{vid}.json")
     _audit(user["email"], "budget_versao_excluida", versao=vid)
     return {"ok": True}
+
+
+# ---------------------------------------------------------------------------
+# Budget > MBR, antes Resultados (18/11/2026, pedido do usuario): realizado de cada fechamento (Budget, Forecast e Actual) lido das
+# bridges de custo e da Ferramenta de Controle, sem estimar nada (budget_resultados.py). Cada envio guarda o original; o
+# ultimo arquivo de cada tipo, operacao e competencia e o que vale. A apresentacao executiva sai destes mesmos dados.
+# ---------------------------------------------------------------------------
+RES_DIR = BUDGET_DIR / "resultados"
+RES_LOCK = threading.Lock()
+RES_OPS = {"fisia": "Fisia Nike"}  # a analise considera apenas a Fisia
+RES_EXT_BASE = {".xlsx", ".xlsm"}
+RES_EXT_ANEXO = RES_EXT_BASE | {".csv", ".pdf", ".pptx", ".docx"}
+RES_MAX_FILES = 5
+RES_TIPOS = {"bridge": "Bridge de custo", "ferramenta": "Ferramenta de Controle", "edicao": "Base do MBR alterada", "anexo": "Anexo (não entra nos números)"}
+
+
+class ResConfirm(BaseModel):
+    token: str
+    anexos: list[str] = []
+
+
+class ResComment(BaseModel):
+    operacao: str
+    competencia: str
+    periodo: str
+    linhas: list[str] = []
+    destaques: list[str] | None = None
+
+
+def _res_json(path: Path, default: Any) -> Any:
+    try:
+        return json.loads(path.read_text(encoding="utf-8-sig"))
+    except (OSError, ValueError):
+        return default
+
+
+def _res_save(path: Path, data: Any) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(f".{uuid.uuid4().hex[:8]}.tmp")
+    tmp.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+    os.replace(tmp, path)
+
+
+def _res_index() -> list[dict[str, Any]]:
+    items = _res_json(RES_DIR / "indice.json", [])
+    return items if isinstance(items, list) else []
+
+
+def _res_active(items: list[dict[str, Any]]) -> dict[tuple[str, str, str], str]:
+    """Vale o ultimo arquivo enviado de cada tipo, operacao e competencia."""
+    ativos: dict[tuple[str, str, str], str] = {}
+    for item in sorted(items, key=lambda x: x.get("em") or ""):
+        for b in item.get("bases") or []:
+            ativos[(b["tipo"], b["operacao"], b["competencia"])] = b["id"]
+    return ativos
+
+
+def _res_payload(comp: str = "") -> dict[str, Any]:
+    items = _res_index()
+    ativos = _res_active(items)
+    comps = sorted({k[2] for k in ativos}, reverse=True)
+    atual = comp if comp in comps else (comps[0] if comps else "")
+    ops = []
+    for op, nome in RES_OPS.items():
+        load = lambda tipo: _res_json(RES_DIR / "bases" / f"{ativos[(tipo, op, atual)]}.json", None) if (tipo, op, atual) in ativos else None
+        bridge, ferr = load("bridge"), load("ferramenta")
+        if bridge or ferr:
+            ops.append(budget_resultados.montar_operacao(op, nome, bridge, ferr))
+    vivos = set(ativos.values())
+    arquivos = [{"id": x["id"], "nome": x["nome"], "tipo": x["tipo"], "tipo_rotulo": RES_TIPOS.get(x["tipo"], x["tipo"]), "por": x.get("por"), "em": x.get("em"),
+                 "competencia": x.get("competencia") or "", "operacoes": sorted({RES_OPS.get(b["operacao"], b["operacao"]) for b in x.get("bases") or []}),
+                 "em_uso": x["tipo"] == "anexo" or any(b["id"] in vivos for b in x.get("bases") or [])} for x in sorted(items, key=lambda i: i.get("em") or "", reverse=True)]
+    return {"competencias": comps, "competencia": atual, "operacoes": ops, "arquivos": arquivos, "comentarios": _res_json(RES_DIR / "comentarios.json", {})}
+
+
+@app.get("/api/budget/resultados")
+def res_home(comp: str = "", user: dict[str, Any] = Depends(_budget_user)) -> dict[str, Any]:
+    data = _res_payload(comp)
+    data["pode_excluir"] = user.get("role") == "master"
+    return data
+
+
+def _res_edicao(item: dict[str, Any], lida: dict[str, Any], ativos: dict[tuple[str, str, str], str]) -> None:
+    """Base do MBR baixada, alterada e reenviada: confere se ainda e a versao em uso e prepara a previa."""
+    marca, comp = lida["marca"], str(lida["marca"].get("competencia") or "")
+    item["pode_anexar"] = False
+    bid, fid = ativos.get(("bridge", "fisia", comp)), ativos.get(("ferramenta", "fisia", comp))
+    if not bid or not fid:
+        item["motivo"] = "Este fechamento não está mais no MBR."
+        return
+    if marca.get("bridge") != bid or marca.get("ferramenta") != fid:
+        item["motivo"] = "Os dados do MBR mudaram depois que esta base foi baixada. Baixe a base de novo e refaça a alteração."
+        return
+    bridge, ferr = _res_json(RES_DIR / "bases" / f"{bid}.json", None), _res_json(RES_DIR / "bases" / f"{fid}.json", None)
+    if not bridge or not ferr:
+        item["motivo"] = "Não encontrei os dados deste fechamento."
+        return
+    r = budget_resultados_edicao.aplicar(bridge, ferr, lida)
+    if r["erros"]:
+        item["motivo"] = "Corrija a planilha e envie de novo: " + "; ".join(r["erros"][:6]) + "."
+        return
+    if not r["alteracoes"]:
+        item["motivo"] = "Nenhum valor foi alterado na aba Editar valores. As demais abas são só consulta."
+        return
+    antes = budget_resultados.montar_operacao("fisia", RES_OPS["fisia"], bridge, ferr)
+    depois = budget_resultados.montar_operacao("fisia", RES_OPS["fisia"], r["bridge"], r["ferramenta"])
+    item.update(reconhecido=True, _bases=[r["bridge"], r["ferramenta"]], _tipo="edicao")
+    item["bases"] = [{"tipo": "edicao", "tipo_rotulo": RES_TIPOS["edicao"], "operacao": RES_OPS["fisia"], "competencia": comp, "substitui": False, "conferencias": depois["conferencias"],
+                      "alteracoes": r["alteracoes"][:12], "total_alteracoes": len(r["alteracoes"]), "efeitos": budget_resultados_edicao.efeitos(antes, depois)[:10], "avisos": r["avisos"]}]
+
+
+@app.post("/api/budget/resultados/analisar")
+async def res_analyze(files: list[UploadFile] = File(...), user: dict[str, Any] = Depends(_budget_user)) -> dict[str, Any]:
+    """Previa do envio: o que cada arquivo e, o que foi lido e as conferencias. Nada entra nos numeros antes de confirmar."""
+    if len(files) > RES_MAX_FILES:
+        raise HTTPException(422, f"Envie até {RES_MAX_FILES} arquivos por vez.")
+    token = uuid.uuid4().hex
+    folder = RES_DIR / "pendentes" / token
+    folder.mkdir(parents=True, exist_ok=True)
+    for old in (RES_DIR / "pendentes").iterdir():
+        try:
+            if old.is_dir() and time.time() - old.stat().st_mtime > 2 * 86400:
+                shutil.rmtree(old, ignore_errors=True)
+        except OSError:
+            pass
+    ativos, saida, meta = _res_active(_res_index()), [], []
+    for n, file in enumerate(files):
+        name = Path(file.filename or "arquivo").name[:180]
+        ext = Path(name).suffix.casefold()
+        item: dict[str, Any] = {"arquivo": name, "reconhecido": False, "motivo": "", "bases": [], "pode_anexar": ext in RES_EXT_ANEXO}
+        content = await file.read(BUDGET_MAX_BYTES + 1)
+        if ext not in RES_EXT_ANEXO:
+            item["motivo"] = "Formato não aceito."
+        elif len(content) > BUDGET_MAX_BYTES:
+            item.update(motivo="Arquivo acima de 20 MB.", pode_anexar=False)
+        else:
+            path = folder / f"{n}{ext}"
+            path.write_bytes(content)
+            item["_sha"], item["_path"] = hashlib.sha256(content).hexdigest(), path.name
+            if ext in RES_EXT_BASE:
+                try:
+                    _zip_guard(name, content)
+                    lida = await asyncio.to_thread(budget_resultados_edicao.ler_planilha, path)
+                    if lida is not None:
+                        await asyncio.to_thread(_res_edicao, item, lida, ativos)
+                    else:
+                        bases = await asyncio.to_thread(budget_resultados.ler_arquivo, path)
+                        item.update(reconhecido=True, _bases=bases)
+                        item["bases"] = [{"tipo": b["tipo"], "tipo_rotulo": RES_TIPOS[b["tipo"]], "operacao": RES_OPS[b["operacao"]], "competencia": b["competencia"],
+                                          "substitui": (b["tipo"], b["operacao"], b["competencia"]) in ativos, "conferencias": b["conferencias"]} for b in bases]
+                except budget_resultados.BaseNaoReconhecida as exc:
+                    item["motivo"] = f"Não reconhecida: {exc}."
+                except HTTPException as exc:
+                    item.update(motivo=str(exc.detail), pode_anexar=False)
+                except Exception as exc:
+                    item["motivo"] = f"Não consegui ler a planilha: {str(exc)[:160]}"
+            else:
+                item["motivo"] = "Este formato fica só como anexo: não entra nos números."
+        meta.append(item)
+        saida.append({k: v for k, v in item.items() if not k.startswith("_")})
+    _res_save(folder / "meta.json", {"por": user["email"], "itens": meta})
+    return {"token": token, "arquivos": saida}
+
+
+@app.post("/api/budget/resultados/confirmar")
+def res_confirm(payload: ResConfirm, user: dict[str, Any] = Depends(_budget_user)) -> dict[str, Any]:
+    if not re.fullmatch(r"[a-f0-9]{32}", payload.token):
+        raise HTTPException(422, "Envio inválido.")
+    folder = RES_DIR / "pendentes" / payload.token
+    meta = _res_json(folder / "meta.json", None)
+    if not meta or meta.get("por") != user["email"]:
+        raise HTTPException(410, "A prévia expirou. Envie os arquivos de novo.")
+    now, novos = datetime.now(SAO_PAULO).isoformat(timespec="seconds"), []
+    store = RES_DIR / "arquivos"
+    store.mkdir(parents=True, exist_ok=True)
+    for item in meta["itens"]:
+        anexo = not item["reconhecido"] and item.get("pode_anexar") and item["arquivo"] in payload.anexos and item.get("_path")
+        if not item["reconhecido"] and not anexo:
+            continue
+        ext = Path(item["_path"]).suffix
+        key = f"{item['_sha'][:24]}{ext}"
+        if not (store / key).is_file():
+            shutil.copyfile(folder / item["_path"], store / key)
+        bases = []
+        for b in item.get("_bases") or []:
+            bid = uuid.uuid4().hex
+            _res_save(RES_DIR / "bases" / f"{bid}.json", b)
+            bases.append({"id": bid, "tipo": b["tipo"], "operacao": b["operacao"], "competencia": b["competencia"]})
+        novos.append({"id": uuid.uuid4().hex, "nome": item["arquivo"], "key": key, "tipo": item.get("_tipo") or (bases[0]["tipo"] if bases else "anexo"), "bases": bases,
+                      "competencia": bases[0]["competencia"] if bases else "", "por": user["email"], "em": now})
+    if not novos:
+        raise HTTPException(422, "Nenhum arquivo para guardar.")
+    with RES_LOCK:
+        _res_save(RES_DIR / "indice.json", _res_index() + novos)
+    shutil.rmtree(folder, ignore_errors=True)
+    _audit(user["email"], "budget_resultados_enviados", arquivos=[x["nome"] for x in novos])
+    return {"ok": True, "competencia": next((x["competencia"] for x in novos if x["competencia"]), "")}
+
+
+@app.put("/api/budget/resultados/comentarios")
+def res_comments(payload: ResComment, user: dict[str, Any] = Depends(_budget_user)) -> dict[str, bool]:
+    if payload.operacao not in RES_OPS or not re.fullmatch(r"\d{4}-\d{2}", payload.competencia) or not re.fullmatch(r"[a-z0-9]{2,6}", payload.periodo):
+        raise HTTPException(422, "Comentário inválido.")
+    linhas = [re.sub(r"\s+", " ", x).strip()[:300] for x in payload.linhas if x.strip()][:8]
+    with RES_LOCK:
+        data = _res_json(RES_DIR / "comentarios.json", {})
+        data[f"{payload.operacao}|{payload.competencia}|{payload.periodo}"] = linhas
+        if payload.destaques is not None:  # quadros da Bridge na apresentacao: "Bunker: texto do quadro"
+            data[f"{payload.operacao}|{payload.competencia}|{payload.periodo}|destaques"] = [re.sub(r"\s+", " ", x).strip()[:120] for x in payload.destaques if ":" in x and x.split(":", 1)[1].strip()][:6]
+        _res_save(RES_DIR / "comentarios.json", data)
+    return {"ok": True}
+
+
+@app.get("/api/budget/resultados/arquivos/{fid}")
+def res_file(fid: str, user: dict[str, Any] = Depends(_budget_user)):
+    item = next((x for x in _res_index() if x["id"] == fid), None)
+    path = RES_DIR / "arquivos" / str((item or {}).get("key") or "-")
+    if not item or not re.fullmatch(r"[a-f0-9]{24}\.[a-z]{3,4}", item.get("key") or "") or not path.is_file():
+        raise HTTPException(404, "Arquivo não encontrado.")
+    return FileResponse(str(path), filename=item["nome"])
+
+
+@app.delete("/api/budget/resultados/arquivos/{fid}")
+def res_file_delete(fid: str, user: dict[str, Any] = Depends(_budget_user)) -> dict[str, bool]:
+    if user.get("role") != "master":
+        raise HTTPException(403, "Só o administrador master exclui arquivos do MBR.")
+    with RES_LOCK:
+        items = _res_index()
+        item = next((x for x in items if x["id"] == fid), None)
+        if not item:
+            raise HTTPException(404, "Arquivo não encontrado.")
+        _res_save(RES_DIR / "excluidos" / f"{fid}.json", item)
+        _res_save(RES_DIR / "indice.json", [x for x in items if x["id"] != fid])
+    _audit(user["email"], "budget_resultados_excluido", arquivo=item["nome"])
+    return {"ok": True}
+
+
+def _final_payload() -> dict[str, Any]:
+    """Apresentacao Final: orcamento mais recente x 10+2 da Ferramenta de Controle mais recente."""
+    versoes = _budget_versions()
+    if not versoes:
+        raise HTTPException(404, "Ainda não há orçamento nesta página.")
+    ferr, bridge = _res_ferramenta(versoes[0]["params"].get("ano"))
+    if not ferr:
+        raise HTTPException(404, "Envie a Ferramenta de Controle na aba MBR para montar a apresentação.")
+    try:
+        return budget_final.montar(versoes[0], ferr, bridge)
+    except budget_final.BaseIncompleta as exc:
+        raise HTTPException(422, f"Não consegui montar a apresentação: {exc}.")
+
+
+@app.get("/api/budget/final")
+def final_data(user: dict[str, Any] = Depends(_budget_user)) -> dict[str, Any]:
+    return _final_payload()
+
+
+@app.get("/api/budget/final/apresentacao.html")
+def final_download(user: dict[str, Any] = Depends(_budget_user)):
+    """Apresentacao Final num arquivo so (abre sem o sistema): estilos, imagens, fonte, motor de slides e dados embutidos."""
+    from fastapi.responses import Response
+    data = _final_payload()
+    deck = ROOT / "static" / "apresentacao"
+    css = (deck / "final_deck.css").read_text(encoding="utf-8")
+    for nome, tipo in (("capa_fundo.png", "image/png"), ("logo_capa.png", "image/png"), ("logo_marcas.png", "image/png"), ("archivo-black.woff2", "font/woff2")):
+        css = css.replace(f"final/{nome}", f"data:{tipo};base64,{base64.b64encode((deck / 'final' / nome).read_bytes()).decode()}")
+    js = (deck / "final_deck.js").read_text(encoding="utf-8").replace("</script", "<\\/script")
+    dados = json.dumps(data, ensure_ascii=False).replace("<", "\\u003c")
+    html = (f'<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
+            f'<title>Apresentação Final {data["ano"]}</title><style>{css}</style></head><body><div id="stage"></div>'
+            f'<script>window.__FINAL_DECK__={dados};</script><script>{js}</script></body></html>')
+    _audit(user["email"], "budget_apresentacao_final", ano=data["ano"])
+    return Response(html.encode("utf-8"), media_type="text/html; charset=utf-8",
+                    headers={"Content-Disposition": f'attachment; filename="Apresentacao_Final_Orcamento_{data["ano"]}.html"'})
+
+
+@app.get("/api/budget/final/apresentacao.pptx")
+def final_download_pptx(user: dict[str, Any] = Depends(_budget_user)):
+    """Apresentacao Final em PowerPoint (formas e textos editaveis)."""
+    from fastapi.responses import Response
+    data = _final_payload()
+    content = budget_final_pptx.gerar(data, ROOT / "static" / "apresentacao" / "final")
+    _audit(user["email"], "budget_apresentacao_final_pptx", ano=data["ano"])
+    return Response(content, media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+                    headers={"Content-Disposition": f'attachment; filename="Apresentacao_Final_Orcamento_{data["ano"]}.pptx"'})
+
+
+@app.get("/api/budget/final/planilha.xlsx")
+def final_download_xlsx(user: dict[str, Any] = Depends(_budget_user)):
+    """Planilha oficial com todos os numeros da Apresentacao Final (uma aba por parte)."""
+    from fastapi.responses import Response
+    import budget_final_planilha
+    data = _final_payload()
+    content = budget_final_planilha.gerar(data)
+    _audit(user["email"], "budget_apresentacao_final_planilha", ano=data["ano"])
+    return Response(content, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    headers={"Content-Disposition": f'attachment; filename="Apresentacao_Final_Orcamento_{data["ano"]}_numeros.xlsx"'})
+
+
+@app.get("/api/budget/resultados/apresentacao.html")
+def res_deck_download(comp: str = "", user: dict[str, Any] = Depends(_budget_user)):
+    """Apresentacao executiva num arquivo so (abre sem o sistema): estilos, motor de slides e dados embutidos."""
+    from fastapi.responses import Response
+    data = _res_payload(comp)
+    if not data["operacoes"]:
+        raise HTTPException(404, "Ainda não há resultados para apresentar.")
+    deck = ROOT / "static" / "apresentacao"
+    css = "\n".join((deck / n).read_text(encoding="utf-8") for n in ("base.css", "animations.css", "tema-nexxusdoc.css", "resultados_deck.css"))
+    js = lambda n: (deck / n).read_text(encoding="utf-8").replace("</script", "<\\/script")
+    dados = json.dumps({k: data[k] for k in ("competencia", "operacoes", "comentarios")}, ensure_ascii=False).replace("<", "\\u003c")
+    html = (f'<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'
+            f'<title>MBR Log. Internacional {data["competencia"]}</title><style>{css}</style></head><body><div class="deck" id="deck"></div>'
+            f'<script>window.__RES_DECK__={dados};</script><script>{js("resultados_deck.js")}</script><script>{js("runtime.js")}</script></body></html>')
+    _audit(user["email"], "budget_resultados_apresentacao", competencia=data["competencia"])
+    return Response(html.encode("utf-8"), media_type="text/html; charset=utf-8",
+                    headers={"Content-Disposition": f'attachment; filename="MBR_Log_Internacional_{data["competencia"]}.html"'})
+
+@app.get("/api/budget/resultados/apresentacao.pptx")
+def res_deck_pptx(comp: str = "", user: dict[str, Any] = Depends(_budget_user)):
+    """Apresentacao executiva em PowerPoint (formas e textos editaveis)."""
+    from fastapi.responses import Response
+    data = _res_payload(comp)
+    if not data["operacoes"]:
+        raise HTTPException(404, "Ainda não há resultados para apresentar.")
+    content = budget_resultados_saida.gerar_pptx(data)
+    _audit(user["email"], "budget_resultados_pptx", competencia=data["competencia"])
+    return Response(content, media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+                    headers={"Content-Disposition": f'attachment; filename="MBR_Log_Internacional_{data["competencia"]}.pptx"'})
+
+
+@app.get("/api/budget/resultados/base.xlsx")
+def res_base_excel(comp: str = "", user: dict[str, Any] = Depends(_budget_user)):
+    """Base usada no MBR em Excel: os numeros lidos das bases, as conferencias e os processos da PGL."""
+    from fastapi.responses import Response
+    data = _res_payload(comp)
+    if not data["operacoes"]:
+        raise HTTPException(404, "Ainda não há resultados para baixar.")
+    items = _res_index()
+    comp, ativos = data["competencia"], _res_active(items)
+    item = next((x for x in sorted(items, key=lambda i: i.get("em") or "", reverse=True) if x.get("tipo") == "ferramenta" and x.get("competencia") == comp), None)
+    original = RES_DIR / "arquivos" / item["key"] if item else None
+    book = budget_resultados_saida.gerar_excel(data, data["arquivos"], original)
+    bid, fid = ativos.get(("bridge", "fisia", comp)), ativos.get(("ferramenta", "fisia", comp))
+    bridge, ferr = _res_json(RES_DIR / "bases" / f"{bid}.json", None), _res_json(RES_DIR / "bases" / f"{fid}.json", None)
+    if bridge and ferr:  # com as duas bases, a planilha pode ser alterada e reenviada
+        budget_resultados_edicao.escrever_aba(book, bridge, ferr, {"competencia": comp, "bridge": bid, "ferramenta": fid}, f"Editar valores do MBR · {RES_OPS['fisia']} · {comp[5:]}/{comp[:4]}")
+    _xl_text_only(book)
+    out = io.BytesIO()
+    book.save(out)
+    _audit(user["email"], "budget_resultados_base", competencia=data["competencia"])
+    return Response(out.getvalue(), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    headers={"Content-Disposition": f'attachment; filename="Base_MBR_Log_Internacional_{data["competencia"]}.xlsx"'})
 
 
 @app.get("/api/lista-mestra")
@@ -5022,8 +5540,9 @@ def list_documents(user: dict[str, Any] = Depends(current_user)) -> list[dict[st
 
 
 # ---------------------------------------------------------------------------
-# Fluxo As Is (fluxograma do processo, 03/11/2026): so para procedimentos criados ou revisados no NexxusDoc (os
-# registros de levantamentos/). Documentos enviados, localizados e manuais nao tem. O agente monta o fluxo a partir
+# Fluxo As Is (fluxograma do processo, 03/11/2026): procedimentos criados ou revisados no NexxusDoc (os registros de
+# levantamentos/) e, desde 19/11/2026, os documentos de fora que aparecem em Documentos (manuais oficiais, enviados e
+# localizados; ids man-/env-/loc-, ver FLOW_EXTERNAL_REQUIREMENTS). O agente monta o fluxo a partir
 # do documento (tarefa build_as_is_flow, pelo app, sem reimportar o n8n): raias, etapas, decisoes, ligacoes e pontos
 # de melhoria. Um arquivo por documento em levantamentos/fluxos (nunca regrava o registro do documento). O fluxo vale
 # para o conteudo do documento (hash do texto): aprovar nao muda; nova versao refaz sozinha.
@@ -5075,8 +5594,9 @@ FLOW_REQUIREMENTS = [
     "proposta), impacto: alto|medio|baixo, esforco: "
     "alto|medio|baixo, ganho (ganho esperado; numeros so se vierem do documento ou de automation)}. Base: dores, "
     "excecoes_retrabalho, tarefas_manuais, natureza_regras, riscos, controles, tempo_volume e automation.opportunities "
-    "(reaproveite essas oportunidades ligadas as etapas certas, sem repetir). Entre 3 e 12 melhorias, as de maior "
-    "impacto primeiro. Script SAP GUI so em caso especifico: apenas em etapa manual e recorrente no SAP, com os mesmos "
+    "(reaproveite essas oportunidades ligadas as etapas certas, sem repetir). No maximo 8 melhorias, so as que o "
+    "documento justifica (podem ser poucas ou nenhuma), as de maior impacto primeiro. " + IMPROVEMENT_FOCUS_RULE + " "
+    "Script SAP GUI so em caso especifico: apenas em etapa manual e recorrente no SAP, com os mesmos "
     "passos de tela, que extrai relatorio/arquivo do SAP ou digita no SAP dados que ja estao numa planilha, proponha a "
     "melhoria de automacao com script SAP GUI (gravar a navegacao em VBS e rodar por macro do Excel ou Python, com "
     "variante e layout fixos e o arquivo salvo numa pasta padrao; o proprio usuario grava, sem liberacao). Nas demais "
@@ -5085,6 +5605,32 @@ FLOW_REQUIREMENTS = [
     "Responda somente JSON valido: {titulo, resumo, raias:[{id, nome, tipo}], etapas:[...], ligacoes:[...], "
     "melhorias:[...]}. Sem markdown fora do JSON. Portugues do Brasil com acentuacao. Nunca use travessao.",
 ]
+# Fluxo As Is dos documentos de FORA do NexxusDoc (19/11/2026, pedido do usuario): manuais oficiais da area, enviados e
+# localizados tambem ganham fluxo, com as mesmas premissas dos POPs (tempo de cada etapa, horas por mes, melhorias),
+# mesmo quando o documento nao traz esses detalhes. O que nao estiver no documento vem do conhecimento da area e do
+# levantamento das reunioes; o que ainda faltar e ESTIMATIVA marcada como estimada (nunca apresentada como dado).
+FLOW_EXTERNAL_REQUIREMENTS = [
+    "Este documento NAO foi feito no NexxusDoc: e um manual oficial da area (ou documento enviado/localizado) e "
+    "answers vem vazio. Monte o fluxo so com as etapas, papeis, sistemas e regras que estao em document.text. Use "
+    "contexto_area (processos do inventario da area ligados ao assunto e o que as pessoas relataram nas reunioes) "
+    "para entender o processo, nunca para criar etapa que o documento nao tem.",
+    "Mesmo assim, entregue as MESMAS premissas dos fluxos do NexxusDoc: tempo de cada etapa e pontos de melhoria. "
+    "tempo da etapa: o do documento ou do contexto_area quando existir (tempo_estimado false); se nao existir, estime "
+    "o tempo tipico de execucao por ocorrencia para esse tipo de tarefa (ex.: 'cerca de 15 min por processo') e marque "
+    "tempo_estimado true. Etapa de espera de terceiro: o prazo de referencia, se houver.",
+    "estimativa (do processo inteiro): {ocorrencias_mes (numero de vezes que o processo roda por mes), horas_mes "
+    "(horas de trabalho da equipe por mes = soma do tempo das etapas feitas pela equipe x ocorrencias), base (1 a 2 "
+    "frases dizendo de onde veio cada numero: documento, contexto_area ou estimativa), estimado (true se algum numero "
+    "foi estimado)}. Sem base nenhuma para o volume, use null em ocorrencias_mes e horas_mes e diga isso na base.",
+    "melhorias: o documento nao trazer dores nao e motivo para propor automacao em tudo. Aponte so onde o documento "
+    "mostra necessidade real (passo manual e repetitivo com volume, conferencia repetida, retrabalho, espera, controle "
+    "fraco, dado digitado de um documento para outro) ou onde o contexto_area relata dor. No ganho, "
+    "numero so se vier do documento, do contexto_area ou da estimativa; numero que nao veio do documento nem do "
+    "contexto_area comeca com 'Estimado:' (ex.: 'Estimado: 80% menos tempo de digitacao').",
+    "Responda o JSON com os campos de sempre mais estimativa: {titulo, resumo, raias, etapas (cada uma com "
+    "tempo_estimado true|false), ligacoes, melhorias, estimativa}.",
+]
+FLOW_EXTERNAL_ID = re.compile(r"(man|env|loc)-[a-z0-9-]{1,90}")
 FLOW_ANSWER_KEYS = ("processo", "objetivo", "escopo", "gatilho", "entradas", "saidas", "sistemas", "transacoes_sap",
                     "passos", "regras", "papeis", "controles", "registros", "contingencia", "riscos", "excecoes",
                     "excecoes_retrabalho", "tempo_volume", "tarefas_manuais", "dados_formatos", "natureza_regras", "dores",
@@ -5093,11 +5639,79 @@ FLOW_ANSWER_KEYS = ("processo", "objetivo", "escopo", "gatilho", "entradas", "sa
 
 def _flow_eligible(record: dict[str, Any]) -> bool:
     """Procedimento do NexxusDoc (criado ou revisado no sistema). Politica nao tem passo a passo para virar fluxo."""
+    if record.get("external"):
+        return len(record.get("texto", "")) >= 300
     return record.get("kind", "procedure") == "procedure" and isinstance(record.get("document"), dict)
 
 
 def _flow_stamp(record: dict[str, Any]) -> str:
-    return hashlib.sha256(_document_text(record.get("document") or {}).encode("utf-8")).hexdigest()[:24]
+    text = record["texto"] if record.get("external") else _document_text(record.get("document") or {})
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()[:24]
+
+
+def _flow_external_source(manual: dict[str, Any]) -> bool:
+    """Documento de fora que pode ter fluxo: os que aparecem em Documentos (manual oficial, enviado ou localizado),
+    sem politica (nao tem passo a passo)."""
+    if "politica" in _norm(f"{manual.get('tipo', '')} {manual.get('titulo', '')}"):
+        return False
+    return bool(manual.get("localizado") or _official_manual(manual))
+
+
+def _flow_ext_text(manual: dict[str, Any]) -> str:
+    return "\n\n".join(f"## {s.get('titulo', '')}\n{s.get('texto', '')}" for s in manual.get("secoes") or [])
+
+
+def _flow_ext_summary(ext_id: str, manual: dict[str, Any]) -> dict[str, Any]:
+    """Para a lista de Documentos (documentos de fora): se tem fluxo e em que situacao."""
+    text = _flow_ext_text(manual)
+    if not _flow_external_source(manual) or len(text) < 300:
+        return {"available": False}
+    job = FLOW_JOBS.get(ext_id) or {}
+    if job.get("status") == "gerando":
+        return {"available": True, "status": "gerando"}
+    saved = _flow_read(ext_id)
+    if saved.get("fluxo"):
+        stamp = hashlib.sha256(text.encode("utf-8")).hexdigest()[:24]
+        return {"available": True, "status": "pronto" if saved.get("fonte") == stamp else "desatualizado"}
+    return {"available": True, "status": "erro" if job.get("status") == "erro" else "ausente"}
+
+
+def _flow_external(ext_id: str) -> dict[str, Any] | None:
+    """Documento de fora (man-<id>, env-<id>, loc-<id>) no formato de registro que o fluxo usa."""
+    if not FLOW_EXTERNAL_ID.fullmatch(ext_id):
+        return None
+    origin, _, raw = ext_id.partition("-")
+    if origin == "man":
+        manual = next((m for m in _manuals() if str(m.get("id")) == raw and not m.get("localizado")), None)
+    else:
+        manual = next((m for m in _manuals() if str(m.get("id")) == ext_id), None)
+    if not manual or not _flow_external_source(manual):
+        return None
+    sent = next((d for d in _sent_docs() if d["id"] == raw), {}) if origin == "env" else {}
+    text = _flow_ext_text(manual)
+    return {"id": ext_id, "external": True, "origin": origin, "kind": "procedure", "area": manual.get("area", ""),
+            "doc_code": manual.get("codigo", "") if re.search(r"\d", str(manual.get("codigo", ""))) else "",
+            "process": manual.get("titulo", ""), "owner_email": sent.get("enviado_por", ""), "status": "",
+            "units": manual.get("unidades") if isinstance(manual.get("unidades"), list) else [],
+            "document": {"title": manual.get("titulo", ""), "version": manual.get("revisao", "")},
+            "author": manual.get("autor", ""), "link": manual.get("link", ""), "texto": text,
+            "origin_label": {"man": "Manual da área", "env": "Documento enviado", "loc": "Localizado no Drive"}[origin]}
+
+
+def _flow_area_context(record: dict[str, Any]) -> dict[str, Any]:
+    """Para o fluxo de documento de fora: processos do inventario da area ligados ao assunto (com o detalhe) e o
+    que as pessoas relataram nas reunioes sobre ele (dores, tempos, volumes)."""
+    title = record.get("process", "")
+    knowledge = _area_knowledge(record.get("area", "")) or {}
+    procs = [p for p in knowledge.get("processos", []) if isinstance(p, dict) and p.get("nome")]
+    ranked = sorted(procs, key=lambda p: -len(_keywords(title) & _keywords(f"{p['nome']} {p.get('detalhe', '')}")))
+    related = [{"processo": p["nome"], "detalhe": str(p.get("detalhe", ""))[:1500], "unidades": p.get("unidades", [])}
+               for p in ranked[:4] if len(_keywords(title) & _keywords(f"{p['nome']} {p.get('detalhe', '')}")) >= 2]
+    context: dict[str, Any] = {"processos_relacionados": related}
+    meetings = _meeting_knowledge(record.get("area", ""), title, compact=False, only_match=True)
+    if meetings:
+        context["levantamento_reunioes"] = meetings
+    return context
 
 
 def _flow_read(record_id: str) -> dict[str, Any]:
@@ -5204,6 +5818,8 @@ def _clean_flow(raw: Any) -> dict[str, Any]:
                 "evidencia": _flow_text(item.get("evidencia"), 240), "regra": _flow_text(item.get("regra"), 320),
                 "controle": _flow_text(item.get("controle"), 240), "tempo": _flow_text(item.get("tempo"), 120),
                 "manual": item.get("manual") is True, "terceiro": item.get("terceiro") is True}
+        if item.get("tempo_estimado") is True and node["tempo"]:
+            node["tempo_estimado"] = True
         if kind in {"inicio", "fim"}:
             for key in ("sistemas", "transacoes", "entradas", "saidas"):
                 node[key] = node[key][:3]
@@ -5281,11 +5897,31 @@ def _clean_flow(raw: Any) -> dict[str, Any]:
     # O titulo do fluxo e o nome do processo, sem o tipo do documento na frente ("Procedimento Operacional Padrao - ").
     title = re.sub(r"^\s*(procedimento operacional padr[aã]o|pop)\s*[-:–]?\s*", "", _flow_text(raw.get("titulo"), 120),
                    flags=re.I)
-    return {"titulo": title[:1].upper() + title[1:], "resumo": _flow_text(raw.get("resumo"), 400),
-            "raias": lanes, "etapas": nodes, "ligacoes": edges, "melhorias": improvements}
+    result = {"titulo": title[:1].upper() + title[1:], "resumo": _flow_text(raw.get("resumo"), 400),
+              "raias": lanes, "etapas": nodes, "ligacoes": edges, "melhorias": improvements}
+    # Estimativa do processo (fluxo de documento de fora): numeros so se forem numeros de verdade.
+    est = raw.get("estimativa")
+    if isinstance(est, dict):
+        def number(value: Any, top: float) -> float | None:
+            try:
+                value = float(str(value).replace(",", "."))
+            except (TypeError, ValueError):
+                return None
+            return round(value, 1) if 0 < value <= top else None
+        result["estimativa"] = {"ocorrencias_mes": number(est.get("ocorrencias_mes"), 100000),
+                                "horas_mes": number(est.get("horas_mes"), 20000),
+                                "base": _flow_text(est.get("base"), 400), "estimado": est.get("estimado") is not False}
+    return result
 
 
 def _flow_prompt(record: dict[str, Any]) -> dict[str, Any]:
+    if record.get("external"):
+        return {"task": "build_as_is_flow", "language": "pt-BR", "web_search_allowed": False,
+                "document": {"code": record.get("doc_code", ""), "title": record.get("process", ""),
+                             "area": record.get("area", ""), "units": record.get("units", []), "roles": [],
+                             "origem": record.get("origin_label", ""), "text": record["texto"][:70000]},
+                "answers": {}, "automation": {}, "contexto_area": _flow_area_context(record),
+                "requirements": FLOW_REQUIREMENTS + FLOW_EXTERNAL_REQUIREMENTS}
     answers, doc = record.get("answers") or {}, record.get("document") or {}
     return {"task": "build_as_is_flow", "language": "pt-BR", "web_search_allowed": False,
             "document": {"code": record.get("doc_code", ""), "title": doc.get("title", ""), "area": record.get("area", ""),
@@ -5298,7 +5934,7 @@ def _flow_prompt(record: dict[str, Any]) -> dict[str, Any]:
 async def _flow_build(record_id: str, email: str) -> None:
     job = FLOW_JOBS[record_id]
     try:
-        record = await asyncio.to_thread(_read_record, record_id)
+        record = await asyncio.to_thread(_flow_record, record_id)
         stamp = _flow_stamp(record)
         # Instabilidade do n8n (proxy sem resposta, busca do resultado recusada, resposta fora do formato): tenta de
         # novo sozinho, ate 3 vezes no total; sem VPN (503) ou sem permissao, desiste na hora.
@@ -5362,9 +5998,15 @@ class FlowLayout(BaseModel):
 
 
 def _flow_record(record_id: str) -> dict[str, Any]:
+    """POP do NexxusDoc (id do registro) ou documento de fora (man-, env-, loc-)."""
+    if FLOW_EXTERNAL_ID.fullmatch(record_id):
+        record = _flow_external(record_id)
+        if not record or not _flow_eligible(record):
+            raise HTTPException(404, "Este documento não tem passo a passo suficiente para montar o fluxo As Is.")
+        return record
     record = _read_record(record_id)
     if not _flow_eligible(record):
-        raise HTTPException(404, "O fluxo As Is existe só para procedimentos criados ou revisados no NexxusDoc.")
+        raise HTTPException(404, "O fluxo As Is existe só para procedimentos (política não tem passo a passo).")
     return record
 
 
@@ -5378,6 +6020,13 @@ def get_flow(record_id: str, user: dict[str, Any] = Depends(current_user)) -> di
     author = saved.get("gerado_por", "")
     doc = record.get("document") or {}
     automation = record.get("automation") or {}
+    estimate = (saved.get("fluxo") or {}).get("estimativa") or {}
+    external = bool(record.get("external"))
+    if external:
+        author_name = _canonical_person(record.get("author") or _doc_author(record.get("texto", "")))
+    else:
+        author_name = _display_name({**users.get(record.get("owner_email", "").casefold(), {}),
+                                     "email": record.get("owner_email", "")})
     return {"id": record_id, "status": status, "erro": job.get("erro", "") if status == "erro" else "",
             # Tempo da tentativa atual (a barra da tela recomeca quando o app tenta de novo).
             "decorrido": round(time.monotonic() - job.get("inicio_tentativa", job["inicio"]), 1) if status == "gerando" else 0,
@@ -5392,12 +6041,17 @@ def get_flow(record_id: str, user: dict[str, Any] = Depends(current_user)) -> di
             "documento": {"titulo": doc.get("title", ""), "processo": record.get("process", ""),
                           "codigo": record.get("doc_code", ""), "area": record.get("area", ""),
                           "versao": doc.get("version", ""), "status": record.get("status", ""),
-                          "status_label": STATUS_LABELS.get(record.get("status", ""), record.get("status", "")),
-                          "unidades": _record_units(record), "pdf_url": f"/api/documents/{record_id}/pdf",
-                          "autor": _display_name({**users.get(record.get("owner_email", "").casefold(), {}),
-                                                  "email": record.get("owner_email", "")})},
+                          "status_label": record["origin_label"] if external
+                          else STATUS_LABELS.get(record.get("status", ""), record.get("status", "")),
+                          "unidades": record.get("units", []) if external else _record_units(record),
+                          "pdf_url": record.get("link", "") if external else f"/api/documents/{record_id}/pdf",
+                          "externo": external, "autor": author_name},
+            # Documento de fora: horas por mes da estimativa do fluxo (marcada como estimada na tela).
             "automacao": {"resumo": automation.get("summary", ""),
-                          "horas_mes": automation.get("hours_per_month_current"),
+                          "horas_mes": estimate.get("horas_mes") if external else automation.get("hours_per_month_current"),
+                          "estimado": bool(external and estimate.get("estimado")),
+                          "ocorrencias_mes": estimate.get("ocorrencias_mes") if external else None,
+                          "base": estimate.get("base", "") if external else "",
                           "oportunidades": len(automation.get("opportunities") or [])},
             "pode_gerenciar": _flow_can_manage(record, user)}
 
@@ -6982,7 +7636,8 @@ MEETING_ATA_REQUIREMENTS = [
     "servirem), dores [texto], decisoes [texto], proximos_passos [texto] e oportunidades [{titulo, unidades, processo, "
     "hoje, dor, proposta, dados_e_sistemas [texto], ganho, impacto, complexidade, prioridade, situacao, proximo_passo, "
     "citado_por [nome], tambem_em [id]}].",
-    "Oportunidade so quando a reuniao der base (tarefa manual, repetitiva, com dados que existem). processo = nome exato de "
+    "Oportunidade so quando a reuniao der base (tarefa manual, repetitiva, com dados que existem) e for uma necessidade "
+    "real relatada, nunca para cobrir cada rotina citada. " + IMPROVEMENT_FOCUS_RULE + " processo = nome exato de "
     "contexto.processos_do_inventario quando houver um correspondente; senao, um nome curto. impacto: alto, medio ou baixo; "
     "complexidade: baixa, media ou alta. prioridade: 'Ganho rápido' (impacto alto e complexidade baixa ou media), "
     "'Estratégico' (impacto alto e complexidade alta), 'Melhoria pontual' (impacto medio/baixo e complexidade baixa ou "
@@ -7054,8 +7709,8 @@ def _meeting_clean(raw: dict[str, Any], known_opps: set[str]) -> dict[str, Any]:
 
 
 @app.get("/api/levantamento")
-def meetings_list(user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
-    """Todos os usuarios veem o levantamento (13/11/2026, pedido do usuario); so o master inclui ou exclui ata."""
+def meetings_list(user: dict[str, Any] = Depends(require_master)) -> dict[str, Any]:
+    """Subpagina so do master (18/11/2026, pedido do usuario)."""
     return {"reunioes": _meetings(), "prioridades": list(MEETING_PRIORITIES), "pode_editar": _qc_master(user)}
 
 
@@ -7252,6 +7907,7 @@ QC_TOKEN: dict[str, Any] = {"value": "", "until": 0.0}
 BQ_API = "https://bigquery.googleapis.com/bigquery/v2/projects"
 
 
+
 def _gcloud_token() -> str:
     """Token de acesso do gcloud desta conta do Windows (vale ~1 h; guardado por 45 min)."""
     if QC_TOKEN["value"] and time.time() < QC_TOKEN["until"]:
@@ -7321,7 +7977,7 @@ def _bq_rows(data: dict[str, Any]) -> tuple[list[str], list[list[str]]]:
 # Consulta editada pelo master (06/11/2026, pedido do usuario: incluir/retirar colunas antes de gerar). Travas: so
 # SELECT (o dry run do BigQuery diz o tipo; script, DML e DDL sao recusados), so tabelas dos projetos de dados abaixo,
 # teto de leitura e, na execucao, so a MESMA consulta simulada nos ultimos 15 minutos (o servidor guarda os bytes).
-QC_ALLOWED_PROJECTS = {"example-sap-project", "example-brand-project", "example-retail-project", "your-gcp-project"}
+QC_ALLOWED_PROJECTS = {"example-sap-project", "example-brand-project", "example-retail-project"}
 QC_SQL_MAX = 20000
 QC_SIMS: dict[str, dict[str, Any]] = {}
 
@@ -8270,11 +8926,22 @@ AUDIT_PLAN_REQUIREMENTS = (
     "enviado a auditoria nem ao Connect: o roteiro e so para a area montar e conferir as evidencias.")
 
 
+# Pagina Auditoria RETIRADA em 24/11/2026 (pedido do usuario): saiu da tela (barra, pagina, tour, busca, pre-carga) e as rotas
+# /api/auditoria* respondem 410. A pedido do usuario, tambem foram APAGADOS os arquivos da tela, os dados (auditoria/,
+# nexxusdoc_auditoria_planilha.json) e as bases auditoria_base.json e auditoria_conhecimento.json (o codigo abaixo ficou
+# so como historico; sem os arquivos ele nao e chamado).
+AUDIT_RETIRADA = True
+
+
 def _audit_page_access(user: dict[str, Any]) -> bool:
+    if AUDIT_RETIRADA:
+        return False
     return user.get("role") == "master" or str(user.get("email") or "").casefold() in AUDIT_EMAILS
 
 
 def _audit_require(user: dict[str, Any]) -> None:
+    if AUDIT_RETIRADA:
+        raise HTTPException(410, "A página Auditoria foi retirada do sistema.")
     if not _audit_page_access(user):
         raise HTTPException(403, "Por enquanto a página Auditoria está liberada só para o administrador master e a gerência da área.")
 
@@ -9472,6 +10139,1631 @@ def _xl_text_only(book: Any) -> None:
                     cell.data_type = "s"
 
 
+# ---------------------------------------------------------------------------
+# Pagina Embarques (19/11/2026, pedido do usuario): indice da pasta Sua Area > Processos (embarques.py). A equipe
+# salva como sempre. A leitura e ONLINE, pelo n8n (fluxo "NexxusDoc - Embarques", de hora em hora pela API do Drive;
+# pedido do usuario: "nao pode depender do meu computador"): ele grava nexxusdoc_embarques_n8n.json na pasta do sistema.
+# O historico (pastas que ja existiam em 19/11/2026) veio de uma carga unica com o mesmo codigo (embarques/resumos.json
+# e embarques/processos). A tela junta os dois: o que o n8n leu vale por cima do historico. Valores em US$ (faturas e
+# frete do BL) so para master e owners (decisao do usuario); os demais veem processos, documentos e a conferencia.
+# ---------------------------------------------------------------------------
+EMB_DIR = SHARED_ROOT / "embarques"
+EMB_N8N_FILE = SHARED_ROOT / "nexxusdoc_embarques_n8n.json"
+EMB_RAIZ = Path(CONFIG.get("NEXUS_PROCESSOS_DIR") or str(SHARED_ROOT.parent.parent / "Processos"))
+EMB_MONEY = ("valor_usd", "frete_usd_cntr", "bunker_usd_cntr")
+EMB_INDEXER = embarques.Indexador(EMB_RAIZ, EMB_DIR, log=lambda m: print(m, flush=True))
+EMB_CACHE: dict[str, Any] = {"key": None, "data": {}, "n8n": {}}
+# Relatorios diarios da PGL (FUP por e-mail; pgl_relatorios.py): planilha inteira de cada relatorio para a pagina PGL
+# e o historico por processo que da a data de entrega na pagina Embarques. So o n8n escreve.
+PGL_REL_FILE = SHARED_ROOT / "nexxusdoc_pgl_relatorios.json"
+PGL_REL_CACHE: dict[str, Any] = {"key": None, "data": {}}
+EMB_PROCESSOS_ID = "CONFIGURE_ID"  # pasta Sua Area > Processos no Drive
+# Faturas × OTR Nike (25/11/2026): o OTR 1998 do dia (Sua Area > Inbound Optimization > OTR > OTR 1998 > ano > mes),
+# compactado por BL pelo fluxo "NexxusDoc - OTR Nike" do n8n (so ele escreve; a carga inicial foi feita a mao).
+OTR_FILE = SHARED_ROOT / "nexxusdoc_otr_n8n.json"
+OTR_CACHE: dict[str, Any] = {"key": None, "data": {}}
+OTR_ROTULO = {"ok": "Conferido", "aguardando": "Aguardando número no OTR", "divergente": "Divergente",
+              "verificar": "Conferir PDF",
+              "sem_otr": "BL fora do OTR", "sem_tcci": "Sem faturas na pasta"}
+OTR_RESULTADO = {"ok": "Confere", "aviso": "Número confere · qtd/peso diferente", "aguardando": "Aguardando número no OTR",
+                 "fora": "Na pasta e fora do OTR", "sem_pdf": "No OTR sem PDF na pasta",
+                 "numero": "Número diferente (mesmo pedido e material)", "nao_lido": "Número não lido no PDF",
+                 "outro_bl": "Fatura no OTR em outro BL/HAWB", "pdf_nao_lido": "PDF não lido: conferir",
+                 "pdf_nome": "PDF sem texto: número só no nome do arquivo", "pdf_extra": "PDF da pasta não reconhecido como fatura",
+                 "pelo_numero": "Confere pelo número (OTR só com o MAWB)"}
+
+
+def _otr() -> dict[str, Any]:
+    try:
+        key = OTR_FILE.stat().st_mtime
+    except OSError:
+        key = None
+    if OTR_CACHE["key"] != key:
+        data = _emb_read(OTR_FILE) if key else {}
+        if isinstance(data.get("hist"), dict):  # versao 2: historico por pedido+linha (o OTR do dia e uma janela)
+            data["bls"], data["faturas"] = embarques.otr_indices(data["hist"])
+        OTR_CACHE.update(key=key, data=data)
+    return OTR_CACHE["data"]
+
+
+# Conferencia so dos processos com a lista de faturas lidas (resumo novo) e criados desde dez/2025: o historico do OTR
+# comeca no OTR de jan/2026 (pasta OTR 1998 > 2026), que ja nao tem todas as linhas dos embarques de 2025
+OTR_DESDE = "2025-12-01"
+
+
+def _otr_conferir(r: dict[str, Any]) -> dict[str, Any] | None:
+    """Conferencia Faturas × OTR de um processo (lista, ficha e Excel usam a mesma)."""
+    d = _otr()
+    linhas = embarques.otr_do_processo(r, d.get("bls") or {})
+    if "tccis" not in r or (r.get("criada") or "") < OTR_DESDE:
+        return None
+    return embarques.conferir_otr(r.get("tccis"), linhas, r.get("pdf_sem_leitura"), d.get("faturas") or {})
+
+
+def _util_antes(d: date) -> date:
+    d -= timedelta(days=1)
+    while d.weekday() >= 5:
+        d -= timedelta(days=1)
+    return d
+
+
+def _otr_status() -> dict[str, Any]:
+    """Guardrail (pedido do usuario): sempre dizer de quando e o OTR usado e se e o mais recente. A Nike extrai as 18h e
+    a equipe salva na pasta na manha seguinte: ate as 12h vale o OTR de 2 dias uteis atras; depois, o do dia util
+    anterior. Tambem avisa se o n8n nao conferiu a pasta nas ultimas 26 h ou se ha arquivo mais novo que nao foi lido."""
+    d = _otr()
+    nome = str(d.get("arquivo") or "")
+    if not nome:
+        return {"arquivo": "", "atualizado": False, "aviso": "O OTR da Nike ainda não foi lido pelo sistema."}
+    m = re.search(r"_(\d{14})\.xlsx$", nome)
+    extraido = datetime.strptime(m.group(1), "%Y%m%d%H%M%S") if m else None
+    agora = datetime.now()
+    minimo = _util_antes(agora.date()) if agora.hour >= 12 else _util_antes(_util_antes(agora.date()))
+    avisos = []
+    if extraido and extraido.date() < minimo:
+        avisos.append(f"o OTR mais recente lido é de {extraido:%d/%m}; o esperado era o de {minimo:%d/%m} ou mais novo")
+    mais_novo = str(d.get("mais_recente_pasta") or nome)
+    if mais_novo != nome:
+        avisos.append(f"há um OTR mais novo na pasta ({mais_novo}) que ainda não foi lido")
+    try:
+        conferido = datetime.fromisoformat(str(d.get("ultima_execucao")).replace("Z", "+00:00"))
+        if (datetime.now(timezone.utc) - conferido).total_seconds() > 26 * 3600:
+            avisos.append(f"a leitura automática não confere a pasta do OTR desde {conferido.astimezone():%d/%m %H:%M}")
+    except (TypeError, ValueError):
+        conferido = None
+    return {"arquivo": nome, "extraido_em": extraido.isoformat() if extraido else "", "lido_em": d.get("lido_em", ""),
+            "conferido_em": d.get("ultima_execucao", ""), "atualizado": not avisos, "mais_recente": mais_novo == nome,
+            "aviso": ("OTR desatualizado: " + "; ".join(avisos) + ".") if avisos else "",
+            "pasta": "Sua Area › Inbound Optimization › OTR › OTR 1998"}
+
+
+def _emb_money(user: dict[str, Any]) -> bool:
+    return user.get("role") in {"master", "owner"}
+
+
+def _emb_read(path: Path) -> dict[str, Any]:
+    try:
+        return json.loads(path.read_text(encoding="utf-8-sig"))
+    except (OSError, ValueError):
+        return {}
+
+
+def _pgl_rel() -> dict[str, Any]:
+    try:
+        key = PGL_REL_FILE.stat().st_mtime
+    except OSError:
+        key = None
+    if PGL_REL_CACHE["key"] != key:
+        PGL_REL_CACHE.update(key=key, data=_emb_read(PGL_REL_FILE) if key else {})
+    return PGL_REL_CACHE["data"]
+
+
+def _emb_responsaveis(pastas: dict[str, Any]) -> dict[str, tuple[str, bool]]:
+    """Responsavel de cada pasta de processo (lista de pastas que o n8n guarda: id -> [nome, pai, criada, quem, certo]).
+    O id do processo e o mesmo do n8n e da carga do historico: sha1 do caminho dentro de Processos, em minusculas."""
+    caminho: dict[str, str | None] = {EMB_PROCESSOS_ID: ""}
+
+    def rel(fid: str, n: int = 0) -> str | None:
+        if fid in caminho:
+            return caminho[fid]
+        v = pastas.get(fid)
+        if not v or n > 12:
+            caminho[fid] = None
+            return None
+        pai = rel(v[1], n + 1)
+        caminho[fid] = None if pai is None else (f"{pai}/{v[0]}" if pai else v[0])
+        return caminho[fid]
+
+    out: dict[str, tuple[str, bool]] = {}
+    for fid, v in pastas.items():
+        if len(v) > 3 and v[3]:
+            r = rel(fid)
+            if r and "/" in r:
+                out[hashlib.sha1(r.lower().encode("utf-8")).hexdigest()[:16]] = (v[3], bool(v[4] if len(v) > 4 else 0))
+    return out
+
+
+def _emb_pgl(rec: dict[str, Any] | None) -> dict[str, Any] | None:
+    """Resumo do andamento na PGL para a linha da lista (o registro completo vai na ficha)."""
+    if not rec:
+        return None
+    n, etapa = embarques.fup_etapa(rec.get("status", ""))
+    fase = ("entregue" if rec.get("entrega") else "desembaracado" if rec.get("desembaraco") else
+            "no_brasil" if rec.get("chegada") else "transito")
+    return {"fase": fase, "n": n, "etapa": etapa, **{k: rec[k] for k in ("embarque", "chegada", "registro_di", "desembaraco", "canal",
+            "prev_entrega", "entrega", "cd", "di") if rec.get(k)}}
+
+
+def _emb_index() -> dict[str, Any]:
+    """Historico (carga unica) + o que o n8n leu, refeito so quando um dos dois arquivos muda."""
+    def mt(p: Path) -> float | None:
+        try:
+            return p.stat().st_mtime
+        except OSError:
+            return None
+    key = (mt(EMB_DIR / "resumos.json"), mt(EMB_N8N_FILE), mt(PGL_REL_FILE), mt(OTR_FILE))
+    if EMB_CACHE["key"] != key:
+        base = _emb_read(EMB_DIR / "resumos.json")
+        n8n = _emb_read(EMB_N8N_FILE)
+        resumos = {r["id"]: r for r in base.get("processos", []) if isinstance(r, dict) and r.get("id")}
+        # Carga do historico feita com a regra antiga, que conferia o fabricante (a proforma traz o fornecedor e a
+        # fatura a fabrica: nomes diferentes por natureza). O item sai e a situacao e refeita.
+        for r in resumos.values():
+            conf = [c for c in r.get("conferencia", []) if not str(c.get("item", "")).startswith("Fabricante")]
+            if len(conf) != len(r.get("conferencia", [])):
+                r["conferencia"], r["situacao"] = conf, embarques.situacao(conf)
+        for pid, proc in (n8n.get("processos") or {}).items():
+            try:
+                resumos[pid] = {**embarques.resumir(proc), "origem": "n8n"}
+            except Exception as exc:  # noqa: BLE001 - um processo com dado inesperado nao derruba a pagina
+                print(f"Embarques: processo {pid} do n8n ignorado ({exc!r})", flush=True)
+        rodada = n8n.get("ultima_rodada") or {}
+        linhas = embarques.consolidar(resumos)
+        # Responsavel (quem criou a pasta) e andamento na PGL (FUP por e-mail), por processo
+        resp = _emb_responsaveis(n8n.get("pastas") or {})
+        pgl = _pgl_rel()
+        idx = embarques.fup_indice(pgl)
+        fup_map: dict[str, dict[str, Any]] = {}
+        for r in linhas:
+            quem = resp.get(r["id"])
+            if quem:
+                r["resp"], r["resp_certo"] = quem[0], quem[1]
+            rec = embarques.fup_do_processo(r, idx)
+            if rec:
+                r["pgl"] = _emb_pgl(rec)
+                fup_map[r["id"]] = rec
+                # Pasta sem o WFADIM no nome (ex.: "BL VNN043397"): vale o do FUP; assim a busca por WFADIM acha o
+                # processo (relato do usuario em 24/11/2026: WFADIM26102208 so aparecia em Relatorios da PGL)
+                wf = embarques.fup_chave(rec.get("wfadim"))
+                if not r.get("wfadim") and re.fullmatch(r"WFADIM\d{7,9}", wf):
+                    r["wfadim"], r["wfadim_fup"] = wf, True
+        # Faturas × OTR Nike (25/11/2026): resumo por processo para a lista e o filtro (o detalhe sai na ficha)
+        for r in linhas:
+            c = _otr_conferir(r)
+            if not c:
+                continue
+            r["otr"] = {"s": c["status"], "p": c.get("pdfs", 0), "o": c.get("otr", 0), "f": len(c.get("fora") or []),
+                        "n": len(c.get("sem_pdf") or []), "a": len(c.get("aguardando") or []), "d": len(c.get("dif") or []),
+                        "x": len(c.get("numero_dif") or []), "v": len(c.get("verificar") or []), "c": c.get("conferidas", 0)}
+        rels = pgl.get("relatorios") or {}
+        EMB_CACHE["fup_pid"] = {embarques.fup_chave(rec.get("conhecimento")): pid for pid, rec in fup_map.items()}
+        EMB_CACHE.update(key=key, n8n=n8n.get("processos") or {}, fup=fup_map, data={
+            "processos": linhas, "gerado_em": max(base.get("gerado_em", ""), rodada.get("em", "")),
+            "historico_em": base.get("gerado_em", ""), "n8n": rodada, "n8n_ativo": bool(rodada),
+            "pgl_em": max((v.get("recebido_em", "") for k, v in rels.items() if k in ("fisia", "zelus")), default=""),
+            "responsaveis": bool(resp)})
+    return EMB_CACHE["data"]
+
+
+def _emb_row(row: dict[str, Any], money: bool) -> dict[str, Any]:
+    """Linha da lista: a conferencia vai so com o status de cada item (o detalhe vem na ficha)."""
+    out = {k: v for k, v in row.items() if k not in ("conferencia", "tccis", "pdf_sem_leitura") and (money or k not in EMB_MONEY)}
+    out["conf"] = [[c["item"], c["status"]] for c in row.get("conferencia", [])]
+    falta = next((c["detalhe"] for c in row.get("conferencia", []) if c["item"] == "Documentos na pasta" and c["status"] != "ok"), "")
+    if falta:
+        out["falta"] = falta  # "Em montagem": o que ainda falta, embaixo da situacao
+    return out
+
+
+@app.get("/api/embarques")
+def embarques_list(user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    data, money = _emb_index(), _emb_money(user)
+    status = EMB_INDEXER.status()
+    return {"processos": [_emb_row(r, money) for r in data.get("processos", [])], "gerado_em": data.get("gerado_em", ""),
+            "parcial": bool(status.get("rodando")), "status": status, "valores": money, "n8n": data.get("n8n") or {},
+            "pasta": "Sua Area › Processos", "pgl_em": data.get("pgl_em", ""), "responsaveis": data.get("responsaveis", False),
+            "otr": _otr_status()}
+
+
+# Origem da Centauro (25/11/2026): o FUP da PGL da SBF não tem país, mas o HBL (coluna CONHECIMENTO) começa com o código do
+# porto de embarque (SHA25091021 = Xangai). Só códigos sem ambiguidade; TXG (Xingang ou Taichung) e os HBLs da DMS
+# (AMIGL...) ficam sem origem.
+HBL_PORTO_PAIS = {"SHA": "China", "XMN": "China", "NBO": "China", "NGB": "China", "SZX": "China", "TAO": "China", "SHK": "China",
+                  "YTN": "China", "HKG": "China", "KHI": "Paquistão", "TPE": "Taiwan", "KEL": "Taiwan", "JKT": "Indonésia",
+                  "SGN": "Vietnã", "HCM": "Vietnã", "HPH": "Vietnã", "CMB": "Sri Lanka", "MAA": "Índia", "BKK": "Tailândia",
+                  "LCH": "Tailândia", "PKG": "Malásia", "PEN": "Malásia", "SIN": "Singapura", "PUS": "Coreia do Sul"}
+
+
+def _hbl_pais(hbl: Any) -> str:
+    m = re.match(r"([A-Z]{3})", str(hbl or "").strip().upper())
+    return HBL_PORTO_PAIS.get(m.group(1), "") if m else ""
+
+
+@app.get("/api/visao/globo")
+def visao_globo(user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    """Globo da Visão geral (25/11/2026, pedido do usuário): embarques por país de origem, mês, operação e modal, a partir
+    da página Embarques (mesma contagem: processo com mais de um país conta em cada um). Valor em US$ para todos os
+    usuários (pedido do usuário). `totais` conta cada processo uma vez (cards do topo e o detalhe do Brasil).
+    Cada linha: [país ("" nos totais), mês, operação, modal, tipo de embarque, situação da conferência, fase na PGL,
+    processos, valor, unidades, peso, contêineres, e soma/quantidade dos dias de trânsito, desembaraço, entrega e total].
+    Tipo de embarque (pedido do usuário): Aéreo; FCL quando o FUP da PGL traz contêiner na coluna VOLUME ("1 CNTR 40'...");
+    LCL quando o marítimo está no FUP sem contêiner; sem FUP = "" (não identificado). Nada estimado.
+    `a_chegar`: processos ainda sem chegada com previsão de chegada (PREVISAO_CHEGADA do FUP) de hoje em diante."""
+    data, money = _emb_index(), _emb_money(user)
+    fups = EMB_CACHE.get("fup") or {}
+    hoje = datetime.now().strftime("%Y-%m-%d")
+
+    def dias(a: Any, b: Any) -> int | None:
+        try:
+            d = (datetime.strptime(str(b)[:10], "%Y-%m-%d") - datetime.strptime(str(a)[:10], "%Y-%m-%d")).days
+            return d if 0 <= d <= 365 else None
+        except (TypeError, ValueError):
+            return None
+    agg: dict[tuple, list] = {}
+    ultimos, chegar = [], []
+
+    def soma(key: tuple, r: dict[str, Any], cntr: int, lts: list) -> None:
+        a = agg.setdefault(key, [*key, 0, 0.0, 0.0, 0.0, 0] + [0] * 8 + [0.0])
+        a[8] += 1; a[9] += float(r.get("valor_usd") or 0); a[10] += float(r.get("qtd") or 0)
+        a[11] += float(r.get("peso_bruto") or 0); a[12] += cntr
+        a[21] += float(r.get("caixas") or 0)  # caixas (volumes) das faturas
+        for i, d in enumerate(lts):
+            if d is not None:
+                a[13 + 2 * i] += d; a[14 + 2 * i] += 1
+    for r in data.get("processos", []):
+        ym = (r.get("criada") or "")[:7]
+        if not ym:
+            continue
+        op, modal = r.get("op") or "", r.get("modal") or ""
+        fup, pgl = fups.get(r["id"]) or {}, r.get("pgl") or {}
+        vol = str(fup.get("volume") or "").upper()
+        n_cntr = sum(int(x) for x in re.findall(r"(\d+)\s*CNTR", vol))
+        tipo = ("Aéreo" if modal == "Aéreo" else "FCL" if "CNTR" in vol else "LCL" if fup and modal == "Marítimo" else "")
+        cntr = n_cntr or (len(r.get("conteineres") or []) if modal == "Marítimo" else 0)
+        sit, fase = r.get("situacao") or "", pgl.get("fase") or "sem"
+        lts = [dias(pgl.get("embarque"), pgl.get("chegada")), dias(pgl.get("chegada"), pgl.get("desembaraco")),
+               dias(pgl.get("desembaraco"), pgl.get("entrega")), dias(pgl.get("embarque"), pgl.get("entrega"))]
+        soma(("", ym, op, modal, tipo, sit, fase, "Fisia"), r, cntr, lts)
+        for pais in r.get("origens") or []:
+            soma((pais, ym, op, modal, tipo, sit, fase, "Fisia"), r, cntr, lts)
+        if r.get("origens"):
+            ultimos.append((r.get("criada") or "", r.get("nome", ""), r["origens"][0], op, modal))
+            prev = str(fup.get("prev_chegada") or "")[:10]
+            # a chegar = previsão de hoje em diante e nenhuma etapa depois do embarque (o FUP às vezes fica sem a data de
+            # chegada de um processo que já tem DI registrada ou desembaraço)
+            if prev >= hoje and not any(pgl.get(k) or fup.get(k) for k in ("chegada", "registro_di", "desembaraco", "entrega")):
+                chegar.append({"pais": r["origens"][0], "nome": r.get("nome", ""), "prev": prev, "op": op, "modal": modal,
+                               "tipo": tipo, "navio": fup.get("navio") or r.get("navio") or "", "cntr": cntr, "un": "Fisia",
+                               "etapa": pgl.get("etapa") or "", "wfadim": r.get("wfadim") or r.get("wfadim_fup") or "",
+                               "datas": {k: str(fup.get(k) or "")[:10] for k in ("embarque", "prev_chegada", "chegada", "registro_di",
+                                                                                 "desembaraco", "prev_entrega", "entrega") if fup.get(k)}})
+    # Centauro (pedido do usuário): só existe pelo FUP da PGL da SBF; o país vem do porto no começo do HBL (_hbl_pais);
+    # sem código conhecido, entra só nos números e no Brasil
+    rel = (_pgl_rel().get("relatorios") or {}).get("sbf") or {}
+    col = {c: i for i, c in enumerate(rel.get("colunas") or [])}
+    g = lambda l, k: l[col[k]] if k in col and col[k] < len(l) else None  # noqa: E731
+    for l in rel.get("linhas") or []:
+        emb, cheg, des, ent = (str(g(l, k) or "")[:10] for k in ("EMBARQUE NA ORIGEM", "CHEGADA MERCADORIA", "DESEMBARACO", "ENTREGA DA MERC"))
+        ym = (emb or cheg or str(g(l, "REGISTRO DI") or "")[:10])[:7]
+        if not re.fullmatch(r"\d{4}-\d{2}", ym):
+            continue
+        modal = "Aéreo" if str(g(l, "MODAL") or "").upper().startswith("AER") else "Marítimo"
+        vol = str(g(l, "VOLUME") or "").upper()
+        cntr = sum(int(x) for x in re.findall(r"(\d+)\s*CNTR", vol))
+        tipo = "Aéreo" if modal == "Aéreo" else "FCL" if "CNTR" in vol else "LCL"
+        fase = "entregue" if ent else "desembaracado" if des else "no_brasil" if cheg else "transito"
+        try:
+            peso = float(g(l, "PESO BRUTO") or 0)
+        except (TypeError, ValueError):
+            peso = 0.0
+        lts = [dias(emb, cheg), dias(cheg, des), dias(des, ent), dias(emb, ent)]
+        hbl = g(l, "CONHECIMENTO") or g(l, "REF CLIENTE")
+        pais = _hbl_pais(hbl)
+        soma(("", ym, "", modal, tipo, "", fase, "Centauro"), {"peso_bruto": peso}, cntr, lts)
+        if pais:
+            soma((pais, ym, "", modal, tipo, "", fase, "Centauro"), {"peso_bruto": peso}, cntr, lts)
+        prev = str(g(l, "PREVISAO_CHEGADA") or "")[:10]
+        if prev >= hoje and not (cheg or des or ent or g(l, "REGISTRO DI")):
+            datas = {k: str(g(l, c) or "")[:10] for k, c in (("embarque", "EMBARQUE NA ORIGEM"), ("prev_chegada", "PREVISAO_CHEGADA"),
+                     ("registro_di", "REGISTRO DI"), ("desembaraco", "DESEMBARACO"), ("prev_entrega", "PREVISAO ENTR MERC_FAB"),
+                     ("entrega", "ENTREGA DA MERC")) if g(l, c)}
+            chegar.append({"pais": pais, "nome": str(hbl or g(l, "PROCESSO") or ""), "prev": prev, "op": "", "modal": modal,
+                           "tipo": tipo, "navio": str(g(l, "NAVIO") or ""), "cntr": cntr, "un": "Centauro",
+                           "etapa": re.sub(r"^\d+\s*", "", str(g(l, "STATUS") or "")), "wfadim": str(g(l, "PROCESSO") or ""), "datas": datas})
+    ultimos.sort(reverse=True)
+    chegar.sort(key=lambda x: x["prev"])
+    # valores em US$ para TODOS os usuários no globo (pedido do usuário em 25/11/2026: "deve aparecer para todos, não
+    # esconder"): ranking, detalhe, painéis e valor por kg
+    linhas = [[*a[:8], a[8], round(a[9], 2), round(a[10]), round(a[11]), a[12], *a[13:21], round(a[21])] for a in agg.values()]
+    return {"paises": [l for l in linhas if l[0]], "totais": [l for l in linhas if not l[0]],
+            "a_chegar": chegar[:600],
+            "ultimos": [{"criada": c[:10], "nome": n, "pais": pa, "op": o, "modal": m} for c, n, pa, o, m in ultimos[:8]],
+            "valores": money, "gerado_em": data.get("gerado_em", "")}
+
+
+def _emb_cache(pid: str) -> dict[str, Any]:
+    if not re.fullmatch(r"[a-f0-9]{16}", pid):
+        raise HTTPException(404, "Processo não encontrado.")
+    _emb_index()
+    if pid in EMB_CACHE["n8n"]:  # lido pelo n8n depois da carga do historico: vale o mais novo
+        return EMB_CACHE["n8n"][pid]
+    try:
+        return json.loads((EMB_DIR / "processos" / f"{pid}.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        raise HTTPException(404, "Processo não encontrado no índice. Ele aparece depois da próxima leitura da pasta.")
+
+
+def _otr_planilha(book: Any, rows: list[dict[str, Any]], todas: bool = False) -> None:
+    """Aba "Faturas × OTR": no topo, de quando é o OTR usado e se é o mais recente (guardrail do usuário); depois uma linha
+    por fatura com ocorrência (para cobrar a Nike). todas=True também lista as faturas conferidas (download de um processo)."""
+    from openpyxl.styles import Font, PatternFill
+    st = _otr_status()
+    sheet = book.create_sheet("Faturas × OTR")
+    sheet.append([(f"OTR usado: {st['arquivo']} · extração da Nike em {datetime.fromisoformat(st['extraido_em']):%d/%m/%Y %H:%M}"
+                   if st.get("extraido_em") else "O OTR da Nike ainda não foi lido pelo sistema.")])
+    sheet.append([st.get("aviso") or "OTR atualizado (o mais recente da pasta Sua Area › Inbound Optimization › OTR › OTR 1998)."])
+    sheet.append([])
+    # mesmo quadro PDF × OTR da ficha: os dois lados lado a lado, uma linha por fatura
+    sheet.append(["Processo", "BOL / HAWB", "Operação", "Situação do processo", "Resultado", "Fatura no PDF (pasta)",
+                  "Fatura no OTR", "Pedido Nike", "Linha", "Material", "Qtd no PDF", "Qtd no OTR", "Peso bruto no PDF (kg)",
+                  "Peso bruto no OTR (kg)", "Observação"])
+    for r in rows:
+        o = r.get("otr") or {}
+        if not todas and o.get("s") not in ("divergente", "verificar", "aguardando") and not o.get("d"):
+            continue
+        c = _otr_conferir(r)
+        if not c:
+            continue
+        base = [r["nome"], r.get("bol", ""), r["op"], OTR_ROTULO.get(c["status"], c["status"])]
+        for x in c.get("quadro") or []:
+            if not todas and x["r"] == "ok":
+                continue
+            sheet.append(base + [OTR_RESULTADO[x["r"]], x["pdf"] or "-", x["otr"] or "-", x["po"], x["linha"], x["material"],
+                                 x["q_pdf"], x["q_otr"], x["p_pdf"], x["p_otr"], x.get("obs", "")])
+        if c["status"] in ("sem_otr", "sem_tcci") and todas:
+            sheet.append(base + [OTR_ROTULO[c["status"]]] + [""] * 5 + [None] * 4 + [""])
+    for cell in sheet[4]:
+        cell.font = Font(bold=True, color="FFFFFF")
+        cell.fill = PatternFill("solid", fgColor="003D18")
+    sheet.cell(1, 1).font = Font(bold=True)
+    sheet.cell(2, 1).font = Font(bold=True, color="2E8B57" if st.get("atualizado") else "B9533F")
+    sheet.freeze_panes = "A5"
+
+
+@app.get("/api/embarques/otr/excel")
+def embarques_otr_excel(pid: str = "", user: dict[str, Any] = Depends(current_user)):
+    """Download da conferência Faturas × OTR Nike (pedido do usuário): de um processo (pid, todas as faturas) ou de
+    todos (resumo por processo + ocorrências)."""
+    from fastapi.responses import Response
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill
+    rows = [r for r in _emb_index().get("processos", []) if r.get("otr")]
+    if pid:
+        rows = [r for r in rows if r["id"] == pid]
+        if not rows:
+            raise HTTPException(404, "Este processo não tem conferência com o OTR (sem faturas lidas ou BL fora do OTR).")
+    book = Workbook()
+    ws = book.active
+    ws.title = "Processos"
+    ws.append(["Processo", "BOL / HAWB", "Operação", "Criada em", "Faturas × OTR Nike", "Faturas na pasta", "Faturas no OTR",
+               "Conferidas pelo número", "Número diferente do OTR", "Na pasta e fora do OTR (ou em outro BL)",
+               "No OTR sem PDF", "PDF a conferir (não lido)", "Aguardando número no OTR", "Avisos"])
+    for r in rows:
+        o = r["otr"]
+        ws.append([r["nome"], r.get("bol", ""), r["op"], (r.get("criada") or "")[:10], OTR_ROTULO.get(o["s"], o["s"]),
+                   o.get("p"), o.get("o"), o.get("c"), o.get("x"), o.get("f"), o.get("n"), o.get("v"), o.get("a"), o.get("d")])
+    for cell in ws[1]:
+        cell.font = Font(bold=True, color="FFFFFF")
+        cell.fill = PatternFill("solid", fgColor="003D18")
+    ws.freeze_panes = "A2"
+    ws.auto_filter.ref = ws.dimensions
+    _otr_planilha(book, rows, todas=bool(pid))
+    if pid:
+        book.move_sheet("Faturas × OTR", offset=-1)
+        book.active = 0
+    _xl_text_only(book)
+    buf = io.BytesIO()
+    book.save(buf)
+    _audit(user["email"], "embarques_otr_exportado", processos=len(rows), processo=pid[:16])
+    nome = f"Faturas_x_OTR_{re.sub(r'[^A-Za-z0-9]+', '_', rows[0]['nome'])}.xlsx" if pid else "Faturas_x_OTR_Nike.xlsx"
+    return Response(buf.getvalue(), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    headers={"Content-Disposition": f'attachment; filename="{nome}"'})
+
+
+@app.get("/api/embarques/excel")
+def embarques_excel(user: dict[str, Any] = Depends(current_user)):
+    """Relatorio em Excel: um processo por linha e os resumos por mes, operacao, armador, origem e fabricante."""
+    from fastapi.responses import Response
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill
+    rows, money = _emb_index().get("processos", []), _emb_money(user)
+    book = Workbook()
+    ws = book.active
+    ws.title = "Processos"
+    head = ["Operação", "Grupo", "Processo", "Modal", "Criada em", "Ano", "Mês", "Armador", "Origem", "Fabricantes",
+            "Temporadas", "Faturas", "Quantidade", "Peso bruto (kg)", "Caixas", "Contêineres", "Navio", "Embarque",
+            "Porto de embarque", "Porto de descarga", "Documentos", "Checklist", "Situação", "Itens a verificar", "WFADIM",
+            "Ref. FISIA", "Observação", "Responsável pela pasta", "Andamento na PGL", "Chegada", "Registro da DI", "Canal",
+            "Desembaraço", "Previsão de entrega", "Entrega no CD", "BOL / HAWB completo",
+            "Faturas × OTR Nike", "Faturas na pasta", "Faturas no OTR", "Número diferente do OTR", "Na pasta e fora do OTR",
+            "No OTR sem PDF", "PDF a conferir (não lido)", "Aguardando número no OTR", "Avisos"]
+    if money:
+        head[12:12] = ["Valor faturas (US$)", "Frete por contêiner (US$)", "Fossil Fuel Fee por contêiner (US$)"]
+    ws.append(head)
+    lab = {"ok": "Conferido", "verificar": "Divergência", "checklist": "Checklist pendente", "incompleto": "Em montagem",
+           "sem_conferencia": "Sem conferência", "historico": "Antes de 2025 (sem conferência)"}
+    for r in rows:
+        line = [r["op"], r.get("grupo", ""), r["nome"], r.get("modal", ""), (r.get("criada") or "")[:10], r.get("ano"),
+                r.get("mes"), r.get("armador", ""), ", ".join(r.get("origens") or []), "; ".join(r.get("fabricantes") or []),
+                ", ".join(r.get("temporadas") or []), r.get("faturas"), r.get("qtd"), r.get("peso_bruto"), r.get("caixas"),
+                ", ".join(r.get("conteineres") or []), r.get("navio", ""), r.get("embarque", ""), r.get("porto_embarque", ""),
+                r.get("porto_descarga", ""), ", ".join(embarques.TIPOS_ARQUIVO.get(d, d) for d in r.get("docs") or []),
+                (f"ID {r['checklist'].get('id')} · {embarques.CHECKLIST_ESTADOS.get(r['checklist'].get('estado') or embarques.checklist_estado(r['checklist']), '')}"
+                 if r.get("checklist") else ""), lab.get(r.get("situacao"), r.get("situacao")),
+                "; ".join(c["item"] for c in r.get("conferencia", []) if c["status"] == "verificar"),
+                r.get("wfadim", ""), r.get("ref", ""), r.get("obs", "")]
+        pg, fr = r.get("pgl") or {}, (EMB_CACHE.get("fup") or {}).get(r["id"]) or {}
+        line += [(r.get("resp", "") + ("" if r.get("resp_certo", True) else " (última alteração)")) if r.get("resp") else "",
+                 pg.get("etapa", "") if pg else "Sem FUP", fr.get("chegada", ""), fr.get("registro_di", ""), fr.get("canal", ""),
+                 fr.get("desembaraco", ""), fr.get("prev_entrega", ""), fr.get("entrega", ""), r.get("bol", "")]
+        o = r.get("otr") or {}
+        line += [OTR_ROTULO.get(o.get("s"), "") if o else "", o.get("p"), o.get("o"), o.get("x"), o.get("f"), o.get("n"), o.get("v"), o.get("a"), o.get("d")]
+        if money:
+            line[12:12] = [r.get("valor_usd"), r.get("frete_usd_cntr"), r.get("bunker_usd_cntr")]
+        ws.append(line)
+    for cell in ws[1]:
+        cell.font = Font(bold=True, color="FFFFFF")
+        cell.fill = PatternFill("solid", fgColor="003D18")
+    ws.freeze_panes = "A2"
+    ws.auto_filter.ref = ws.dimensions
+    for key, title in (("op", "Por operação"), ("armador", "Por armador"), ("origem", "Por origem"), ("fabricante", "Por fabricante")):
+        sheet = book.create_sheet(title)
+        sheet.append([title.replace("Por ", "").capitalize(), "Processos", "Quantidade (faturas)"] + (["Valor (US$)"] if money else []))
+        acc: dict[str, list[float]] = {}
+        for r in rows:
+            keys = {"op": [r["op"]], "armador": [r.get("armador") or "Não identificado"],
+                    "origem": r.get("origens") or ["Não identificada"], "fabricante": r.get("fabricantes") or ["Não identificado"]}[key]
+            for k in keys:
+                a = acc.setdefault(k, [0, 0.0, 0.0])
+                a[0] += 1
+                a[1] += r.get("qtd") or 0
+                a[2] += r.get("valor_usd") or 0
+        for k, (n, q, v) in sorted(acc.items(), key=lambda kv: -kv[1][0]):
+            sheet.append([k, n, q] + ([round(v, 2)] if money else []))
+        sheet.cell(1, 1).font = Font(bold=True)
+    sheet = book.create_sheet("Por mês")
+    sheet.append(["Ano", "Mês"] + list(embarques.OPERACOES) + ["Total"])
+    acc2: dict[tuple[int, int], dict[str, int]] = {}
+    for r in rows:
+        if r.get("ano"):
+            acc2.setdefault((r["ano"], r["mes"]), {}).setdefault(r["op"], 0)
+            acc2[(r["ano"], r["mes"])][r["op"]] += 1
+    for (ano, mes), ops in sorted(acc2.items()):
+        sheet.append([ano, embarques.MESES[mes - 1]] + [ops.get(o, 0) for o in embarques.OPERACOES] + [sum(ops.values())])
+    _otr_planilha(book, rows)
+    _xl_text_only(book)
+    buf = io.BytesIO()
+    book.save(buf)
+    _audit(user["email"], "embarques_exportado", processos=len(rows))
+    return Response(buf.getvalue(), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    headers={"Content-Disposition": 'attachment; filename="Embarques_COE_Inbound.xlsx"'})
+
+
+@app.get("/api/embarques/{pid}")
+def embarques_detail(pid: str, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    """Ficha do processo: arquivos, dados lidos de cada documento e a conferencia completa."""
+    proc, money = _emb_cache(pid), _emb_money(user)
+    resumo = embarques.resumir(proc)
+    files = []
+    for f in embarques.arquivos_classificados(proc):  # mesmo tipo que a conferencia usa (nome, pasta, numero, conteudo)
+        dados = f.get("dados")
+        if not money and isinstance(dados, dict):
+            dados = json.loads(json.dumps(dados))
+            for fat in dados.get("faturas") or []:
+                fat.pop("valor", None)
+            for key in ("valor", "frete_usd_cntr", "bunker_usd_cntr"):
+                dados.pop(key, None)
+        files.append({**f, "dados": dados, "tipo_label": embarques.TIPOS_ARQUIVO.get(f["tipo"], "Outro")})
+    linha = next((r for r in _emb_index().get("processos", []) if r["id"] == pid), {})
+    fup = (EMB_CACHE.get("fup") or {}).get(pid)
+    if fup:
+        n, etapa = embarques.fup_etapa(fup.get("status", ""))
+        fup = {**{k: v for k, v in fup.items() if money or k not in embarques.FUP_MONEY}, "n": n, "etapa": etapa}
+    resumo = {**resumo, **{k: linha[k] for k in ("resp", "resp_certo", "wfadim_fup") if k in linha}}
+    if not resumo.get("wfadim") and linha.get("wfadim"):
+        resumo["wfadim"] = linha["wfadim"]  # do FUP, quando a pasta nao tem o WFADIM no nome
+    custo = None
+    if money:  # custo do processo pelas MIROs (pagina Custos), so para quem ve valores
+        try:
+            _custos_index()
+            c = next((l for l in CUSTOS_CACHE["linhas"].values() if l.get("emb_id") == pid), None)
+            if c:
+                custo = {k: c[k] for k in ("chave", "total", "logistico", "impostos", "grupos", "status", "custo_un", "pct_cif")}
+        except Exception as exc:  # noqa: BLE001 - a ficha abre mesmo sem os custos
+            print(f"Custos na ficha de Embarques: {exc!r}", flush=True)
+    # Faturas × OTR Nike: a conferência completa (números que faltam, sobram, aguardam e avisos de quantidade/peso) e de
+    # quando é o OTR usado (guardrail do usuário)
+    otr_conf = _otr_conferir(resumo)
+    return {"resumo": {k: v for k, v in resumo.items() if (money or k not in EMB_MONEY) and k not in ("tccis", "pdf_sem_leitura")},
+            "arquivos": files,
+            "pgl": fup, "custo": custo, "otr": otr_conf, "otr_status": _otr_status(),
+            "rel": proc.get("rel", ""), "lido_em": proc.get("lido_em", ""), "valores": money,
+            "origem": proc.get("origem", "historico"), "pasta_drive": proc.get("pasta_drive", ""),
+            "pode_abrir": EMB_RAIZ.is_dir()}
+
+
+@app.get("/api/embarques/{pid}/arquivo")
+def embarques_file(pid: str, rel: Annotated[str, StringConstraints(max_length=400)],
+                   user: dict[str, Any] = Depends(current_user)) -> FileResponse:
+    """Abre um arquivo do processo (so os que estao no indice daquela pasta; nunca fora da pasta Processos)."""
+    proc = _emb_cache(pid)
+    if rel not in {f["rel"] for f in proc.get("arquivos", [])} or ".." in rel.replace("\\", "/").split("/"):
+        raise HTTPException(404, "Arquivo não encontrado neste processo.")
+    path = (EMB_RAIZ / proc.get("rel", "") / rel).resolve()
+    if not str(path).casefold().startswith(str(EMB_RAIZ.resolve()).casefold()) or not Path(_long(path)).is_file():
+        raise HTTPException(404, "O arquivo não está disponível neste computador (precisa do Google Drive para computador).")
+    _audit(user["email"], "embarques_arquivo_aberto", processo=pid, arquivo=rel[:120])
+    return _user_file(path)
+
+
+# ---------------------------------------------------------------------------
+# Pagina PGL > Relatorios da PGL (23/11/2026, pedido do usuario): os relatorios diarios que a PGL manda por e-mail
+# (FUP Fisia, Fisia / Zelus e SBF), como planilha online de consulta, com KPIs e graficos montados na tela. Todos veem;
+# colunas de valor (CIF etc.) so para master e owners.
+# ---------------------------------------------------------------------------
+@app.get("/api/pgl/relatorios")
+def pgl_relatorios_lista(user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    d = _pgl_rel()
+    rels = d.get("relatorios") or {}
+    out = []
+    for tipo, meta in pgl_relatorios.RELATORIOS.items():
+        r = rels.get(tipo) or {}
+        out.append({"tipo": tipo, "titulo": meta["titulo"], "unidade": meta["unidade"], "descricao": meta["descricao"],
+                    "assunto": meta["assunto"], "recebido_em": r.get("recebido_em", ""), "arquivo": r.get("arquivo", ""),
+                    "linhas": len(r.get("linhas") or []), "colunas": len(r.get("colunas") or [])})
+    return {"relatorios": out, "atualizado_em": d.get("atualizado_em", ""), "ultima_rodada": d.get("ultima_rodada") or {},
+            "valores": _emb_money(user)}
+
+
+def _pgl_tabela(tipo: str, user: dict[str, Any]) -> dict[str, Any]:
+    if tipo not in pgl_relatorios.RELATORIOS:
+        raise HTTPException(404, "Relatório não encontrado.")
+    r = (_pgl_rel().get("relatorios") or {}).get(tipo)
+    if not r or not r.get("colunas"):
+        raise HTTPException(404, "Este relatório ainda não chegou. Ele aparece sozinho quando o n8n ler o próximo e-mail da PGL.")
+    cols, linhas = r["colunas"], r["linhas"]
+    if not _emb_money(user):
+        cols, linhas = pgl_relatorios.sem_valores(cols, linhas)
+    return {**{k: v for k, v in r.items() if k not in ("colunas", "linhas", "msg")}, "tipo": tipo, "colunas": cols, "linhas": linhas}
+
+
+@app.get("/api/pgl/relatorios/{tipo}")
+def pgl_relatorio(tipo: str, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    out = _pgl_tabela(tipo, user)
+    # Processo que tambem esta na pagina Embarques: a tela abre a ficha dele
+    _emb_index()
+    mapa, cols = EMB_CACHE.get("fup_pid") or {}, out["colunas"]
+    j = cols.index("CONHECIMENTO") if "CONHECIMENTO" in cols else -1
+    out["embarques"] = [mapa.get(embarques.fup_chave(lin[j])) if j >= 0 else None for lin in out["linhas"]] if tipo != "sbf" else []
+    out["unidade"] = pgl_relatorios.RELATORIOS[tipo]["unidade"]
+    return out
+
+
+class PglExcel(BaseModel):
+    linhas: list[int] = Field(default_factory=list, max_length=50000)
+    colunas: list[str] = Field(default_factory=list, max_length=200)
+
+
+@app.post("/api/pgl/relatorios/{tipo}/excel")
+def pgl_relatorio_excel(tipo: str, body: PglExcel, user: dict[str, Any] = Depends(current_user)):
+    """O que esta na tela (linhas filtradas e colunas visiveis) em Excel, com as datas como data."""
+    from fastapi.responses import Response
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill
+    t = _pgl_tabela(tipo, user)
+    cols = [c for c in (body.colunas or t["colunas"]) if c in t["colunas"]] or t["colunas"]
+    idx = [t["colunas"].index(c) for c in cols]
+    linhas = [t["linhas"][i] for i in body.linhas if 0 <= i < len(t["linhas"])] if body.linhas else t["linhas"]
+    book = Workbook()
+    ws = book.active
+    ws.title = "FUP"
+    ws.append(cols)
+    for lin in linhas:
+        row = []
+        for j in idx:
+            v = lin[j] if j < len(lin) else None
+            if isinstance(v, str) and re.fullmatch(r"\d{4}-\d{2}-\d{2}", v):
+                try:
+                    v = datetime.strptime(v, "%Y-%m-%d")
+                except ValueError:
+                    pass
+            row.append(v)
+        ws.append(row)
+    for cell in ws[1]:
+        cell.font = Font(bold=True, color="FFFFFF")
+        cell.fill = PatternFill("solid", fgColor="0F2530")
+    for col in ws.iter_cols(min_row=2):
+        for cell in col:
+            if isinstance(cell.value, datetime):
+                cell.number_format = "DD/MM/YYYY"
+    ws.freeze_panes = "A2"
+    ws.auto_filter.ref = ws.dimensions
+    _xl_text_only(book)
+    buf = io.BytesIO()
+    book.save(buf)
+    _audit(user["email"], "pgl_relatorio_exportado", relatorio=tipo, linhas=len(linhas))
+    nome = f"PGL_{tipo.upper()}_{(t.get('recebido_em') or '')[:10]}.xlsx"
+    return Response(buf.getvalue(), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    headers={"Content-Disposition": f'attachment; filename="{nome}"'})
+
+
+# ---------------------------------------------------------------------------
+# Planilha proforma (pagina Embarques, 23/11/2026, pedido do usuario): planilha online editavel por processo, montada
+# pelo sistema (TCCIs da pasta + base da Ferramenta de Analise em Parquet/DuckDB) ou trazida da proforma da pasta.
+# Cada proforma e um arquivo em embarques/proformas/<pid>.json; edicao em lote com revisao por celula (duas pessoas
+# na mesma proforma: a celula que a outra mudou depois volta como conflito, o resto entra).
+# ---------------------------------------------------------------------------
+PF_BASE = proforma.Base(SHARED_ROOT.parent.parent / "Controle de Conferência - BL" / "1. PLATAFORMAS", EMB_DIR / "proforma_base",
+                        log=lambda m: print(m, flush=True))
+PF_STORE = proforma.Proformas(EMB_DIR / "proformas")
+
+
+class ProformaNova(BaseModel):
+    pid: Annotated[str, StringConstraints(pattern=r"^[a-f0-9]{16}$")]
+    origem: Literal["sistema", "pasta"] = "sistema"
+    refazer: bool = False
+
+
+class ProformaOps(BaseModel):
+    ops: list[dict[str, Any]] = Field(default_factory=list, max_length=5000)
+
+
+def _pf_duckdb() -> None:
+    try:
+        import duckdb  # noqa: F401
+    except ImportError:
+        raise HTTPException(503, "O componente da planilha (DuckDB) ainda está sendo instalado neste computador. "
+                                 "Feche e abra o NexxusDoc pelo atalho.")
+
+
+def _pf_doc(pid: str) -> dict[str, Any]:
+    doc = PF_STORE.ler(pid)
+    if not doc:
+        raise HTTPException(404, "Este processo ainda não tem proforma no NexxusDoc.")
+    return doc
+
+
+def _pf_saida(doc: dict[str, Any]) -> dict[str, Any]:
+    return {**proforma.para_tela(doc), "numeros": proforma.resumo_numeros(doc)}
+
+
+@app.get("/api/proformas")
+def proformas_list(user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    _pf_duckdb()
+    PF_BASE.talvez_atualizar()
+    return {"proformas": PF_STORE.lista(), "base": PF_BASE.status(), "colunas": proforma.COLUNAS, "origens": proforma.ORIGENS,
+            "obrigatorias": list(proforma.OBRIGATORIAS)}
+
+
+@app.post("/api/proformas/base")
+def proformas_base(user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    _pf_duckdb()
+    if not PF_BASE.estado.get("rodando"):
+        threading.Thread(target=PF_BASE.gerar, daemon=True, name="nexus-proforma-base").start()
+        time.sleep(0.3)
+    _audit(user["email"], "proforma_base_atualizada")
+    return PF_BASE.status()
+
+
+@app.post("/api/proformas")
+def proformas_create(body: ProformaNova, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    _pf_duckdb()
+    proc = _emb_cache(body.pid)
+    antigo = PF_STORE.ler(body.pid)
+    if antigo and not body.refazer:
+        raise HTTPException(409, "Este processo já tem proforma: abra a existente ou use Refazer.")
+    pasta = EMB_RAIZ / proc.get("rel", "")
+    if not Path(_long(pasta)).is_dir():
+        raise HTTPException(409, "A pasta do processo não está disponível neste computador (precisa do Google Drive para computador).")
+    arqs = embarques.arquivos_classificados(proc)
+    resumo = embarques.resumir(proc)
+    cab = {"invoice": "Mixed Files", "exp": "-", "data": datetime.now().strftime("%d/%m/%Y"), "bl": "",
+           "modal": "AF" if resumo.get("modal") == "Aéreo" else "VL"}
+    if body.origem == "pasta":
+        profs = sorted([f for f in arqs if f["tipo"] == "proforma" and f["nome"].lower().endswith((".xlsx", ".xlsm"))], key=lambda f: f.get("mod", ""))
+        if not profs:
+            raise HTTPException(409, "Não há proforma em Excel na pasta deste processo.")
+        try:
+            linhas, cab_pasta = proforma.da_pasta((pasta / profs[-1]["rel"]).read_bytes())
+        except Exception as exc:  # noqa: BLE001
+            raise HTTPException(422, f"Não foi possível ler a proforma da pasta ({type(exc).__name__}).")
+        cab.update({k: v for k, v in cab_pasta.items() if v})
+        rel = {"origem": "pasta", "arquivo": profs[-1]["rel"], "avisos": []}
+    else:
+        tccis = proforma.tccis_do_processo(pasta, arqs)
+        if not tccis:
+            raise HTTPException(409, "Ainda não há TCCI (fatura da Nike) legível na pasta deste processo. "
+                                     "Assim que a equipe salvar as TCCIs, a proforma pode ser montada.")
+        bl = next((f["dados"] for f in arqs if f["tipo"] == "bl" and isinstance(f.get("dados"), dict)), None)
+        linhas, rel = proforma.montar(resumo, tccis, PF_BASE, bl)
+        cab["bl"] = next((t["doc_transporte"] for t in tccis if t.get("doc_transporte")), "")
+        rel["origem"] = "sistema"
+    if not cab.get("bl"):
+        cab["bl"] = resumo.get("numero", "")
+    if antigo:
+        hist = EMB_DIR / "proformas" / "historico"
+        hist.mkdir(parents=True, exist_ok=True)
+        (hist / f"{body.pid}_{datetime.now().strftime('%Y%m%d%H%M%S')}.json").write_text(json.dumps(antigo, ensure_ascii=False), encoding="utf-8")
+    agora = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    doc = {"pid": body.pid, "processo": proc.get("nome", ""), "op": proc.get("op", ""), "modal": resumo.get("modal", ""),
+           "rel": proc.get("rel", ""), "pasta_drive": proc.get("pasta_drive", ""), "cab": cab, "linhas": linhas, "versao": 1,
+           "montagem": {**rel, "base": PF_BASE.meta().get("arquivo", ""), "em": agora},
+           "criado_em": (antigo or {}).get("criado_em", agora), "criado_por": (antigo or {}).get("criado_por", user["email"]),
+           "alterado_em": agora, "alterado_por": user["email"]}
+    with PF_STORE.lock:
+        PF_STORE.gravar(doc)
+    _audit(user["email"], "proforma_montada", processo=body.pid, origem=body.origem, linhas=len(linhas), refeita=bool(antigo))
+    return _pf_saida(doc)
+
+
+@app.get("/api/proformas/{pid}")
+def proformas_get(pid: str, desde: int | None = None, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    _pf_duckdb()
+    if not re.fullmatch(r"[a-f0-9]{16}", pid):
+        raise HTTPException(404, "Processo não encontrado.")
+    doc = _pf_doc(pid)
+    if desde is not None and doc.get("versao") == desde:
+        return {"igual": True, "versao": desde}
+    return _pf_saida(doc)
+
+
+@app.patch("/api/proformas/{pid}")
+def proformas_edit(pid: str, body: ProformaOps, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    _pf_duckdb()
+    if not re.fullmatch(r"[a-f0-9]{16}", pid):
+        raise HTTPException(404, "Processo não encontrado.")
+    with PF_STORE.lock:
+        doc = _pf_doc(pid)
+        res = proforma.aplicar(doc, body.ops, user["email"])
+        if res["mudou"]:
+            PF_STORE.gravar(doc)
+    return {**_pf_saida(doc), "conflitos": [c["id"] for c in res["conflitos"]]}
+
+
+@app.get("/api/proformas/{pid}/excel")
+def proformas_excel(pid: str, user: dict[str, Any] = Depends(current_user)):
+    from fastapi.responses import Response
+    if not re.fullmatch(r"[a-f0-9]{16}", pid):
+        raise HTTPException(404, "Processo não encontrado.")
+    doc = _pf_doc(pid)
+    book = proforma.excel(doc)
+    _xl_text_only(book)
+    buf = io.BytesIO()
+    book.save(buf)
+    nome = re.sub(r"[^A-Za-z0-9 ._-]", "", f"PROFORMA - {doc['cab'].get('bl') or doc.get('processo', pid)}")[:80] + ".xlsx"
+    _audit(user["email"], "proforma_baixada", processo=pid)
+    return Response(buf.getvalue(), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    headers={"Content-Disposition": f'attachment; filename="{nome}"'})
+
+
+@app.delete("/api/proformas/{pid}")
+def proformas_delete(pid: str, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    if not re.fullmatch(r"[a-f0-9]{16}", pid):
+        raise HTTPException(404, "Processo não encontrado.")
+    doc = _pf_doc(pid)
+    if user.get("role") != "master" and doc.get("criado_por") != user["email"]:
+        raise HTTPException(403, "Só quem criou a proforma ou o administrador pode excluí-la.")
+    with PF_STORE.lock:
+        PF_STORE.excluir(pid, EMB_DIR / "proformas" / "excluidas")
+    _audit(user["email"], "proforma_excluida", processo=pid)
+    return {"ok": True}
+
+
+# ---------------------------------------------------------------------------
+# Pagina Custos (24/11/2026, pedido do usuario: "custos por processo, com montagem automatica do layout das MIROs, ligando
+# com o que ja esta mapeado"). Fonte: os layouts de MIRO de debito posterior que a PGL salva em Sua Area > PGL S/4HANA >
+# Layouts - MIRO de Deb. Post (custos.py). Historico (2025 em diante) em custos/historico.json (carga unica); o que chega
+# depois e lido pelo n8n (fluxo apartado "NexxusDoc - Custos", de hora em hora) em nexxusdoc_custos_n8n.json. Ligacao:
+# WFADIM e BL com a pagina Embarques (pasta, operacao, modal, peso, conteineres) e com o FUP da PGL (CIF, datas, canal).
+# So master e owners (valores em R$).
+# ---------------------------------------------------------------------------
+CUSTOS_DIR = SHARED_ROOT / "custos"
+CUSTOS_N8N_FILE = SHARED_ROOT / "nexxusdoc_custos_n8n.json"
+CUSTOS_RAIZ = Path(CONFIG.get("NEXUS_MIROS_DIR") or str(SHARED_ROOT.parent.parent / "PGL S 4HANA" / "Layouts - MIRO de Déb. Post"))
+CUSTOS_CACHE: dict[str, Any] = {"key": None, "data": {}, "procs": {}, "linhas": {}}
+CUSTOS_DESPESAS_DIAS = 7  # entregue ha mais de 7 dias sem MIRO de despesas = pendencia
+
+
+def _custos_user(user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    # Página Custos aberta a TODOS os usuários desde 24/11/2026 (pedido do usuário: "liberada para todos, sem travas");
+    # antes era só master e owners. A tela continua tratando 403 (cadeado) caso a regra volte.
+    return user
+
+
+def _dias(a: str, b: str) -> int | None:
+    try:
+        return (date.fromisoformat(b[:10]) - date.fromisoformat(a[:10])).days
+    except (TypeError, ValueError):
+        return None
+
+
+def _custos_linha(p: dict[str, Any], r: dict[str, Any] | None, f: dict[str, Any] | None) -> dict[str, Any]:
+    r, f = r or {}, f or {}
+    g = p["grupos"]
+    imp = g.get("impostos", 0.0)
+    logi = round(p["total"] - imp, 2)
+    qtd = sum(d["qtd"] for d in p["pedidos"]) or f.get("qtd") or r.get("qtd") or 0
+    peso = r.get("peso_bruto") or 0
+    cif = f.get("cif") if isinstance(f.get("cif"), (int, float)) else None
+    modal = r.get("modal") or {"MARITIMO": "Marítimo", "AEREO": "Aéreo", "RODOVIARIO": "Rodoviário"}.get(
+        embarques.fup_chave(f.get("modal")), str(f.get("modal") or "").title())
+    status = ("completo" if p["tem_impostos"] and p["tem_despesas"] else "so_impostos" if p["tem_impostos"] else "so_despesas")
+    if status == "so_impostos" and f.get("entrega") and (_dias(f["entrega"], date.today().isoformat()) or 0) > CUSTOS_DESPESAS_DIAS:
+        status = "despesas_pendentes"
+    return {
+        "chave": p["chave"], "wfadim": p["wfadim"], "ref": p["ref"], "di": p["di"], "data": p["data"],
+        "data_impostos": p["data_impostos"], "data_despesas": p["data_despesas"], "ano": int(p["data"][:4]) if p["data"] else None,
+        "mes": int(p["data"][5:7]) if p["data"] else None, "total": p["total"], "logistico": logi, "impostos": round(imp, 2),
+        "grupos": g, "status": status, "reemitido": any(a["versao"] > 1 and a["vale"] for a in p["arquivos"]),
+        "n_pedidos": len(p["pedidos"]), "n_itens": p["itens"], "qtd": qtd,
+        "custo_un": round(p["total"] / qtd, 4) if qtd else None, "logistico_un": round(logi / qtd, 4) if qtd else None,
+        "cif": cif, "pct_cif": round(logi / cif * 100, 2) if cif else None, "peso": peso or None,
+        "logistico_kg": round(logi / peso, 4) if peso else None,
+        "op": r.get("op") or ("ZELUS" if str(f.get("fonte") or "").lower() == "zelus" else ""), "emb_id": r.get("id", ""),
+        "emb_nome": r.get("nome", ""), "modal": modal, "armador": r.get("armador", ""), "origem": ", ".join(r.get("origens") or []),
+        "conteineres": len(r.get("conteineres") or []), "colecao": f.get("colecao", ""), "canal": f.get("canal", ""),
+        "chegada": f.get("chegada", ""), "registro_di": f.get("registro_di", ""), "desembaraco": f.get("desembaraco", ""),
+        "entrega": f.get("entrega", ""), "cd": f.get("cd", ""), "armazem": f.get("armazem", ""),
+        "dias_desembaraco": _dias(f.get("chegada", ""), f.get("desembaraco", "")),
+        "dias_entrega": _dias(f.get("chegada", ""), f.get("entrega", "")),
+    }
+
+
+def _custos_index() -> dict[str, Any]:
+    """Historico + n8n (vale o arquivo mais novo de mesmo nome), refeito so quando algum arquivo muda."""
+    def mt(path: Path) -> float | None:
+        try:
+            return path.stat().st_mtime
+        except OSError:
+            return None
+    _emb_index()
+    key = (mt(CUSTOS_DIR / "historico.json"), mt(CUSTOS_N8N_FILE), EMB_CACHE.get("key"))
+    if CUSTOS_CACHE["key"] == key:
+        return CUSTOS_CACHE["data"]
+    hist, n8n = _emb_read(CUSTOS_DIR / "historico.json"), _emb_read(CUSTOS_N8N_FILE)
+    arqs = dict(hist.get("arquivos") or {})
+    for k, a in (n8n.get("arquivos") or {}).items():
+        if isinstance(a, dict) and (k not in arqs or (a.get("mod") or "") >= (arqs[k].get("mod") or "")):
+            arqs[k] = a
+    procs = {k: p for k, p in custos.consolidar(list(arqs.values())).items() if (p["data"] or "") >= custos.DESDE}
+    emb_rows = EMB_CACHE.get("data", {}).get("processos", [])
+    emb_wf = {str(r["wfadim"]).upper(): r for r in emb_rows if r.get("wfadim")}
+    emb_num: dict[str, dict[str, Any]] = {}
+    for r in emb_rows:
+        for k in (embarques.fup_chave(r.get("numero")), embarques.fup_chave(r.get("bol"))):
+            if k and k not in emb_num:
+                emb_num[k] = r
+    pgl = _pgl_rel()
+    fup_wf = {embarques.fup_chave(rec.get("wfadim")): rec for rec in (pgl.get("processos") or {}).values() if rec.get("wfadim")}
+    fup_idx = embarques.fup_indice(pgl)
+    fup_emb = EMB_CACHE.get("fup") or {}
+    linhas: dict[str, dict[str, Any]] = {}
+    for p in procs.values():
+        ref = embarques.fup_chave(p["ref"])
+        r = emb_wf.get(p["wfadim"]) or emb_num.get(ref) or emb_num.get(re.sub(r"^[A-Z]{4}(?=[A-Z]{3}\d)", "", ref))
+        f = fup_wf.get(embarques.fup_chave(p["wfadim"])) or fup_idx.get(ref) or (fup_emb.get(r["id"]) if r else None)
+        linhas[p["chave"]] = _custos_linha(p, r, f)
+    # Processos do FUP com DI registrada (2025 em diante) e sem nenhuma MIRO: a PGL ainda nao mandou o layout
+    com_miro = {embarques.fup_chave(l["wfadim"]) for l in linhas.values()} | {embarques.fup_chave(l["ref"]) for l in linhas.values()}
+    sem_miro = []
+    for rec in (pgl.get("processos") or {}).values():
+        if (rec.get("registro_di") or "") < custos.DESDE:
+            continue
+        if embarques.fup_chave(rec.get("wfadim")) in com_miro or embarques.fup_chave(rec.get("conhecimento")) in com_miro:
+            continue
+        sem_miro.append({k: rec.get(k, "") for k in ("wfadim", "conhecimento", "ref", "modal", "registro_di", "desembaraco", "entrega", "fonte")})
+    sem_miro.sort(key=lambda x: x.get("registro_di") or "", reverse=True)
+    rodada = n8n.get("ultima_rodada") or {}
+    CUSTOS_CACHE.update(key=key, procs=procs, linhas=linhas, data={
+        "processos": sorted(linhas.values(), key=lambda l: l["data"] or "", reverse=True), "sem_miro": sem_miro,
+        "historico_em": hist.get("gerado_em", ""), "n8n": rodada, "n8n_ativo": bool(rodada),
+        "atualizado_em": max(hist.get("gerado_em", ""), rodada.get("em", "")), "arquivos": len(arqs),
+        "pasta": "Sua Area › PGL S/4HANA › Layouts - MIRO de Déb. Post",
+        "grupos": [{"k": k, "nome": n, "cor": c} for k, (n, c) in custos.GRUPOS.items()]})
+    return CUSTOS_CACHE["data"]
+
+
+@app.get("/api/custos")
+def custos_list(user: dict[str, Any] = Depends(_custos_user)) -> dict[str, Any]:
+    return _custos_index()
+
+
+def _custos_proc(chave: str) -> tuple[dict[str, Any], dict[str, Any]]:
+    if not re.fullmatch(r"[A-Z0-9]{4,40}", chave or ""):
+        raise HTTPException(404, "Processo não encontrado.")
+    _custos_index()
+    p, l = CUSTOS_CACHE["procs"].get(chave), CUSTOS_CACHE["linhas"].get(chave)
+    if not p or not l:
+        raise HTTPException(404, "Processo sem MIRO de débito posterior (2025 em diante).")
+    return p, l
+
+
+def _custos_ler(arquivo: dict[str, Any]) -> dict[str, Any] | None:
+    """Layout inteiro (com os itens), lido da pasta da PGL pelo Google Drive para computador."""
+    caminho = str(arquivo.get("caminho") or "")
+    if not caminho or ".." in caminho.replace("\\", "/").split("/"):
+        return None
+    path = (CUSTOS_RAIZ / caminho).resolve()
+    if not str(path).casefold().startswith(str(CUSTOS_RAIZ.resolve()).casefold()):
+        return None
+    try:
+        return custos.ler_layout(Path(_long(path)).read_bytes(), arquivo.get("nome") or path.name)
+    except OSError:
+        return None
+
+
+def _custos_arquivos_validos(p: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    """Tipo -> registro guardado do layout que vale (com caminho), para ler os itens."""
+    _custos_index()
+    hist, n8n = _emb_read(CUSTOS_DIR / "historico.json"), _emb_read(CUSTOS_N8N_FILE)
+    out = {}
+    for a in p["arquivos"]:
+        if a["vale"]:
+            k = a["nome"].upper()
+            out[a["tipo"]] = (n8n.get("arquivos") or {}).get(k) or (hist.get("arquivos") or {}).get(k) or a
+    return out
+
+
+@app.get("/api/custos/processo/{chave}")
+def custos_detail(chave: str, user: dict[str, Any] = Depends(_custos_user)) -> dict[str, Any]:
+    p, linha = _custos_proc(chave)
+    rubricas = sorted(({"codigo": c, **r} for c, r in p["rubricas"].items()),
+                      key=lambda r: (list(custos.GRUPOS).index(r["grupo"]) if r["grupo"] in custos.GRUPOS else 99, -r["total"]))
+    # Itens (PO e item) com o valor de cada grupo, lidos dos layouts que valem
+    itens: dict[tuple[str, str], dict[str, Any]] = {}
+    lidos = 0
+    validos = _custos_arquivos_validos(p)
+    layouts = {}
+    for tipo, a in validos.items():
+        full = _custos_ler(a)
+        if not full:
+            continue
+        layouts[tipo] = full
+        lidos += 1
+        for it in full["itens"]:
+            d = itens.setdefault((it["po"], it["item"].lstrip("0")), {"po": it["po"], "item": it["item"], "qtd": it["qtd"],
+                                                                       "unid": it.get("unid", ""), "grupos": {}, "total": 0.0})
+            d["qtd"] = max(d["qtd"], it["qtd"])
+            for cod, v in it["valores"].items():
+                gr = custos.rubrica_grupo(cod)
+                d["grupos"][gr] = round(d["grupos"].get(gr, 0.0) + v, 2)
+                d["total"] = round(d["total"] + v, 2)
+    lista_itens = sorted(itens.values(), key=lambda d: (d["po"], int(re.sub(r"\D", "", d["item"]) or 0)))
+    for d in lista_itens:
+        d["custo_un"] = round(d["total"] / d["qtd"], 4) if d["qtd"] else None
+    # Conferencia do rateio da PGL com a planilha proforma do processo (peso bruto e valor de cada item)
+    rateio = None
+    if linha.get("emb_id") and layouts:
+        doc = PF_STORE.ler(linha["emb_id"])
+        base = custos.itens_da_proforma(doc) if doc else []
+        if base:
+            rateio = _custos_conferir_rateio(layouts, base)
+    fup = None
+    _emb_index()
+    if linha.get("emb_id"):
+        fup = (EMB_CACHE.get("fup") or {}).get(linha["emb_id"])
+    if not fup:
+        pgl = _pgl_rel()
+        fup = next((rec for rec in (pgl.get("processos") or {}).values()
+                    if embarques.fup_chave(rec.get("wfadim")) == embarques.fup_chave(p["wfadim"]) and p["wfadim"]), None)
+    return {"linha": linha, "rubricas": rubricas, "arquivos": p["arquivos"], "pedidos": p["pedidos"], "itens": lista_itens,
+            "itens_lidos": lidos == len(validos) and lidos > 0, "fup": fup, "rateio": rateio,
+            "pode_abrir": CUSTOS_RAIZ.is_dir(), "grupos": [{"k": k, "nome": n, "cor": c} for k, (n, c) in custos.GRUPOS.items()]}
+
+
+def _custos_conferir_rateio(layouts: dict[str, dict[str, Any]], base: list[dict[str, Any]]) -> dict[str, Any]:
+    """Para cada rubrica, o valor de cada item pelo criterio da PGL (peso bruto; valor para impostos) com a base da proforma,
+    comparado com o que veio no layout."""
+    chave = lambda po, it: (str(po), str(it).lstrip("0"))  # noqa: E731
+    bmap = {chave(b["po"], b["item"]): b for b in base}
+    out, sem_base = [], set()
+    for tipo, full in layouts.items():
+        for cod, r in full["rubricas"].items():
+            its = [it for it in full["itens"] if it["valores"].get(cod)]
+            if len(its) < 2:
+                continue
+            faltam = [it for it in its if chave(it["po"], it["item"]) not in bmap]
+            if faltam:
+                sem_base.update(f"{it['po']}/{it['item']}" for it in faltam)
+                continue
+            imposto = custos.rubrica_grupo(cod) == "impostos"
+            if cod.upper().startswith("DEBITOII") or "DUMPING" in cod.upper():
+                continue  # II e antidumping seguem a aliquota de cada NCM (DI), nao um rateio
+            pesos = [float(bmap[chave(it["po"], it["item"])]["valor" if imposto else "peso"] or 0) for it in its]
+            esperado = custos.ratear(r["total"], pesos)
+            difs = [abs(e - it["valores"][cod]) for e, it in zip(esperado, its)]
+            out.append({"codigo": cod, "nome": custos.rubrica_nome(cod), "base": "valor" if imposto else "peso bruto",
+                        "itens": len(its), "divergentes": sum(1 for d in difs if d > 0.05), "maior_diferenca": round(max(difs), 2),
+                        "total": r["total"], "tipo": tipo})
+    return {"rubricas": out, "itens_sem_base": sorted(sem_base)[:20], "ok": bool(out) and all(o["divergentes"] == 0 for o in out)}
+
+
+@app.get("/api/custos/excel")
+def custos_excel(user: dict[str, Any] = Depends(_custos_user)):
+    from fastapi.responses import Response
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill
+    data = _custos_index()
+    rows = data["processos"]
+    grupos = list(custos.GRUPOS)
+    book = Workbook()
+    ws = book.active
+    ws.title = "Processos"
+    st = {"completo": "Impostos e despesas", "so_impostos": "Só impostos (aguardando despesas)",
+          "despesas_pendentes": "Despesas pendentes (já entregue)", "so_despesas": "Só despesas"}
+    head = ["WFADIM", "BL / HAWB", "DI", "Data da MIRO de impostos", "Data da MIRO de despesas", "Situação", "Reemitida",
+            "Operação", "Modal", "Armador", "Origem", "Pedidos", "Itens", "Quantidade", "Peso bruto (kg)", "Contêineres",
+            "Custo total (R$)", "Impostos II e Siscomex (R$)", "Custo logístico (R$)"] + [f"{custos.GRUPOS[g][0]} (R$)" for g in grupos] + [
+            "Custo por unidade (R$)", "Logístico por unidade (R$)", "Logístico por kg (R$)", "CIF (R$)", "Logístico / CIF (%)",
+            "Chegada", "Registro da DI", "Desembaraço", "Entrega no CD", "Dias até o desembaraço", "Dias até a entrega", "Canal", "CD"]
+    ws.append(head)
+    for r in rows:
+        ws.append([r["wfadim"], r["ref"], r["di"], r["data_impostos"], r["data_despesas"], st.get(r["status"], r["status"]),
+                   "Sim" if r["reemitido"] else "", r["op"], r["modal"], r["armador"], r["origem"], r["n_pedidos"], r["n_itens"],
+                   r["qtd"], r["peso"], r["conteineres"] or None, r["total"], r["impostos"], r["logistico"]]
+                  + [r["grupos"].get(g) for g in grupos]
+                  + [r["custo_un"], r["logistico_un"], r["logistico_kg"], r["cif"], r["pct_cif"], r["chegada"], r["registro_di"],
+                     r["desembaraco"], r["entrega"], r["dias_desembaraco"], r["dias_entrega"], r["canal"], r["cd"]])
+    sheet = book.create_sheet("Rubricas")
+    sheet.append(["WFADIM", "BL / HAWB", "Layout", "Rubrica (Texto)", "Descrição", "Grupo", "Fornecedor", "Txt. Cabeçalho",
+                  "Atribuição", "Vencimento", "Valor (R$)", "Itens"])
+    for chave, p in CUSTOS_CACHE["procs"].items():
+        for cod, r in p["rubricas"].items():
+            sheet.append([p["wfadim"], p["ref"], r["tipo"], cod, r["nome"], custos.GRUPOS.get(r["grupo"], ("Outros",))[0], r["fornecedor"],
+                          r["cabecalho"], r["atribuicao"], r["venc"], r["total"], r["itens"]])
+    sheet = book.create_sheet("Por mês")
+    sheet.append(["Ano", "Mês", "Processos", "Custo total (R$)", "Custo logístico (R$)"] + [custos.GRUPOS[g][0] for g in grupos])
+    acc: dict[tuple[int, int], list[Any]] = {}
+    for r in rows:
+        if r["ano"]:
+            a = acc.setdefault((r["ano"], r["mes"]), [0, 0.0, 0.0, {g: 0.0 for g in grupos}])
+            a[0] += 1
+            a[1] += r["total"]
+            a[2] += r["logistico"]
+            for g in grupos:
+                a[3][g] += r["grupos"].get(g, 0)
+    for (ano, mes), (n, t, lg, gs) in sorted(acc.items()):
+        sheet.append([ano, embarques.MESES[mes - 1], n, round(t, 2), round(lg, 2)] + [round(gs[g], 2) for g in grupos])
+    if data["sem_miro"]:
+        sheet = book.create_sheet("Sem MIRO")
+        sheet.append(["WFADIM", "BL / HAWB", "Referência", "Modal", "Registro da DI", "Desembaraço", "Entrega"])
+        for s in data["sem_miro"]:
+            sheet.append([s["wfadim"], s["conhecimento"], s["ref"], s["modal"], s["registro_di"], s["desembaraco"], s["entrega"]])
+    for sh in book.worksheets:
+        for cell in sh[1]:
+            cell.font = Font(bold=True, color="FFFFFF")
+            cell.fill = PatternFill("solid", fgColor="003D18")
+        sh.freeze_panes = "A2"
+        sh.auto_filter.ref = sh.dimensions
+    _xl_text_only(book)
+    buf = io.BytesIO()
+    book.save(buf)
+    _audit(user["email"], "custos_exportado", processos=len(rows))
+    return Response(buf.getvalue(), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    headers={"Content-Disposition": 'attachment; filename="Custos_por_processo_COE_Inbound.xlsx"'})
+
+
+class CustosBase(BaseModel):
+    tipo: Literal["impostos", "despesas"]
+    chave: Annotated[str, StringConstraints(pattern=r"^[A-Z0-9]{4,40}$")] | None = None
+    emb_id: Annotated[str, StringConstraints(pattern=r"^[a-f0-9]{16}$")] | None = None
+
+
+class CustosLote(BaseModel):
+    """Montagem em lote (24/11/2026, pedido do usuario): varios processos num CSV so (um arquivo da PGL ja junta duas MIROs
+    assim). Cada processo e conferido a parte (_custos_conferir), com mensagem em portugues; o invalido nao derruba os outros."""
+    tipo: Literal["impostos", "despesas"]
+    processos: list[dict[str, Any]] = Field(min_length=1, max_length=80)
+
+
+def _custos_txt(v: Any, n: int) -> str:
+    """Texto que vai numa celula do CSV: sem ; aspas, quebras ou caracteres de controle."""
+    return re.sub(r"[;\"\r\n\t\x00-\x1f\x7f]", "", str(v or "")).strip()[:n]
+
+
+def _custos_num(v: Any) -> float:
+    if isinstance(v, (int, float)):
+        return float(v)
+    s = re.sub(r"(?i)R\$|\s", "", str(v or ""))
+    if "," in s:
+        s = s.replace(".", "").replace(",", ".")
+    elif re.fullmatch(r"\d{1,3}(\.\d{3})+", s):  # "1.500" = mil e quinhentos
+        s = s.replace(".", "")
+    try:
+        return float(s) if s else 0.0
+    except ValueError:
+        raise ValueError(f"valor inválido: {v}")
+
+
+def _custos_conferir(tipo: str, p: dict[str, Any]) -> dict[str, Any]:
+    """Um processo do lote -> argumentos de montar_layout; ValueError com o motivo em portugues."""
+    ref = _custos_txt(p.get("ref"), 40)
+    nome = ref or _custos_txt(p.get("wfadim"), 20) or "processo"
+    if len(ref) < 3:
+        raise ValueError("informe o BL / HAWB (Referência)")
+    wf = _custos_txt(p.get("wfadim"), 20).upper()
+    if wf and not re.fullmatch(r"WFADIM\d{7,9}", wf):
+        raise ValueError(f"WFADIM inválido ({wf})")
+    try:
+        data_doc = date.fromisoformat(str(p.get("data") or "")[:10])
+    except ValueError:
+        raise ValueError("informe a data da fatura")
+    di = _custos_txt(p.get("di"), 20)
+    if tipo == "impostos" and not di:
+        raise ValueError("informe o número da DI (vai na Atribuição da MIRO de impostos)")
+    itens = []
+    for it in p.get("itens") or []:
+        po, item = re.sub(r"\D", "", str(it.get("po") or "")), re.sub(r"\D", "", str(it.get("item") or ""))
+        if not po or not item:
+            continue
+        unid = re.sub(r"[^A-Z0-9]", "", str(it.get("unid") or "CDA").upper())[:4] or "CDA"
+        itens.append({"po": po[:12], "item": item[:6], "qtd": max(0.0, _custos_num(it.get("qtd"))), "unid": unid,
+                      "peso": max(0.0, _custos_num(it.get("peso"))), "valor": max(0.0, _custos_num(it.get("valor")))})
+    if not itens:
+        raise ValueError("ainda não há itens do pedido para repartir (monte a planilha proforma do processo em Embarques)")
+    valores: dict[str, float] = {}
+    for c, v in (p.get("valores") or {}).items():
+        cod, val = _custos_txt(c, 24), _custos_num(v)
+        if cod and val > 0:
+            valores[cod] = round(valores.get(cod, 0.0) + val, 2)
+    manual = {}
+    for c, v in (p.get("manual") or {}).items():
+        cod = _custos_txt(c, 24)
+        if cod in valores and isinstance(v, list) and len(v) == len(itens):
+            lista = [max(0.0, _custos_num(x)) for x in v]
+            if abs(sum(lista) - valores[cod]) < 0.01:
+                manual[cod] = lista
+    if not valores:
+        raise ValueError("informe o valor de pelo menos uma rubrica")
+    sem_base = [c for c in valores if c not in manual and not any(
+        (i["valor"] if custos.rubrica_grupo(c) == "impostos" else i["peso"]) for i in itens)]
+    if sem_base:
+        raise ValueError(f"sem base para repartir {', '.join(sem_base)} (os itens estão sem "
+                         f"{'valor' if custos.rubrica_grupo(sem_base[0]) == 'impostos' else 'peso bruto'})")
+    try:
+        versao = max(1, min(20, int(str(p.get("versao") or 1))))
+    except ValueError:
+        versao = 1
+    return {"nome": nome, "ref": ref, "wfadim": wf, "di": di, "data": data_doc, "versao": versao, "itens": itens,
+            "valores": valores, "manual": manual, "atribuicao": _custos_txt(p.get("atribuicao"), 20) or "1"}
+
+
+def _custos_catalogo(tipo: str) -> list[dict[str, Any]]:
+    """Rubricas mais usadas em cada layout (2025 em diante), para a pessoa escolher."""
+    _custos_index()
+    cont: dict[str, int] = {}
+    for p in CUSTOS_CACHE["procs"].values():
+        for cod, r in p["rubricas"].items():
+            if r["tipo"] == tipo:
+                cont[cod] = cont.get(cod, 0) + 1
+    return [{"codigo": c, "nome": custos.rubrica_nome(c), "grupo": custos.rubrica_grupo(c), "usos": n}
+            for c, n in sorted(cont.items(), key=lambda kv: -kv[1])[:40]]
+
+
+@app.post("/api/custos/layout/base")
+def custos_layout_base(body: CustosBase, user: dict[str, Any] = Depends(_custos_user)) -> dict[str, Any]:
+    """Tudo o que o sistema ja sabe para montar a MIRO: itens (PO, item, quantidade, peso, valor), BL, WFADIM, DI, data e os
+    valores do layout da PGL quando ele ja existe (para conferir)."""
+    _custos_index()
+    p = linha = None
+    if body.chave:
+        p, linha = _custos_proc(body.chave)
+    r = None
+    emb_id = body.emb_id or (linha or {}).get("emb_id")
+    if emb_id:
+        r = next((x for x in EMB_CACHE.get("data", {}).get("processos", []) if x["id"] == emb_id), None)
+        if not p and r and r.get("wfadim"):
+            p = CUSTOS_CACHE["procs"].get(str(r["wfadim"]).upper())
+            linha = CUSTOS_CACHE["linhas"].get(str(r["wfadim"]).upper())
+    if not p and not r:
+        raise HTTPException(404, "Processo não encontrado.")
+    fup = (EMB_CACHE.get("fup") or {}).get(emb_id) if emb_id else None
+    if not fup and p and p["wfadim"]:
+        fup = next((rec for rec in (_pgl_rel().get("processos") or {}).values()
+                    if embarques.fup_chave(rec.get("wfadim")) == embarques.fup_chave(p["wfadim"])), None)
+    fup = fup or {}
+    # Itens: planilha proforma do sistema (com o item da PO em todas as linhas) ou o layout de impostos da propria PGL
+    itens, origem, avisos = [], "", []
+    doc = PF_STORE.ler(emb_id) if emb_id else None
+    if doc:
+        base = custos.itens_da_proforma(doc)
+        linhas_po = [ln for ln in doc.get("linhas", []) if (ln.get("c") or {}).get("po_fisia")]
+        if base and all((ln.get("c") or {}).get("it_fisia") for ln in linhas_po):
+            itens, origem = base, "planilha proforma do processo (peso bruto e valor de cada item)"
+        elif base:
+            avisos.append("A planilha proforma do processo tem linhas sem o item do pedido (it FISIA): ela não serviu de base.")
+    existentes = _custos_arquivos_validos(p) if p else {}
+    lidos = {t: _custos_ler(a) for t, a in existentes.items()}
+    if not itens:
+        for t in ("impostos", "despesas"):
+            if lidos.get(t):
+                itens = custos.itens_do_layout(lidos[t])
+                origem = (f"layout de {t} da PGL deste processo (o peso sai do rateio do frete e das despesas; o valor, do Siscomex)")
+                break
+    if not itens:
+        avisos.append("Ainda não há base de itens: monte a planilha proforma do processo em Embarques ou informe os itens.")
+    atual = lidos.get(body.tipo)
+    valores = {c: r2["total"] for c, r2 in (atual or {}).get("rubricas", {}).items()}
+    manual = {}
+    if atual and itens:  # II e antidumping: o valor de cada item como veio da PGL (aliquota por NCM)
+        pos = {(it["po"], it["item"].lstrip("0")): it for it in atual["itens"]}
+        for c in valores:
+            if c.upper().startswith("DEBITOII") or "DUMPING" in c.upper():
+                manual[c] = [round((pos.get((i["po"], str(i["item"]).lstrip("0"))) or {}).get("valores", {}).get(c, 0), 2) for i in itens]
+    versoes = [a["versao"] for a in (p or {}).get("arquivos", []) if a["tipo"] == body.tipo]
+    data_doc = (fup.get("registro_di") if body.tipo == "impostos" else (fup.get("entrega") or fup.get("prev_entrega"))) or date.today().isoformat()
+    atrib = ((atual or {}).get("rubricas") or {})
+    atrib = next((x["atribuicao"] for x in atrib.values()), "1") if body.tipo == "despesas" else ""
+    ref = (p or {}).get("ref") or fup.get("conhecimento") or (r or {}).get("bol") or (r or {}).get("numero") or ""
+    return {"tipo": body.tipo, "ref": re.sub(r"[^A-Za-z0-9-]", "", str(ref))[:40], "wfadim": (p or {}).get("wfadim") or fup.get("wfadim") or (r or {}).get("wfadim") or "",
+            "di": (p or {}).get("di") or re.sub(r"[^A-Za-z0-9/.-]", "", str(fup.get("di") or ""))[:20], "data": data_doc[:10], "atribuicao": atrib or "1",
+            "itens": itens, "origem_itens": origem, "avisos": avisos, "base_pct": bool(itens) and origem.startswith("layout"), "valores": valores, "manual": manual,
+            "tem_layout_pgl": bool(atual), "versao": (max(versoes) + 1) if versoes else 1,
+            "catalogo": _custos_catalogo(body.tipo), "chave": (p or {}).get("chave", ""), "emb_id": emb_id or ""}
+
+
+@app.post("/api/custos/layout")
+def custos_layout(body: CustosLote, user: dict[str, Any] = Depends(_custos_user)) -> dict[str, Any]:
+    """Monta um CSV no formato da PGL (ZDMM_DEBITO_POST) com um ou varios processos. Nada e gravado: a pessoa baixa e
+    confere. Processo com problema fica de fora com o motivo; se nenhum puder ser montado, 422 com os motivos."""
+    linhas_csv: list[str] = []
+    feitos, erros = [], []
+    for p in body.processos:
+        try:
+            a = _custos_conferir(body.tipo, p)
+        except ValueError as exc:
+            erros.append({"processo": _custos_txt(p.get("wfadim") or p.get("ref"), 40) or "processo", "motivo": str(exc)})
+            continue
+        csv, resumo = custos.montar_layout(body.tipo, a["ref"], a["itens"], a["valores"], a["data"], a["di"],
+                                           manual=a["manual"], atribuicao=a["atribuicao"])
+        corpo = csv.splitlines()[1:]
+        linhas_csv += corpo
+        feitos.append({"ref": a["ref"], "wfadim": a["wfadim"], "versao": a["versao"], "linhas": len(corpo),
+                       "total": round(sum(r["total"] for r in resumo), 2),
+                       "rubricas": [{k: v for k, v in r.items() if k != "partes"} for r in resumo]})
+    if not feitos:
+        raise HTTPException(422, "Nenhum processo pôde ser montado. " + " ".join(f"{e['processo']}: {e['motivo']}." for e in erros))
+    tipo = body.tipo.upper()
+    if len(feitos) == 1:
+        f = feitos[0]
+        nome = f"MIRO DE {tipo} - {f['ref']}" + (f" - {f['wfadim']}" if f["wfadim"] else "") + f"-{f['versao']}.csv"
+    else:
+        nome = f"MIRO DE {tipo} - LOTE {date.today().strftime('%d-%m-%Y')} - {len(feitos)} processos.csv"
+    csv_total = ";".join(custos.COLUNAS) + "\n" + "\n".join(linhas_csv) + "\n"
+    total = round(sum(f["total"] for f in feitos), 2)
+    _audit(user["email"], "custos_layout_montado", tipo=body.tipo, processos=[f["wfadim"] or f["ref"] for f in feitos][:80],
+           total=total, recusados=len(erros))
+    return {"nome": nome, "csv": csv_total, "processos": feitos, "erros": erros, "linhas": len(linhas_csv), "total": total}
+
+
+# ---------------------------------------------------------------------------
+# Validação do frete internacional da Centauro (Asia Shipping e DMS), 24/11/2026, pedido do usuário. Aba "Frete
+# internacional" da página Custos. O fluxo apartado "NexxusDoc - Frete internacional" do n8n lê os e-mails das faturas no
+# Gmail, guarda o PDF em frete/faturas e grava nexxusdoc_frete_n8n.json (SÓ o n8n escreve; tem também quem aprovou pelo
+# e-mail). O app lê o PDF, aplica o BID mais recente (SeuProjeto › BID › Centauro › Agente de Cargas › Tarifário) com a regra
+# da calculadora "Validação de frete.xlsx" (frete.py) e o FUP da PGL (relatório SBF: cubagem, peso, contêineres). O "ok"
+# dado na tela fica só no sistema (frete/conferencias.json): NENHUM e-mail é respondido (pedido do usuário).
+# ---------------------------------------------------------------------------
+FRETE_DIR = SHARED_ROOT / "frete"
+FRETE_FATURAS = FRETE_DIR / "faturas"
+FRETE_N8N_FILE = SHARED_ROOT / "nexxusdoc_frete_n8n.json"
+FRETE_CONF_FILE = FRETE_DIR / "conferencias.json"
+FRETE_TAR_FILE = FRETE_DIR / "tarifario.json"  # cópia do BID lido (máquina sem a pasta SeuProjeto usa esta)
+FRETE_PARAM_FILE = FRETE_DIR / "parametros.json"  # parâmetros da calculadora (master e owners alteram na tela)
+FRETE_BID_DIR = Path(CONFIG.get("NEXUS_BID_DIR") or str(SHARED_ROOT.parent.parent / "SeuProjeto" / "BID" / "Centauro" /
+                                                     "Agente de Cargas" / "Tarifário"))
+FRETE_CACHE: dict[str, Any] = {"tar_key": None, "tar": None, "textos": {}, "key": None, "data": None, "det": {}}
+FRETE_LOCK = threading.Lock()
+FRETE_SITUACOES = {"conferida": "Conferida pelo BID", "divergente": "Divergente", "verificar": "Verificar (fora do BID)",
+                   "ok_sistema": "Ok dado no sistema", "aprovada": "Aprovada por e-mail", "devolvida": "Devolvida ao agente",
+                   "sem_arquivo": "PDF não encontrado"}
+
+
+def _frete_tarifario() -> dict[str, Any]:
+    """BID mais recente de cada agente, relido só quando um arquivo do Tarifário muda; sem a pasta, a última cópia lida."""
+    try:
+        arqs = sorted((str(f), f.stat().st_mtime) for pad in ("*/20*/*.xlsx", "*/20*/Anteriores/*.xlsx")
+                      for f in FRETE_BID_DIR.glob(pad) if not f.name.startswith("~$"))
+    except OSError:
+        arqs = []
+    key = tuple(arqs) or ("copia", FRETE_TAR_FILE.stat().st_mtime if FRETE_TAR_FILE.exists() else None)
+    if FRETE_CACHE["tar_key"] == key and FRETE_CACHE["tar"] is not None:
+        return FRETE_CACHE["tar"]
+    tar: dict[str, Any] = {}
+    if arqs:
+        try:
+            tar = frete.tarifario(FRETE_BID_DIR)
+        except Exception as exc:  # noqa: BLE001 (planilha aberta ou corrompida: usa a cópia)
+            print(f"Tarifario de frete nao lido: {exc}", flush=True)
+        if tar.get("asia") or tar.get("dms"):
+            antes = _emb_read(FRETE_TAR_FILE)
+            if antes.get("fontes") != tar.get("fontes") and CONFIG.get("NEXUS_MODO") != "nuvem":
+                try:
+                    _write_atomic(FRETE_TAR_FILE, json.dumps(tar, ensure_ascii=False).encode("utf-8"))
+                except OSError:
+                    pass
+    if not (tar.get("asia") or tar.get("dms")):
+        tar = _emb_read(FRETE_TAR_FILE)
+        tar["copia"] = True
+    FRETE_CACHE.update(tar_key=key, tar=tar)
+    return tar
+
+
+def _frete_texto(path: Path) -> str:
+    try:
+        key = (path.name, path.stat().st_mtime)
+    except OSError:
+        return ""
+    if key not in FRETE_CACHE["textos"]:
+        from pypdf import PdfReader
+        try:
+            FRETE_CACHE["textos"][key] = "\n".join(p.extract_text() or "" for p in PdfReader(_long(path)).pages)
+        except Exception:  # noqa: BLE001
+            FRETE_CACHE["textos"][key] = ""
+    return FRETE_CACHE["textos"][key]
+
+
+def _frete_fup() -> dict[str, dict[str, Any]]:
+    """FUP da PGL da Centauro (relatório SBF) por HBL e referência: WFADIM, cubagem, peso, contêineres e datas."""
+    r = (_pgl_rel().get("relatorios") or {}).get("sbf") or {}
+    cols = {c: i for i, c in enumerate(r.get("colunas") or [])}
+    g = lambda l, k: l[cols[k]] if k in cols and cols[k] < len(l) else None  # noqa: E731
+    out: dict[str, dict[str, Any]] = {}
+    for l in r.get("linhas") or []:
+        item = {"wfadim": g(l, "PROCESSO"), "cubagem": g(l, "CUBAGEM"), "peso": g(l, "PESO BRUTO"), "volume": g(l, "VOLUME"),
+                "etd": str(g(l, "EMBARQUE NA ORIGEM") or "")[:10], "chegada": str(g(l, "CHEGADA MERCADORIA") or "")[:10],
+                "registro_di": str(g(l, "REGISTRO DI") or "")[:10], "entrega": str(g(l, "ENTREGA DA MERC") or "")[:10],
+                "status": g(l, "STATUS"), "navio": g(l, "NAVIO"), "canal": g(l, "CANAL")}
+        for k in ("CONHECIMENTO", "REF CLIENTE"):
+            v = str(g(l, k) or "").strip().upper()
+            if v:
+                out.setdefault(v, item)
+    return out
+
+
+def _frete_index() -> dict[str, Any]:
+    def mt(path: Path) -> float | None:
+        try:
+            return path.stat().st_mtime
+        except OSError:
+            return None
+    tar = _frete_tarifario()
+    key = (mt(FRETE_N8N_FILE), mt(FRETE_CONF_FILE), FRETE_CACHE["tar_key"], mt(PGL_REL_FILE), mt(FRETE_PARAM_FILE))
+    if FRETE_CACHE["key"] == key and FRETE_CACHE["data"] is not None:
+        return FRETE_CACHE["data"]
+    params = frete.parametros(_emb_read(FRETE_PARAM_FILE).get("valores"))
+    est = _emb_read(FRETE_N8N_FILE)
+    conf = _emb_read(FRETE_CONF_FILE).get("faturas", {})
+    aprov = est.get("aprovacoes") or {}
+    fup = _frete_fup()
+    rows, det = [], {}
+    for fid, meta in (est.get("faturas") or {}).items():
+        path = FRETE_FATURAS / str(meta.get("arquivo") or "")
+        fat = frete.ler_fatura(_frete_texto(path)) if meta.get("arquivo") and path.exists() else None
+        base = {"id": fid, "agente": meta.get("agente"), "agente_nome": frete.AGENTES.get(meta.get("agente"), meta.get("agente")),
+                "recebido_em": meta.get("recebido_em"), "anexo": meta.get("anexo"), "conversa": meta.get("conversa") or fid}
+        if not fat:
+            rows.append({**base, "situacao": "sem_arquivo", "status": "sem_arquivo",
+                         "motivos": ["O PDF da fatura ainda não chegou à pasta do sistema (sincronização do Drive) ou não é uma fatura conhecida."]})
+            continue
+        f = fup.get(str(fat.get("hbl") or "").upper()) or fup.get(str(fat.get("ref_cliente") or "").upper())
+        v = frete.validar(fat, tar, f, params)
+        a = aprov.get(base["conversa"])
+        if a and a.get("trecho"):  # só a frase da aprovação, sem a assinatura ("Atenciosamente", "Att")
+            a = {**a, "trecho": re.split(r"\s*\b(?:Atenciosamente|Att|Abs|Obrigad[oa])\b", str(a["trecho"]))[0].strip(" ,.")}
+        c = conf.get(fid)
+        status = ("aprovada" if a else "ok_sistema" if c and c.get("acao") == "ok" else "devolvida" if c and c.get("acao") == "devolver"
+                  else v["situacao"])
+        row = {**base, "processo": fat.get("processo"), "numero": fat.get("numero"), "hbl": fat.get("hbl"), "mbl": fat.get("mbl"),
+               "wfadim": (f or {}).get("wfadim"), "modal": v["modal"], "pol": fat.get("pol"), "porto": (v.get("tarifa") or {}).get("porto"),
+               "etd": fat.get("etd"), "eta": fat.get("eta"), "emissao": fat.get("emissao"), "vencimento": fat.get("vencimento"),
+               "exportador": fat.get("exportador"), "armador": fat.get("armador"), "taxa": fat.get("taxa"),
+               "total_fatura": v["total_fatura"], "total_bid": v["total_bid"], "diferenca": v["diferenca"],
+               "frete_usd": v["frete_usd"], "frete_brl": v["frete_brl"], "situacao": v["situacao"], "status": status,
+               "motivos": v["motivos"], "avisos": v["avisos"], "resumo": v.get("resumo", ""), "cubagem": v["base"]["cubagem"], "peso": v["base"]["peso"],
+               "conteineres": v["base"]["conteineres"], "aprovacao": a, "conferencia": c}
+        rows.append(row)
+        det[fid] = {"fatura": fat, "validacao": v, "fup": f}
+    rows.sort(key=lambda r: r.get("recebido_em") or "", reverse=True)
+    resumo = {"asia": None, "dms": None}
+    if tar.get("asia"):
+        resumo["asia"] = {"arquivo": tar["asia"]["arquivo"], "vigencia": tar["asia"].get("vigencia")}
+    if tar.get("dms"):
+        abas = [{"aba": a["aba"], "periodo": a["periodo"], "modal": m.upper()} for m in ("fcl", "lcl") for a in tar["dms"].get(m) or []
+                if not a.get("oculta")]
+        resumo["dms"] = {"arquivo": tar["dms"]["arquivo"], "abas": abas}
+    data = {"faturas": rows, "tarifario": resumo, "tarifario_copia": bool(tar.get("copia")),
+            "erros_bid": {k: v.get("erro") for k, v in (tar.get("fontes") or {}).items() if v.get("erro")},
+            "n8n": {"em": est.get("ultima_execucao"), "rodada": est.get("ultima_rodada")}, "pasta_bid": "Sua Area › SeuProjeto › BID › Centauro › Agente de Cargas › Tarifário",
+            "situacoes": FRETE_SITUACOES, "parametros": params}
+    FRETE_CACHE.update(key=key, data=data, det=det)
+    return data
+
+
+# Acesso: TODOS os usuários do sistema (pedido do usuário em 24/11/2026: a equipe inteira valida e dá o ok), diferente das
+# outras abas de Custos (valores das MIROs, só master e owners).
+@app.get("/api/frete")
+def frete_lista(user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    return _frete_index()
+
+
+@app.get("/api/frete/fatura/{fid}")
+def frete_fatura(fid: str, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    from urllib.parse import quote
+    data = _frete_index()
+    row = next((r for r in data["faturas"] if r["id"] == fid), None)
+    if not row:
+        raise HTTPException(404, "Fatura não encontrada.")
+    d = FRETE_CACHE["det"].get(fid) or {}
+    fat = d.get("fatura") or {}
+    return {"linha": row, "validacao": d.get("validacao"), "fup": d.get("fup"),
+            "cobrancas": fat.get("linhas", []), "conteineres_fatura": fat.get("conteineres", []),
+            # a tela monta o link do Gmail com a conta de quem está logado (authuser): cada um busca na própria caixa
+            "busca": str(fat.get("hbl") or row.get("anexo") or "")}
+
+
+@app.get("/api/frete/fatura/{fid}/pdf")
+def frete_pdf(fid: str, user: dict[str, Any] = Depends(current_user)):
+    meta = (_emb_read(FRETE_N8N_FILE).get("faturas") or {}).get(fid)
+    path = FRETE_FATURAS / str((meta or {}).get("arquivo") or "")
+    if not meta or path.suffix.casefold() != ".pdf" or not path.exists() or path.resolve().parent != FRETE_FATURAS.resolve():
+        raise HTTPException(404, "PDF da fatura não encontrado.")
+    return _user_file(path)
+
+
+FRETE_PARAM_LIMITES = {  # (mínimo, máximo) aceitos na tela; None = "usar o do BID" (só IOF e PIS/COFINS da DMS)
+    ("geral", "tolerancia_cobranca"): (0, 100), ("geral", "tolerancia_total"): (0, 500),
+    ("asia", "iof"): (0, 0.2), ("asia", "peso_max_lcl_t"): (0, 50), ("asia", "min_wm"): (0, 10),
+    ("dms", "iof"): (0, 0.2), ("dms", "repasse"): (0, 0.5), ("dms", "peso_max_lcl_t"): (0, 50), ("dms", "min_wm"): (0, 10),
+}
+
+
+@app.get("/api/frete/parametros")
+def frete_parametros(user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    gravado = _emb_read(FRETE_PARAM_FILE)
+    return {"valores": frete.parametros(gravado.get("valores")), "padrao": frete.PADRAO, "regras_bid": frete.REGRAS_BID,
+            "alterado_por": gravado.get("alterado_por"), "alterado_em": gravado.get("alterado_em"),
+            "historico": (gravado.get("historico") or [])[-10:], "pode_editar": _frete_pode_parametros(user)}
+
+
+def _frete_pode_parametros(user: dict[str, Any]) -> bool:
+    """Master, owners e quem o master liberar em Configurações › Acessos ("Pode alterar os parâmetros do frete")."""
+    return user.get("role") in {"master", "owner"} or user.get("frete_param") is True
+
+
+@app.put("/api/frete/parametros")
+def frete_parametros_salvar(body: dict[str, Any], user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    """Grava os parâmetros da calculadora (master e owners). Cada alteração fica no histórico, com quem e quando."""
+    if not _frete_pode_parametros(user):
+        raise HTTPException(403, "Você não tem permissão para alterar os parâmetros do frete. O administrador master libera em Configurações › Acessos.")
+    novos = frete.parametros(None)
+    for (g, k), (lo, hi) in FRETE_PARAM_LIMITES.items():
+        v = ((body.get("valores") or {}).get(g) or {}).get(k, novos[g][k])
+        if v in (None, "") and k in ("iof", "repasse") and g == "dms":
+            novos[g][k] = None
+            continue
+        try:
+            v = float(v)
+        except (TypeError, ValueError):
+            raise HTTPException(422, f"Valor inválido em {g} › {k}.") from None
+        if not lo <= v <= hi:
+            raise HTTPException(422, f"{g} › {k} fora do permitido ({lo} a {hi}).")
+        novos[g][k] = round(v, 6)
+    regra = ((body.get("valores") or {}).get("asia") or {}).get("bid", "mais_recente")
+    if regra not in frete.REGRAS_BID:
+        raise HTTPException(422, "Regra do BID da Asia inválida.")
+    novos["asia"]["bid"] = regra
+    with FRETE_LOCK:
+        atual = _emb_read(FRETE_PARAM_FILE)
+        antes = frete.parametros(atual.get("valores"))
+        mud = [{"campo": f"{g}.{k}", "de": antes[g][k], "para": novos[g][k]} for g in novos for k in novos[g] if antes[g][k] != novos[g][k]]
+        if not mud:
+            return {"ok": True, "mudancas": 0}
+        agora = datetime.now().isoformat(timespec="seconds")
+        hist = (atual.get("historico") or []) + [{"por": user["email"], "em": agora, "mudancas": mud}]
+        _write_atomic(FRETE_PARAM_FILE, json.dumps({"valores": novos, "alterado_por": user["email"], "alterado_em": agora,
+                                                    "historico": hist[-50:]}, ensure_ascii=False, indent=1).encode("utf-8"))
+    FRETE_CACHE["key"] = None
+    _audit(user["email"], "frete_parametros", mudancas=mud)
+    return {"ok": True, "mudancas": len(mud)}
+
+
+class FreteConferencia(BaseModel):
+    acao: str = Field(pattern="^(ok|devolver|desfazer)$")
+    nota: str = Field(default="", max_length=600)
+
+
+@app.post("/api/frete/fatura/{fid}/conferencia")
+def frete_conferencia(fid: str, body: FreteConferencia, user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    """Registra no sistema o ok (ou a devolução ao agente) de quem conferiu. Não responde e-mail nenhum."""
+    data = _frete_index()
+    row = next((r for r in data["faturas"] if r["id"] == fid), None)
+    if not row:
+        raise HTTPException(404, "Fatura não encontrada.")
+    if body.acao == "ok" and row["situacao"] != "conferida" and not body.nota.strip():
+        raise HTTPException(422, "Esta fatura não bate com o BID: escreva o motivo do ok (ex.: proposta spot aprovada).")
+    if body.acao == "devolver" and not body.nota.strip():
+        raise HTTPException(422, "Escreva o motivo da devolução ao agente.")
+    with FRETE_LOCK:
+        atual = _emb_read(FRETE_CONF_FILE)
+        fs = atual.setdefault("faturas", {})
+        if body.acao == "desfazer":
+            fs.pop(fid, None)
+        else:
+            fs[fid] = {"acao": body.acao, "por": user["email"], "em": datetime.now().isoformat(timespec="seconds"),
+                       "nota": " ".join(body.nota.split()), "total_fatura": row.get("total_fatura"), "total_bid": row.get("total_bid"),
+                       "situacao_no_momento": row["situacao"]}
+        _write_atomic(FRETE_CONF_FILE, json.dumps(atual, ensure_ascii=False, indent=1).encode("utf-8"))
+    FRETE_CACHE["key"] = None
+    _audit(user["email"], "frete_conferencia", fatura=fid, acao=body.acao, hbl=row.get("hbl"), total=row.get("total_fatura"))
+    return {"ok": True}
+
+
+@app.get("/api/frete/excel")
+def frete_excel(user: dict[str, Any] = Depends(current_user)):
+    """Mesmas colunas que a equipe lança na planilha 'Suporte Validação de Miros' (aba Fretes Armz Aprovados): valor total
+    da fatura (coluna J) e frete internacional isolado (coluna K), mais a conferência de cada cobrança."""
+    from fastapi.responses import Response
+    from openpyxl import Workbook
+    from openpyxl.styles import Font, PatternFill
+    data = _frete_index()
+    book = Workbook()
+    ws = book.active
+    ws.title = "Faturas"
+    ws.append(["Agente", "Processo do agente", "HBL", "WFADIM", "Modal", "Origem", "Embarque", "Emissão", "Vencimento", "Taxa do dólar",
+               "Valor total da fatura (R$)", "Frete internacional isolado (R$)", "Frete (USD)", "Total pelo BID (R$)", "Diferença (R$)",
+               "Situação", "Motivos", "Aprovação por e-mail", "Ok no sistema"])
+    for r in data["faturas"]:
+        a, c = r.get("aprovacao") or {}, r.get("conferencia") or {}
+        ws.append([r.get("agente_nome"), r.get("processo"), r.get("hbl"), r.get("wfadim"), r.get("modal"), r.get("porto"), r.get("etd"),
+                   r.get("emissao"), r.get("vencimento"), r.get("taxa"), r.get("total_fatura"), r.get("frete_brl"), r.get("frete_usd"),
+                   r.get("total_bid"), r.get("diferenca"), FRETE_SITUACOES.get(r["status"], r["status"]), " | ".join(r.get("motivos") or []),
+                   f"{a.get('por', '')} em {str(a.get('em', ''))[:10]}" if a else "",
+                   f"{c.get('por', '')} em {str(c.get('em', ''))[:10]}" + (f" ({c.get('nota')})" if c.get("nota") else "") if c else ""])
+    sh = book.create_sheet("Cobranças")
+    sh.append(["HBL", "Cobrança", "Descrição na fatura", "Moeda", "Valor", "Cobrado (R$)", "Pelo BID (R$)", "Diferença (R$)", "Regra do BID", "Situação"])
+    st = {"ok": "Confere", "divergente": "Divergente", "sem_tarifa": "Sem tarifa no BID", "nao_cobrado": "Não cobrada",
+          "nao_prevista": "Fora do BID", "indevida": "Indevida"}
+    for fid, d in FRETE_CACHE["det"].items():
+        hbl = (d.get("fatura") or {}).get("hbl")
+        for ln in (d.get("validacao") or {}).get("linhas", []):
+            c0 = (ln["cobrado"] or [{}])[0]
+            sh.append([hbl, ln["nome"], c0.get("descricao", ""), c0.get("moeda", ""), c0.get("valor"), ln["cobrado_brl"], ln["esperado_brl"],
+                       ln["dif"], ln["regra"], st.get(ln["status"], ln["status"])])
+    for s in book.worksheets:
+        for cell in s[1]:
+            cell.font = Font(bold=True, color="FFFFFF")
+            cell.fill = PatternFill("solid", fgColor="003D18")
+        s.freeze_panes = "A2"
+        s.auto_filter.ref = s.dimensions
+    _xl_text_only(book)
+    buf = io.BytesIO()
+    book.save(buf)
+    _audit(user["email"], "frete_exportado", faturas=len(data["faturas"]))
+    return Response(buf.getvalue(), media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    headers={"Content-Disposition": 'attachment; filename="Validacao_frete_internacional.xlsx"'})
+
+
 def _extract_reference_text(filename: str, content: bytes) -> str:
     suffix = Path(filename).suffix.casefold()
     _zip_guard(filename, content)
@@ -9933,10 +12225,21 @@ def _manual_terms(text: str) -> set[str]:
     return {w[:7] for w in words if len(w) >= 2 and w not in MANUAL_STOPWORDS}
 
 
-def _relevant_manuals(query: str, limit: int = MANUAL_CHAT_LIMIT, by_title: bool = False) -> list[dict[str, Any]]:
+def _pergunta_nucleo(query: str) -> str:
+    """O termo perguntado, sem "o que é", "qual", "como"...: " minuta de devolucao de cntr " (com espaços nas pontas,
+    normalizado como o texto dos documentos) ou "" se for curto demais. Vale para qualquer pergunta do Chat, em manuais,
+    enviados, localizados e POPs do NexxusDoc (24/11/2026)."""
+    core = re.sub(r"^(?:o que|oq|que|qual|quais|como|onde|quem|me explica|explica|explique|significa)\s+"
+                  r"(?:e|eh|sao|significa|seria|quer dizer|o|a|os|as|um|uma)?\s*", "", _norm(query)).strip()
+    return f" {core} " if len(core) >= 4 else ""  # uma palavra só também vale ("o que é AFRMM?")
+
+
+def _relevant_manuals(query: str, limit: int = MANUAL_CHAT_LIMIT, by_title: bool = False,
+                      pergunta: str | None = None) -> list[dict[str, Any]]:
     """Manuais mais ligados a pergunta: termos em comum com titulo/codigo (peso maior), titulos das secoes e texto.
     Se o mais ligado casa pelo titulo, os demais tambem precisam casar pelo titulo ou pelas secoes (evita ruido).
-    by_title=True: so manuais que casam pelo titulo (uso no universo, a partir do nome do processo)."""
+    by_title=True: so manuais que casam pelo titulo (uso no universo, a partir do nome do processo).
+    pergunta: so a mensagem atual (o Chat manda em `query` a pergunta + o historico; a expressao exata sai so dela)."""
     terms = _manual_terms(query)
     index = _manual_index()
     if not terms or not index:
@@ -9944,14 +12247,29 @@ def _relevant_manuals(query: str, limit: int = MANUAL_CHAT_LIMIT, by_title: bool
     # termo raro (sigla de fornecedor, codigo) pesa mais que termo que aparece em quase todo manual ('importacao')
     weight = {t: min(2.0, max(0.3, math.log(len(index) / (1 + sum(t in h or t in b for _, h, _, b, _ in index)))))
               for t in terms}
-    scored = []
-    for manual, head_t, heads_t, body_t, _ in index:
+    # Pergunta curta de definição ("o que é Minuta de devolução de CNTR?", 24/11/2026): a expressão exata no texto do
+    # manual, ou todas as palavras da pergunta nele, valem como ligação forte (antes exigia 5 palavras em comum no texto,
+    # e o termo do glossário do manual não chegava ao agente).
+    atual = pergunta or query
+    phrase = _pergunta_nucleo(atual)
+    terms_atual = _manual_terms(atual) or terms
+    scored, by_name = [], []  # by_name: os que casam pelo título, sem o bônus da expressão
+    for manual, head_t, heads_t, body_t, full in index:
         if by_title and len(terms & head_t) < 2:
             continue
         head = sum(weight[t] for t in terms & head_t)
         heads = sum(weight[t] for t in terms & heads_t)
         body = sum(weight[t] for t in terms & body_t)
         score = 3 * head + 1.5 * heads + 0.5 * body
+        head_atual = sum(weight.get(t, 0) for t in terms_atual & head_t)  # título × pergunta atual (sem o histórico)
+        if head_atual:
+            by_name.append((head_atual, manual))
+        exato = not by_title and bool(phrase) and phrase in full
+        todas = not by_title and len(terms_atual) >= 2 and all(f" {t}" in full for t in terms_atual)
+        if exato or todas:
+            bonus = 3 * sum(weight.values()) if exato else 1.5 * sum(weight.values())
+            score += bonus
+            head += bonus / 3  # conta como ligação pelo título (passa no filtro de ruído abaixo)
         if score >= 1.5 and (head or heads or len(terms & body_t) >= 5):
             scored.append((score, head, heads, manual))
     scored.sort(key=lambda item: item[0], reverse=True)
@@ -9969,6 +12287,15 @@ def _relevant_manuals(query: str, limit: int = MANUAL_CHAT_LIMIT, by_title: bool
             continue
         chosen.append(manual)
         total += size
+    # o manual que mais casa pelo título não sai por causa dos glossários que só citam a expressão
+    # ("o que é termo de avarias?" = glossários + "Ressarcimento, Avarias & Perdas")
+    if by_name and not by_title:
+        top = max(by_name, key=lambda item: item[0])[1]
+        if top not in chosen and top in [item[3] for item in scored]:
+            if len(chosen) >= limit:
+                total -= int(chosen.pop().get("caracteres") or 0)
+            if not chosen or total + int(top.get("caracteres") or 0) <= MANUAL_CHAT_CHARS:
+                chosen.append(top)
     return chosen
 
 
@@ -11022,6 +13349,7 @@ def external_documents(user: dict[str, Any] = Depends(current_user)) -> list[dic
                       "can_change_review": _can_change_review(owner, doc.get("area"), user),
                       "review_changed": bool(doc.get("revisao_alterada")),
                       "open_url": f"/api/envios/{doc['id']}/arquivo", "file_name": doc.get("arquivo", ""),
+                      "flow": _flow_ext_summary(f"env-{doc['id']}", _sent_as_manual(doc)),
                       "can_revise": bool(doc.get("texto")),
                       "can_delete": is_master or owner.casefold() == user["email"].casefold()})
     for doc in _localized_docs():
@@ -11038,6 +13366,7 @@ def external_documents(user: dict[str, Any] = Depends(current_user)) -> list[dic
                       "created_at": doc.get("aprovado_em", ""),
                       "last_review": last.isoformat() if last else "", **_due_state(due, today, notice),
                       "review_source": "documento" if found else "", "open_url": _localized_link(doc),
+                      "flow": _flow_ext_summary(f"loc-{doc['id']}", _localized_as_manual(doc)),
                       "origin_detail": doc.get("origem", ""), "can_revise": bool(doc.get("arquivo")), "can_delete": False})
     for manual in _manuals():
         if manual.get("localizado") or not _official_manual(manual):
@@ -11056,8 +13385,88 @@ def external_documents(user: dict[str, Any] = Depends(current_user)) -> list[dic
                       "last_review": last.isoformat() if last else "",
                       **_due_state(_add_months_date(last, months) if last else None, today, notice),
                       "review_source": "manual", "open_url": manual.get("link", ""), "origin_detail": manual.get("origem", ""),
+                      "flow": _flow_ext_summary(f"man-{manual['id']}", manual),
                       "can_revise": bool(manual.get("secoes")), "can_delete": False})
     return items
+
+
+# ---------------------------------------------------------------------------
+# Busca global (Ctrl+K) no CONTEUDO dos documentos (19/11/2026, pedido do usuario: buscar "Box Folder" levava ao
+# "Documentar" do processo em vez de abrir o documento, e a busca so olhava os nomes). Procura no texto dos POPs do
+# NexxusDoc, dos manuais da area, dos enviados e dos localizados; cada achado abre o proprio documento.
+# ---------------------------------------------------------------------------
+SEARCH_CACHE: dict[str, Any] = {"key": None, "items": []}
+SEARCH_MAX_RESULTS = 12
+
+
+def _fold_keep(text: str) -> str:
+    """Minusculas sem acento com o MESMO tamanho do texto (o trecho mostrado sai do texto original)."""
+    return "".join((unicodedata.normalize("NFD", ch)[0] if ch else ch).lower()[:1] or " " for ch in text)
+
+
+def _search_pool() -> list[dict[str, Any]]:
+    """Documentos pesquisaveis (texto ja dobrado), refeitos so quando algum documento muda."""
+    records = _load_records()
+    manuals = _manuals()
+    key = (id(manuals), tuple(sorted((r["id"], r.get("updated_at", r.get("created_at", ""))) for r in records)))
+    if SEARCH_CACHE["key"] == key:
+        return SEARCH_CACHE["items"]
+    items = []
+    for record in records:
+        doc = record.get("document") or {}
+        text = _document_text(doc)
+        title = doc.get("title") or record.get("process", "")
+        items.append({"id": record["id"], "tipo": "nexxusdoc", "rotulo": "Documento do NexxusDoc", "titulo": title,
+                      "codigo": record.get("doc_code", ""), "area": record.get("area", ""), "url": "",
+                      "head": _fold_keep(f"{title} {record.get('doc_code', '')} {record.get('process', '')}"),
+                      "texto": text, "fold": _fold_keep(text)})
+    for manual in manuals:
+        text = "\n".join(f"{s.get('titulo', '')}\n{s.get('texto', '')}" for s in manual.get("secoes") or [])
+        if not manual.get("link") or not text.strip():
+            continue
+        kind = ("enviado" if manual.get("enviado") else "localizado" if manual.get("localizado") else "manual")
+        items.append({"id": str(manual["id"]), "tipo": kind,
+                      "rotulo": {"enviado": "Documento enviado", "localizado": "Localizado no Drive"}.get(
+                          kind, manual.get("tipo") or "Manual da área"),
+                      "titulo": manual.get("titulo", ""), "codigo": manual.get("codigo", ""),
+                      "revisao": manual.get("revisao", ""), "area": manual.get("area", ""), "url": manual["link"],
+                      "head": _fold_keep(f"{manual.get('titulo', '')} {manual.get('codigo', '')}"),
+                      "texto": text, "fold": _fold_keep(text)})
+    SEARCH_CACHE.update(key=key, items=items)
+    return items
+
+
+@app.get("/api/busca")
+def global_search(q: str = "", user: dict[str, Any] = Depends(current_user)) -> dict[str, Any]:
+    """Documentos que tem TODAS as palavras da busca no titulo ou no texto, os de titulo primeiro, depois os que mais
+    citam; cada um com o trecho onde aparece e o endereco para abrir o proprio documento."""
+    terms = [t for t in _fold_keep(" ".join(str(q)[:120].split())).split() if len(t) >= 2][:6]
+    if not terms:
+        return {"itens": []}
+    is_master, area = user.get("role") == "master", _user_area(user)
+    found = []
+    for item in _search_pool():
+        if item["tipo"] in {"enviado", "localizado"} and not is_master and not _same_area(item["area"], area):
+            continue
+        head, body = item["head"], item["fold"]
+        if not all(t in head or t in body for t in terms):
+            continue
+        in_title = sum(t in head for t in terms)
+        hits = sum(min(body.count(t), 30) for t in terms)
+        # Trecho: a primeira passagem do termo mais raro do documento (a que mais interessa a quem buscou).
+        rare = min(terms, key=lambda t: body.count(t) or 10**6)
+        pos = body.find(rare)
+        snippet = ""
+        if pos >= 0:
+            start, end = max(0, pos - 90), min(len(body), pos + len(rare) + 130)
+            snippet = (("…" if start else "") + " ".join(item["texto"][start:end].split()) + ("…" if end < len(body) else ""))
+        found.append((in_title, hits, item, snippet))
+    found.sort(key=lambda f: (-f[0], -f[1], _norm(f[2]["titulo"])))
+    return {"itens": [{"id": item["id"], "tipo": item["tipo"], "rotulo": item["rotulo"], "titulo": item["titulo"],
+                       "codigo": item["codigo"] if re.search(r"\d", str(item["codigo"])) else "",
+                       "revisao": item.get("revisao", ""), "url": item["url"], "trecho": snippet, "citacoes": hits,
+                       "no_titulo": bool(in_title)}
+                      for in_title, hits, item, snippet in found[:SEARCH_MAX_RESULTS]]}
 
 
 class ExternalRef(BaseModel):
@@ -11151,7 +13560,7 @@ CLOUD_IGNORE = tuple(f"NexxusDoc/{name}" for name in (
 CLOUD_CODE_DIRS = ("static", "assets", "workflows")
 CLOUD_CODE_FILES = {"publicacao.json", "publicacao.sig", "n8n_acesso.json", "nuvem_acesso.json", "questionnaire.json",
                     "policy_questionnaire.json", "modelos_referencias_por_area.json", "conhecimento_interno_por_area.json",
-                    "pgl_processos.json", "base_manuais.json", "query_console.json", "query_biblioteca.json", "bigquery_conhecimento.json", "bigquery_colunas.json", "auditoria_base.json", "auditoria_conhecimento.json", "novidades.json", "requirements.txt", ".env.example",
+                    "pgl_processos.json", "base_manuais.json", "query_console.json", "query_biblioteca.json", "bigquery_conhecimento.json", "bigquery_colunas.json", "novidades.json", "requirements.txt", ".env.example",
                     "NEXXUSDOC_PASTA_COMPARTILHADA.txt", "PASTA_MOVIDA.json"}
 CLOUD_CODE_SUFFIXES = (".py", ".pyw", ".bat", ".md", ".docx", ".sig")
 CLOUD_MAX_BYTES = 25 * 1024 * 1024
@@ -11691,6 +14100,7 @@ async def chat(payload: ChatMessage, user: dict[str, Any] = Depends(current_user
     # documentos mais relevantes a pergunta (e ao historico recente da conversa).
     query = " ".join([payload.message, *[item.get("content", "") for item in payload.history[-4:] if item.get("role") == "user"]])
     query_words = _keywords(query)
+    nucleo = _pergunta_nucleo(payload.message)  # o termo perguntado: o POP que o traz no texto vai primeiro
     scored = []
     for record in _load_records():
         doc = record.get("document", {})
@@ -11698,6 +14108,8 @@ async def chat(payload: ChatMessage, user: dict[str, Any] = Depends(current_user
                              " ".join(str(s.get("title", "")) for s in doc.get("sections", []) if isinstance(s, dict))])
         words = _keywords(haystack)
         relevance = len(query_words & words) / (len(query_words) or 1)
+        if nucleo and nucleo in f" {_norm(_document_text(doc))} ":
+            relevance += 1
         scored.append((relevance, record.get("updated_at") or record.get("created_at", ""), record))
     scored.sort(key=lambda item: (item[0], item[1]), reverse=True)
     knowledge = []
@@ -11740,7 +14152,7 @@ async def chat(payload: ChatMessage, user: dict[str, Any] = Depends(current_user
     official_manuals = [{"manual_id": m["id"], "titulo": m.get("titulo", ""), "revisao": m.get("revisao", ""),
                          "tipo": m.get("tipo", ""), "unidades": m.get("unidades", []), "link": m.get("link", ""),
                          "origem": m.get("origem", ""), "secoes": m.get("secoes", [])}
-                        for m in _relevant_manuals(query) if visible(m)]
+                        for m in _relevant_manuals(query, pergunta=payload.message) if visible(m)]
     history = [{"role": item.get("role"), "content": item.get("content", "")[:4000]}
                for item in payload.history[-20:] if item.get("role") in {"user", "assistant"} and item.get("content")]
     bigquery = await asyncio.to_thread(_bq_context, query)
@@ -11774,6 +14186,7 @@ async def chat(payload: ChatMessage, user: dict[str, Any] = Depends(current_user
                   "padrao do NexxusDoc). Cite como 'documento enviado ao NexxusDoc', inclua o manual_id em manual_sources "
                   "e trate como os localizados (se divergir, vale o mais recente).",
                   "Voce e o NexxusDoc, agente de conhecimento operacional do Grupo SBF. Responda somente com base nas fontes fornecidas (documentos, manuais, system_guide e, quando vier, bigquery); nao invente regra, processo, tabela ou funcao do sistema.",
+                  "Quando a pergunta for sobre melhorias ou automacao: " + IMPROVEMENT_FOCUS_RULE,
                   *([BIGQUERY_CHAT_REQUIREMENT] if bigquery else []),
                   *(["levantamento_reunioes tambem e fonte: anotacoes das reunioes de entendimento com a equipe (pontos, "
                      "dores e oportunidades de automacao, com a data da reuniao). Use quando ajudar a responder, citando "

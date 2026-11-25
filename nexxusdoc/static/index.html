@@ -5,18 +5,32 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <link rel="icon" type="image/svg+xml" href="/static/assets/nexxusdoc.svg?v=nexo">
 <link rel="alternate icon" type="image/png" href="/static/assets/nexxusdoc.png?v=nexo">
-<title>NexxusDoc | Normas e Procedimentos</title>
+<title>NexxusDoc</title>
 <!-- Fluxo As Is (static/fluxo): mudou o .css ou o .js, suba o ?v= (o servidor manda cache imutável para arquivos com ?v=). -->
 <link rel="stylesheet" href="/static/fluxo/fluxo_as_is.css?v=3">
-<script src="/static/fluxo/fluxo_as_is.js?v=3" defer></script>
-<link rel="stylesheet" href="/static/budget/budget.css?v=4">
-<script src="/static/budget/budget.js?v=3" defer></script>
+<script src="/static/fluxo/fluxo_as_is.js?v=4" defer></script>
+<link rel="stylesheet" href="/static/budget/budget.css?v=8">
+<link rel="stylesheet" href="/static/budget/resultados.css?v=3">
+<script src="/static/budget/budget.js?v=18" defer></script>
+<script src="/static/budget/resultados.js?v=4" defer></script>
 <link rel="stylesheet" href="/static/query/query.css?v=11">
-<script src="/static/query/query.js?v=14" defer></script>
-<link rel="stylesheet" href="/static/levantamento/levantamento.css?v=3">
-<script src="/static/levantamento/levantamento.js?v=3" defer></script>
-<link rel="stylesheet" href="/static/auditoria/auditoria.css?v=4">
-<script src="/static/auditoria/auditoria.js?v=4" defer></script>
+<script src="/static/query/query.js?v=15" defer></script>
+<link rel="stylesheet" href="/static/embarques/embarques.css?v=13">
+<script src="/static/embarques/embarques.js?v=16" defer></script>
+<link rel="stylesheet" href="/static/embarques/proforma.css?v=1">
+<script src="/static/embarques/proforma.js?v=2" defer></script>
+<link rel="stylesheet" href="/static/custos/custos.css?v=4">
+<script src="/static/custos/custos.js?v=8" defer></script>
+<link rel="stylesheet" href="/static/frete/frete.css?v=3">
+<link rel="stylesheet" href="/static/globo/globo.css?v=20">
+<script src="/static/globo/vendor/globe.gl.min.js?v=2.45.0" defer></script>
+<script src="/static/globo/vendor/topojson-client.min.js?v=3.1.0" defer></script>
+<script src="/static/globo/globo.js?v=29" defer></script>
+<script src="/static/frete/frete.js?v=4" defer></script>
+<link rel="stylesheet" href="/static/pgl/relatorios.css?v=2">
+<script src="/static/pgl/relatorios.js?v=3" defer></script>
+<link rel="stylesheet" href="/static/levantamento/levantamento.css?v=4">
+<script src="/static/levantamento/levantamento.js?v=4" defer></script>
 <script src="/static/intro/abertura.js?v=3" defer></script>
 <style>
 :root{
@@ -82,14 +96,15 @@ header.top .account-email{color:#4b5d51}
 .nav button[data-page="docs"]{--pc:#E7A21A;--pd:#C48208;--ps:rgba(231,162,26,.16);--pg:rgba(231,162,26,.45)}
 .nav button[data-page="automation"]{--pc:#19B07A;--pd:#0E8C5F;--ps:rgba(25,176,122,.16);--pg:rgba(25,176,122,.45)}
 .nav button[data-page="query"]{--pc:#3B82F6;--pd:#1D4ED8;--ps:rgba(59,130,246,.16);--pg:rgba(59,130,246,.45)}
+.nav button[data-page="embarques"]{--pc:#2A9D8F;--pd:#1B6F65;--ps:rgba(42,157,143,.16);--pg:rgba(42,157,143,.45)}
+.nav button[data-page="custos"]{--pc:#B8862B;--pd:#8E6519;--ps:rgba(184,134,43,.16);--pg:rgba(184,134,43,.45)}
 .nav button[data-page="pgl"]{--pc:#0FA9C9;--pd:#0A87A2;--ps:rgba(15,169,201,.16);--pg:rgba(15,169,201,.45)}
 .nav button[data-page="budget"]{--pc:#F07A2A;--pd:#CF5C10;--ps:rgba(240,122,42,.16);--pg:rgba(240,122,42,.45)}
-.nav button[data-page="audit"]{--pc:#6F8790;--pd:#4F656D;--ps:rgba(111,135,144,.16);--pg:rgba(111,135,144,.45)}
 .nav button .nav-lock{position:absolute;left:25px;top:23px;width:16px;height:16px;border-radius:50%;background:#f4f7ef;border:1px solid #c9d2c4;display:grid;place-items:center;pointer-events:none}
 .nav button .nav-lock svg{width:10px;height:10px;fill:none;stroke:#3d4b45;stroke-width:2.4;stroke-linecap:round;stroke-linejoin:round}
 .nav button.active .nav-lock{display:none}
 .nav button[data-page="config"]{--pc:#6E9A12;--pd:#557A0A;--ps:rgba(110,154,18,.16);--pg:rgba(110,154,18,.45)}
-header.top .faq-open span{font-weight:600}
+header.top .faq-open{width:32px;padding:0;justify-content:center}  /* só o ícone (25/11/2026: o texto sobrepunha a barra em tela pequena) */
 /* Atualização automática (11/11/2026): sem botão; quadro escuro e técnico, sem exagero (pedido do usuário):
    rótulo monoespaçado, barra fina de progresso em lima, resumo do que muda e o código da versão */
 .update-screen{position:fixed;inset:0;z-index:9999;display:grid;place-items:center;background:rgba(5,10,8,.84);backdrop-filter:blur(4px)}
@@ -1160,6 +1175,7 @@ input[type=file]::file-selector-button{border:1px solid var(--line-2);border-rad
 .option-card{display:flex;gap:12px;align-items:flex-start;padding:12px 14px;border:1px solid var(--line);border-radius:8px;background:var(--surface);cursor:pointer}
 .option-card:has(input:checked){border-color:var(--lime);background:#24331f}
 .option-card input{width:18px;height:18px;margin-top:2px;accent-color:var(--lime);flex:none}
+#pref-display .pref-row{display:flex;align-items:center;gap:10px;padding:11px 16px;cursor:pointer;flex-wrap:wrap}#pref-display .pref-row input{width:18px;height:18px;margin:0;accent-color:var(--lime);flex:none}#pref-display .pref-row small{color:var(--muted);font-size:12.5px}#pref-anim-status{margin-left:auto;color:var(--muted);font-size:12.5px}
 .option-card b{color:var(--ink-strong)}
 .option-card small{color:var(--muted);font-size:12px;line-height:1.5}
 /* Mapa de automação */
@@ -1588,13 +1604,14 @@ td.rx-col{text-align:center}
     <button data-page="automation"><svg class="navicon" viewBox="0 0 24 24" aria-hidden="true"><path d="M13.5 2.5 5 13.5h6l-1.5 8 9-11.5h-6z"/></svg>Automação</button>
     <button data-page="query" id="nav-query"><svg class="navicon" viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="5.5" rx="7" ry="2.6"/><path d="M5 5.5v6c0 1.4 3.1 2.6 7 2.6s7-1.2 7-2.6v-6"/><path d="M5 11.5v5.5c0 1.4 3.1 2.6 7 2.6"/><path d="m15.5 16 2.5 2.2-2.5 2.3M19.5 20.5h1.5"/></svg>Query Console</button>
     <button data-page="pgl"><svg class="navicon" viewBox="0 0 24 24" aria-hidden="true"><path d="M2.5 7h11v9h-11z"/><path d="M13.5 10h4l3 3.2V16h-7z"/><circle cx="7" cy="17.5" r="2"/><circle cx="17" cy="17.5" r="2"/></svg>PGL</button>
-    <button data-page="budget" id="nav-budget"><svg class="navicon" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="11" width="4" height="9" rx="1"/><rect x="10" y="5" width="4" height="15" rx="1"/><rect x="16" y="13" width="4" height="7" rx="1"/></svg>Budget</button>
-    <button data-page="audit" id="nav-audit"><svg class="navicon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 5 6v5.5c0 4.2 2.9 7.9 7 9.5 4.1-1.6 7-5.3 7-9.5V6z"/><path d="m9 12 2.2 2.2L15.5 10"/></svg>Auditoria</button>
+    <button data-page="embarques" id="nav-embarques"><svg class="navicon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 15.5h18l-2.4 4H5.4z"/><path d="M5.5 15.5V10h5v5.5M10.5 15.5V7h5v8.5M15.5 15.5v-4h3v4"/></svg>Embarques</button>
+    <button data-page="custos" id="nav-custos"><svg class="navicon" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h12v18l-2-1.4-2 1.4-2-1.4-2 1.4-2-1.4L6 21z"/><path d="M9 8h6M9 11.5h6M9 15h3.5"/></svg>Custos</button>
+    <button data-page="budget" id="nav-budget"><svg class="navicon" viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="11" width="4" height="9" rx="1"/><rect x="10" y="5" width="4" height="15" rx="1"/><rect x="16" y="13" width="4" height="7" rx="1"/></svg>Resultados</button>
     <button data-page="config" id="nav-config" class="hidden"><svg class="navicon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"/><circle cx="15" cy="7" r="2.3"/><circle cx="9" cy="17" r="2.3"/></svg>Configurações</button>
   </nav>
   </div>
   <div class="account">
-    <button class="top-icon faq-open" id="faq-open" type="button" title="Dúvidas frequentes (abre em outra aba)"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.4 9.4a2.7 2.7 0 0 1 5.2 1c0 1.8-2.6 2.3-2.6 4"/><path d="M12 17.6v.2"/></svg><span>Dúvidas</span></button>
+    <button class="top-icon faq-open" id="faq-open" type="button" title="Dúvidas frequentes (abre em outra aba)" aria-label="Dúvidas frequentes"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M9.4 9.4a2.7 2.7 0 0 1 5.2 1c0 1.8-2.6 2.3-2.6 4"/><path d="M12 17.6v.2"/></svg></button>
     <button class="top-icon search-open" id="search-open" type="button" title="Buscar em todo o sistema (Ctrl+K)"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="m16 16 4.5 4.5"/></svg><span>Buscar</span><kbd>Ctrl K</kbd></button>
     <div class="bell-wrap"><button class="top-icon bell-btn" id="bell-open" type="button" title="Notificações" aria-haspopup="dialog" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 16.5V11a6 6 0 0 1 12 0v5.5l1.5 2h-15z"/><path d="M10 20.5a2 2 0 0 0 4 0"/></svg><span class="bell-badge hidden" id="bell-badge">0</span></button>
       <div class="bell-panel hidden" id="bell-panel" role="dialog" aria-label="Notificações"></div></div>
@@ -1604,7 +1621,7 @@ td.rx-col{text-align:center}
 <main><div class="content">
 
 <section id="page-home">
-  <div class="pagehead"><div><div class="eyebrow">Central de operações</div><h1>Normas e procedimentos</h1><p>Conhecimento operacional estruturado, revisável e acessível à equipe.</p></div></div>
+  <div class="pagehead"><div><div class="eyebrow">Central de operações</div><h1>NexxusDoc</h1><p>Conhecimento operacional estruturado, revisável e acessível à equipe.</p></div></div>
   <div class="hero">
     <button class="refdocs-btn" type="button" id="refdocs-open" title="Mapa visual dos processos da área e de como se relacionam"><svg class="rdb-ico" viewBox="0 0 54 54" aria-hidden="true"><defs><radialGradient id="rdb-core"><stop offset="0" stop-color="#fff"/><stop offset=".35" stop-color="#d8ff6a"/><stop offset="1" stop-color="#d8ff6a" stop-opacity="0"/></radialGradient></defs><circle cx="27" cy="27" r="12" fill="url(#rdb-core)"/><ellipse cx="27" cy="27" rx="24" ry="10" stroke="#b5dc3c66" fill="none"/><ellipse cx="27" cy="27" rx="16" ry="22" stroke="#4cc9f055" fill="none" transform="rotate(35 27 27)"/><g class="rdb-orb"><circle cx="51" cy="27" r="2.6" fill="#35e3c4"/></g><g class="rdb-orb2"><circle cx="27" cy="5" r="2.2" fill="#f4b740"/></g></svg><span><b>REF. DOCS</b><small>Universo dos procedimentos</small></span></button>
     <div class="eyebrow">Preservar o conhecimento da área</div>
@@ -1616,6 +1633,10 @@ td.rx-col{text-align:center}
       <button class="secondary" data-go="consult">Consultas gerais</button>
     </div>
   </div>
+  <!-- Globo da rede de embarques (25/11/2026, pedido do usuário: no lugar de tudo que ficava abaixo do quadro verde) -->
+  <section class="gl-card" id="home-globe" aria-label="Rede global de embarques"></section>
+  <!-- Quadros antigos da Visão geral: escondidos (o código ainda os preenche; saem de vez quando o globo for aprovado) -->
+  <div id="home-legacy" hidden>
   <section class="timeline-wrap" aria-label="Como funciona">
     <div class="tl-title">Como funciona</div>
     <ol class="timeline">
@@ -1637,6 +1658,7 @@ td.rx-col{text-align:center}
   </div>
   <div class="panel hidden" id="home-attention-panel"><div class="panelhead"><h2>Pendências para você</h2><span class="status" id="home-attention-count"></span></div><div class="attention" id="home-attention" style="padding:14px 18px"></div></div>
   <div class="panel"><div class="panelhead"><h2>Documentos recentes</h2><button class="ghost" data-page-link="docs">Ver todos →</button></div><div id="recent-list"><div class="empty">Carregando…</div></div></div>
+  </div>
 </section>
 
 <section id="page-chat" class="hidden">
@@ -1687,7 +1709,7 @@ td.rx-col{text-align:center}
         <div class="link-grid">
           <div class="field"><label for="link-kind">Tipo</label><select id="link-kind"><option value="planilha">Planilha (Excel / Google Planilhas)</option><option value="documento">Documento (Word / Google Docs)</option><option value="sistema">Sistema interno / ERP</option><option value="relatorio">Relatório</option><option value="pasta">Pasta</option><option value="link">Outro link</option></select></div>
           <div class="field"><label for="link-name">Nome</label><input id="link-name" placeholder="Ex.: Planilha de conciliação bancária" required></div>
-          <div class="field wide"><label for="link-location">Link ou caminho</label><input id="link-location" placeholder="https://docs.google.com/… ou G:\Drives compartilhados\…"></div>
+          <div class="field wide"><label for="link-location">Link ou caminho</label><input id="link-location" placeholder="https://docs.google.com/… ou G:\Drives compartilhados\Sua Area"></div>
           <div class="field wide"><label for="link-description">Para que serve (opcional)</label><input id="link-description" placeholder="Ex.: usada no passo 3 para conferir os saldos"></div>
         </div>
         <div class="formactions" style="margin-top:10px"><button class="primary" type="submit">Vincular</button><button class="secondary" type="button" id="link-cancel">Cancelar</button><span id="link-status" class="status"></span></div>
@@ -1757,6 +1779,11 @@ td.rx-col{text-align:center}
 </section>
 
 <section id="page-pgl" class="hidden">
+  <nav id="pgl-subnav" role="tablist" aria-label="Subpáginas da PGL">
+    <button type="button" class="on" data-pglv="proc" role="tab"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="7" rx="1.5"/><rect x="3.5" y="13.5" width="7" height="7" rx="1.5"/><rect x="13.5" y="13.5" width="7" height="7" rx="1.5"/></svg>Processos da PGL</button>
+    <button type="button" data-pglv="rel" role="tab"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5.5" width="18" height="13" rx="2"/><path d="m3.5 7 8.5 6 8.5-6"/></svg>Relatórios da PGL<span class="new">FUP</span></button>
+  </nav>
+  <div id="pgl-proc">
   <div class="pgl-hero">
     <div class="pgl-hero-main">
       <div class="pgl-brandrow"><div class="pgl-logo"><img src="/static/assets/nexxusdoc.png" alt="PGL"></div><span class="pgl-tag"><i class="pgl-live"></i>Prestador terceirizado · atualização automática</span></div>
@@ -1787,6 +1814,8 @@ td.rx-col{text-align:center}
     <section class="pgl-panel"><h3>Documentos de referência no Drive</h3><div class="pgl-sources" id="pgl-sources"></div></section>
   </div>
   <p class="pgl-foot">A página se atualiza sozinha: quando um procedimento criado ou revisado no NexxusDoc cita a PGL, ele aparece no processo correspondente (ou em "Novos processos com a PGL"). Entrevistas em andamento que citam a PGL aparecem como "Em elaboração".</p>
+  </div>
+  <div id="pgl-rel" hidden></div>
 </section>
 
 <section id="page-revise" class="hidden">
@@ -1799,8 +1828,9 @@ td.rx-col{text-align:center}
 </section>
 
 <section id="page-budget" class="hidden"></section>
-<section id="page-audit" class="hidden"></section>
 <section id="page-query" class="hidden"></section>
+<section id="page-embarques" class="hidden"></section>
+<section id="page-custos" class="hidden"></section>
 <section id="page-config" class="hidden">
   <div class="pagehead"><div><div class="eyebrow">Preferências e administração</div><h1>Configurações</h1><p id="config-subtitle">Seu perfil, acessos por área e status do sistema.</p></div></div>
   <div class="settings" id="settings">
@@ -1894,7 +1924,7 @@ td.rx-col{text-align:center}
             <div class="field"><label for="set-review-months">Revisar vigentes a cada (meses)</label><input id="set-review-months" type="number" min="1" max="60" data-setting="review_months"></div>
             <div class="field"><label for="set-review-notice">Avisar antes do vencimento (dias)</label><input id="set-review-notice" type="number" min="1" max="180" data-setting="review_notice_days"></div>
           </div>
-          <div class="option-list"><label class="option-card"><input type="checkbox" id="set-emails"><span><b>Enviar avisos por e-mail</b><br><small>Documento aprovado (a quem montou) e revisão próxima ou vencida (ao autor ou a quem enviou e a todos os owners da área). Enviados pelo n8n com a conta Vektor (admin@example.com). A data de revisão de cada documento pode ser trocada em Documentos (autor, owner da área ou master).</small></span></label></div>
+          <div class="option-list"><label class="option-card"><input type="checkbox" id="set-emails"><span><b>Enviar avisos por e-mail</b><br><small>Documento aprovado (a quem montou) e revisão próxima ou vencida (ao autor ou a quem enviou e a todos os owners da área). Enviados pelo n8n com o remetente Nexxus (admin@example.com). A data de revisão de cada documento pode ser trocada em Documentos (autor, owner da área ou master).</small></span></label></div>
           <div class="notice checking" id="review-sender" style="margin:0 18px 16px"><div class="grow">Conferindo o envio automático…</div></div>
         </section>
       </div>
@@ -1902,6 +1932,7 @@ td.rx-col{text-align:center}
       <div class="settings-pane hidden" id="settings-profile">
         <div class="pane-head"><div><h2>Meu perfil</h2><p>Dados usados pelo NexxusDoc para sugerir a área e a pasta de cada documento.</p></div></div>
         <div id="profile-info"></div>
+        <section class="block" id="pref-display"><label class="pref-row"><input type="checkbox" id="pref-anim" checked><b>Animar gráficos e cards</b><small>No Painel e no MBR da página Resultados, sempre que você entra na página. Vale para você neste computador.</small><span id="pref-anim-status" aria-live="polite"></span></label></section>
       </div>
 
       <div class="settings-pane hidden" id="settings-notifications">
@@ -2033,7 +2064,7 @@ function deactivate(){
   setTimeout(()=>location.replace('/static/aba_inativa.html'),200)}
 function go(ir){
   if(!state.user||!$('boot-loader').classList.contains('hidden')){pending=ir;return}
-  const page=['home','chat','docs','automation','query','pgl','budget','audit','config'].includes(ir.page)?ir.page:'home';
+  const page=['home','chat','docs','automation','query','pgl','embarques','custos','budget','config'].includes(ir.page)?ir.page:'home';
   if(page==='config'&&ir.pane)state.settingsPane=ir.pane;
   showPage(page);if(page==='config'&&ir.pane)setSettingsPane(ir.pane);
   if(page==='query'&&ir.pane)window.nexusQuery?.view(ir.pane)}  // aviso de consulta pronta abre a aba certa
@@ -2078,7 +2109,7 @@ setInterval(()=>{if(!$('page-chat').classList.contains('hidden')||!$('page-revis
 
 /* Navegação: rótulos do menu viram <span> (ocultáveis em telas estreitas) e ganham dica ao passar o mouse */
 const PAGE_DESC={home:'Resumo, pendências e REF. DOCS',chat:'Criar, enviar e consultar documentos',docs:'Lista, aprovação e Fluxo As Is',
-  automation:'Potencial de automação e SAP',query:'Tabelas do BigQuery por procedimento',pgl:'Processos do prestador terceirizado',budget:'Orçamento Inbound e cenários',audit:'Controles internos e auditoria',config:'Perfil, acessos e sistema'};
+  automation:'Potencial de automação e SAP',query:'Tabelas do BigQuery por procedimento',pgl:'Processos do prestador terceirizado',embarques:'Pastas de embarque e pré-conferência',custos:'Custo por processo e layout das MIROs',budget:'Orçamento Inbound e cenários',config:'Perfil, acessos e sistema'};
 document.querySelectorAll('.nav button').forEach(b=>{
   [...b.childNodes].filter(n=>n.nodeType===3&&n.textContent.trim()).forEach(n=>{const s=document.createElement('span');s.className='nav-label';s.textContent=n.textContent;n.replaceWith(s)});
   // Barra de ícones: o nome vai na dica própria (data-tip, aparece na hora) e no aria-label; sem title (dica dupla).
@@ -2134,11 +2165,12 @@ if(window.ResizeObserver){
 }
 
 function showPage(name){
-  ['home','chat','docs','automation','query','pgl','revise','budget','audit','config'].forEach(p=>$('page-'+p).classList.toggle('hidden',p!==name));
+  ['home','chat','docs','automation','query','pgl','embarques','custos','revise','budget','config'].forEach(p=>$('page-'+p).classList.toggle('hidden',p!==name));
+  if(name==='embarques')window.nexusEmb?.open();
+  if(name==='custos')window.nexusCustos?.open();
   if(name==='budget')window.nexusBudget?.open();
-  if(name==='audit')window.nexusAudit?.open();
   // Query Console: ambiente claro (pedido do usuário), só nesta página.
-  document.body.classList.toggle('page-light',name==='query');
+  document.body.classList.toggle('page-light',name==='query'||name==='embarques'||name==='custos');
   if(name==='query')window.nexusQuery?.open();
   if(name==='chat'){scheduleFit();
     // histórico das consultas carregado com a página escondida: na 1ª vez que aparece, vai para a última mensagem
@@ -2146,6 +2178,7 @@ function showPage(name){
   // O conteúdo já está na tela (carregamento prévio); só atualiza em segundo plano se tiver mais de 20 s.
   if(name==='automation'&&!isFresh('automation'))loadAutomation().then(()=>markLoaded('automation'));
   if(name==='pgl'&&!isFresh('pgl'))loadPgl().then(()=>markLoaded('pgl'));
+  if(name==='pgl'&&state.pglView==='rel')setPglView('rel');
   if(name==='chat'||name==='revise'||name==='home')checkVpn();
   document.querySelectorAll('.nav button').forEach(b=>b.classList.toggle('active',b.dataset.page===name||(name==='revise'&&b.dataset.page==='docs')));
   updatePageSel();
@@ -2195,8 +2228,9 @@ function extRow(d,pickCol){
     <td>${esc(d.area)}</td><td>${esc(d.author||'-')}</td>
     <td>${d.last_review?`Revisão de ${brDate(d.last_review)}`:'-'}</td>
     <td><span class="tag ext ${esc(d.origin)}">${EXT_TAG[d.origin]||'Externo'}</span>${d.pending_review?'<small class="doc-meta warn">Marcado para revisar com o agente</small>':''}${reviewLine(d)}</td>
-    <td><div class="row-actions">${d.open_url?`<a class="primary" href="${esc(d.open_url)}" target="_blank" rel="noopener" style="text-decoration:none">Abrir</a>`:''}${d.can_revise?`<button class="secondary" data-ext-review="${esc(d.id)}" type="button" title="Trazer para o novo padrão com o agente">Revisar</button>`:''}${d.can_delete?`<button class="danger-btn" data-ext-delete="${esc(d.id)}" data-title="${esc(d.title)}" type="button" title="Tirar da lista (quem enviou ou o administrador)">Excluir</button>`:''}</div></td></tr>`}
-// Fluxo As Is (só POPs criados ou revisados no NexxusDoc): botão na linha do documento e no resultado da geração.
+    <td><div class="row-actions">${d.open_url?`<a class="primary" href="${esc(d.open_url)}" target="_blank" rel="noopener" style="text-decoration:none">Abrir</a>`:''}${d.flow?.available?`<button class="flow-btn" data-flow="${esc(d.id)}" type="button" title="${d.flow.status==='pronto'?'Fluxo As Is já montado. ':''}Fluxograma do processo a partir do documento, com tempo de cada etapa e pontos de melhoria (o que o documento não traz vem estimado)">${d.flow.status==='pronto'?'<svg class="flow-ok" viewBox="0 0 24 24" aria-label="Fluxo já montado"><circle cx="12" cy="12" r="10"/><path d="m7.5 12.4 3 3 6-6.6"/></svg>':''}Fluxo As Is</button>`:''}${d.can_revise?`<button class="secondary" data-ext-review="${esc(d.id)}" type="button" title="Trazer para o novo padrão com o agente">Revisar</button>`:''}${d.can_delete?`<button class="danger-btn" data-ext-delete="${esc(d.id)}" data-title="${esc(d.title)}" type="button" title="Tirar da lista (quem enviou ou o administrador)">Excluir</button>`:''}</div></td></tr>`}
+// Fluxo As Is: botão na linha do documento (POPs do NexxusDoc e, desde 19/11/2026, manuais oficiais, enviados e
+// localizados, com tempos estimados quando o documento não traz) e no resultado da geração.
 document.addEventListener('click',e=>{const b=e.target.closest('[data-flow]');if(b){e.preventDefault();window.nexusFlow?.open(b.dataset.flow)}});
 // Fluxo acabou de ficar pronto: recarrega a lista para o botão ganhar o check verde.
 window.addEventListener('nexus-flow-pronto',()=>{try{loadDocuments()}catch{}});
@@ -2441,7 +2475,7 @@ const AUTO_ICON={
   baixa_prioridade:'<path d="M5 12h14M5 6.5h14M5 17.5h8"/>'};
 const autoIcon=k=>`<svg viewBox="0 0 24 24" aria-hidden="true">${AUTO_ICON[k]}</svg>`;
 async function loadAutomation(){
-  window.nexusLev?.mount();  // levantamento das reuniões (todos veem; só o master inclui ata)
+  window.nexusLev?.mount();  // levantamento das reuniões (só o master)
   const area=$('auto-area').value,unit=$('auto-unit').value;
   const qs=new URLSearchParams({...(area?{area}:{}),...(unit?{unidade:unit}:{})}).toString();
   $('auto-export').href='/api/automation/export'+(qs?'?'+qs:'');
@@ -2453,7 +2487,7 @@ async function loadAutomation(){
     const s=d.summary,fmt=v=>Number(v||0).toLocaleString('pt-BR');
     const pct=(a,b)=>b?Math.round(a/b*100)+'%':'-';
     $('auto-tiles').innerHTML=[
-      ['docs','#4cc9f0','Procedimentos documentados',s.processes,'base do mapa'],
+      ['docs','#4cc9f0','Procedimentos documentados',s.processes,s.flow_docs?`+ ${s.flow_docs} documento(s) oficial(is) pelo Fluxo As Is`:'base do mapa'],
       ['scan','#b5dc3c','Com análise de automação',s.analysed,pct(s.analysed,s.processes)+' dos procedimentos'],
       ['clock','#f4b740','Esforço atual levantado',fmt(s.hours_per_month)+' h/mês','tempo informado pela equipe'],
       ['save','#2ee6a6','Economia estimada',fmt(s.hours_saved)+' h/mês',pct(s.hours_saved,s.hours_per_month)+' do esforço atual']]
@@ -2469,13 +2503,15 @@ async function loadAutomation(){
     state.autoRows=d.rows;window.nexusSummary?.watch(d.rows);
     $('auto-rows').innerHTML=d.rows.length?d.rows.map(r=>`<tr>
       <td><span class="tag ${r.quadrant==='ganho_rapido'?'vigente':r.quadrant==='estrategico'?'aguardando':'rascunho'}">${esc(r.quadrant_label)}</span></td>
-      <td class="doc-title">${esc(r.process)}<small>${esc(r.area)}${unitTags(r.units)}</small></td>
-      <td>${esc(r.opportunity)}</td><td class="rx-col">${rxButton(r)}</td><td>${esc(r.solution_type||'-')}${r.script_sap&&!/script sap/i.test(r.solution_type||'')?`<div style="margin-top:5px">${sapScriptChip(r.script_sap)}</div>`:''}</td>
+      <td class="doc-title">${esc(r.process)}<small>${esc(r.area)}${unitTags(r.units)}</small>${r.origem==='fluxo'?`<small class="doc-meta">${esc(r.origem_label)}</small>`:''}</td>
+      <td>${esc(r.opportunity)}${r.ganho?`<small class="doc-meta">Ganho: ${esc(r.ganho)}</small>`:''}</td><td class="rx-col">${rxButton(r)}</td><td>${esc(r.solution_type||'-')}${r.script_sap&&!/script sap/i.test(r.solution_type||'')?`<div style="margin-top:5px">${sapScriptChip(r.script_sap)}</div>`:''}</td>
       <td>${r.potential?`<span class="pill ${esc(r.potential)}">${esc(r.potential)}</span>`:'-'}</td>
       <td>${r.complexity?`<span class="pill ${esc(r.complexity)}">${esc(r.complexity)}</span>`:'-'}</td>
       <td>${r.hours_saved!=null?fmt(r.hours_saved)+' h/mês':'-'}</td>
-      <td><div class="row-actions"><button class="secondary" data-view="${esc(r.record_id)}" type="button">Ver documento</button></div></td></tr>`).join('')
-      :'<tr><td colspan="9"><div class="empty"><b>Nenhuma oportunidade levantada ainda</b>O mapa se forma sozinho conforme a equipe cria ou revisa procedimentos: cada POP traz a análise de potencial de automação.</div></td></tr>';
+      <td><div class="row-actions">${r.origem==='fluxo'
+        ?`${r.open_url?`<a class="secondary" href="${esc(r.open_url)}" target="_blank" rel="noopener" style="text-decoration:none">Abrir documento</a>`:''}<button class="flow-btn" data-flow="${esc(r.record_id)}" type="button">Fluxo As Is</button>`
+        :`<button class="secondary" data-view="${esc(r.record_id)}" type="button">Ver documento</button><button class="flow-btn" data-flow="${esc(r.record_id)}" type="button">Fluxo As Is</button>`}</div></td></tr>`).join('')
+      :'<tr><td colspan="9"><div class="empty"><b>Nenhuma oportunidade levantada ainda</b>O mapa se forma sozinho conforme a equipe cria ou revisa procedimentos (cada POP traz a análise de potencial de automação) e conforme os documentos oficiais ganham o Fluxo As Is.</div></td></tr>';
   }catch(e){$('auto-rows').innerHTML=`<tr><td colspan="9" class="error-text">${esc(e.message)}</td></tr>`}
   loadSap();
 }
@@ -3160,6 +3196,17 @@ function showPglCards(on){
   clearTimeout(g._t);g._t=setTimeout(()=>g.classList.remove('pgl-anim'),1400);
 }
 const revealPgl=()=>state.pglShow?renderPgl():showPglCards(true);
+// Subpáginas da PGL: Processos (catálogo) e Relatórios da PGL (FUP que chega por e-mail; static/pgl/relatorios.js)
+function setPglView(v,montar=true){
+  v=v==='rel'?'rel':'proc';state.pglView=v;
+  try{localStorage.setItem('nexus.pgl.aba',v)}catch(e){}
+  document.querySelectorAll('#pgl-subnav [data-pglv]').forEach(b=>{b.classList.toggle('on',b.dataset.pglv===v);b.setAttribute('aria-selected',b.dataset.pglv===v)});
+  $('pgl-proc').hidden=v!=='proc';$('pgl-rel').hidden=v!=='rel';
+  if(montar&&v==='rel'&&window.nexusPglRel&&!$('pgl-rel').dataset.ok){$('pgl-rel').dataset.ok='1';window.nexusPglRel.mount($('pgl-rel'))}
+}
+document.addEventListener('click',e=>{const b=e.target.closest('#pgl-subnav [data-pglv]');if(b)setPglView(b.dataset.pglv)});
+// A aba escolhida volta na próxima vez; os dados só são pedidos quando a página PGL abre (depois do login)
+document.addEventListener('DOMContentLoaded',()=>{let v='proc';try{v=localStorage.getItem('nexus.pgl.aba')||'proc'}catch(e){}setPglView(v,false)});
 async function loadPgl(){
   try{state.pgl=await api('/api/pgl');renderPgl()}
   catch(e){$('pgl-lead').textContent='Não foi possível carregar os processos da PGL: '+e.message}
@@ -4293,7 +4340,11 @@ function userRow(u){
   const bq=u.role==='master'?'<small class="user-folder">BigQuery (SAP): liberado (master)</small>'
     :d.is_master?`<label class="user-folder user-bq"><input type="checkbox" data-bq="${esc(u.email)}"${u.bigquery?' checked':''}> Pode consultar o BigQuery (SAP)</label>`
     :u.bigquery?'<small class="user-folder">BigQuery (SAP): liberado</small>':'';
-  return `<div class="user-row grid${u.active?'':' revoked'}"><span class="mini-avatar">${esc((u.name||u.email).split(' ').map(p=>p[0]).join('').slice(0,2).toUpperCase())}</span><span class="who" title="${esc(u.email)}">${esc(u.name||u.email)}${me?' (você)':''}${canRename?` <button class="ghost" type="button" data-rename="${esc(u.email)}" data-name="${esc(u.name||'')}" title="Editar nome">✎</button>`:''}<small style="display:block;color:var(--muted)">${esc(u.email)}</small>${folder}${bq}</span>${role}${area}<span class="cell-status">${u.active?'<span class="badge">Ativo</span>':'<span class="badge off">Revogado</span>'}${toggle}</span></div>`;
+  // Parâmetros da validação de frete (Custos › Frete internacional): master e owners sempre; os demais, se o master liberar
+  const fp=['master','owner'].includes(u.role)?'<small class="user-folder">Parâmetros do frete: liberado (perfil)</small>'
+    :d.is_master?`<label class="user-folder user-bq"><input type="checkbox" data-fp="${esc(u.email)}"${u.frete_param?' checked':''}> Pode alterar os parâmetros do frete</label>`
+    :u.frete_param?'<small class="user-folder">Parâmetros do frete: liberado</small>':'';
+  return `<div class="user-row grid${u.active?'':' revoked'}"><span class="mini-avatar">${esc((u.name||u.email).split(' ').map(p=>p[0]).join('').slice(0,2).toUpperCase())}</span><span class="who" title="${esc(u.email)}">${esc(u.name||u.email)}${me?' (você)':''}${canRename?` <button class="ghost" type="button" data-rename="${esc(u.email)}" data-name="${esc(u.name||'')}" title="Editar nome">✎</button>`:''}<small style="display:block;color:var(--muted)">${esc(u.email)}</small>${folder}${bq}${fp}</span>${role}${area}<span class="cell-status">${u.active?'<span class="badge">Ativo</span>':'<span class="badge off">Revogado</span>'}${toggle}</span></div>`;
 }
 function renderUsers(){
   const d=state.admin;if(!d)return;
@@ -4316,8 +4367,9 @@ async function patchUser(body){
     loadAdminUsers()}catch(err){$('user-error').textContent=err.message;loadAdminUsers()}
 }
 $('user-list').addEventListener('change',e=>{
-  const role=e.target.closest('[data-role]'),area=e.target.closest('[data-area]'),bq=e.target.closest('[data-bq]');
+  const role=e.target.closest('[data-role]'),area=e.target.closest('[data-area]'),bq=e.target.closest('[data-bq]'),fp=e.target.closest('[data-fp]');
   if(bq){patchUser({email:bq.dataset.bq,bigquery:bq.checked});return}
+  if(fp){patchUser({email:fp.dataset.fp,frete_param:fp.checked});return}
   if(role)patchUser({email:role.dataset.role,role:role.value});
   if(area)patchUser({email:area.dataset.area,area:area.value});
 });
@@ -4378,6 +4430,7 @@ const kv=rows=>rows.map(([k,v,cls])=>`<div><span class="k">${esc(k)}</span><span
 function renderProfile(){
   if(!state.docs){loadDocuments().then(()=>{if(state.settingsPane==='profile')renderProfile()});}
   const u=state.user,mine=(state.docs||[]).filter(d=>d.can_edit).length;
+  $('pref-anim').checked=window.nexusAnim.pref();$('pref-anim-status').textContent='';
   $('profile-info').innerHTML=`<section class="block"><div class="profile-card"><div class="profile-avatar">${esc(u.email.slice(0,2).toUpperCase())}</div><div><h3>${esc(u.email)}</h3><div class="meta"><span class="badge ${u.role==='user'?'':u.role}">${esc(ROLE_LABEL[u.role]||u.role)}</span><span class="badge ${u.area?'':'off'}">${esc(u.area||'Área não definida')}</span><span style="color:var(--muted);font-size:12px">${mine} documento(s) criado(s) por você</span></div></div></div></section>
     <section class="block"><header class="block-head"><h3>Como o NexxusDoc usa o seu perfil</h3></header><div class="kv">${kv([
       ['Área',u.area?`${u.area}: usada nas entrevistas, nas referências de mercado e na aprovação dos documentos (owner da área).`:'Não definida: solicite ao administrador master ou ao owner da sua área.',u.area?'':'error-text'],
@@ -4453,7 +4506,18 @@ async function preloadAll(user){
     // abre sem baixar nada na hora do clique
     ['Apresentação',()=>Promise.all(['base.css','animations.css','tema-nexxusdoc.css','idiomas.js','fluxo_importacao.js',
       'mapa_mundo.json','runtime.js','fx-runtime.js'].map(n=>fetch(`/static/apresentacao/${n}?v=${FLOW_DECK_REV}`).then(r=>r.blob())))],
-    ...(user.auditoria?[['Auditoria',()=>window.nexusAudit?.open()]]:[]),
+    // Páginas com módulo próprio (24/11/2026, pedido do usuário: nenhuma página carrega no clique): os dados chegam aqui,
+    // na tela de carregamento; no clique a página só é desenhada
+    ['Embarques',()=>window.nexusEmb?.load()],
+    // globo da Visão geral montado aqui (dados, mapa e WebGL); ao entrar na página só a animação começa. Espera o
+    // script (a biblioteca do globo é grande e pode chegar depois do início do pré-carregamento)
+    ['Globo dos embarques',async()=>{for(let i=0;i<150&&!window.nexusGlobo;i++)await new Promise(r=>setTimeout(r,100));
+      if(window.nexusGlobo){await window.nexusGlobo.preload();await window.nexusGlobo.mount($('home-globe'))}}],
+    ['Custos',()=>window.nexusCustos?.preload()],
+    ['Frete internacional',()=>window.nexusFrete?.preload()],
+    ['Resultados',()=>window.nexusBudget?.preload?.()],
+    ['Query Console',()=>window.nexusQuery?.preload?.()],
+    ['Relatórios da PGL',()=>{const el=$('pgl-rel');if(!window.nexusPglRel||el.dataset.ok)return;el.dataset.ok='1';return window.nexusPglRel.mount(el)}],
     ['Conexão VPN',()=>checkVpn(true)],
     ['Usuários',()=>api('/api/users/directory').then(d=>{state.directory=d})],
     ['Revisão e e-mails',()=>loadApprovalSettings()],
@@ -4482,10 +4546,8 @@ async function openApplication(user){
   $('account-email').textContent=user.email;window.nexusPhoto.show(user.email);$('avatar').title=`${user.name||''} · ${user.email}`;
   $('nav-config').classList.remove('hidden');
   $('nav-budget').classList.remove('hidden');  // Budget: todos veem a página; números e edição só para master e owners
-  // Auditoria (10/11/2026): todos veem o ícone; só o master e a gestora da area navegam (os demais veem o cadeado e a tela restrita)
-  {const b=$('nav-audit'),lock=!user.auditoria;b.classList.toggle('locked',lock);b.dataset.tip=lock?'Auditoria (acesso restrito)':'Auditoria';
-   if(lock&&!b.querySelector('.nav-lock'))b.insertAdjacentHTML('beforeend','<i class="nav-lock" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="5" y="11" width="14" height="9.5" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg></i>');
-   if(!lock)b.querySelector('.nav-lock')?.remove()}
+  // Custos: aberta a todos os usuários, sem cadeado (pedido do usuário em 24/11/2026)
+  {const b=$('nav-custos');b.classList.remove('locked');b.dataset.tip='Custos';b.querySelector('.nav-lock')?.remove()}
   document.querySelectorAll('.admin-group').forEach(el=>el.classList.toggle('hidden',!isAdmin()));
   document.querySelectorAll('.master-only').forEach(el=>el.classList.toggle('hidden',user.role!=='master'));
   resetConsult();loadConsultHistory();
@@ -4494,7 +4556,7 @@ async function openApplication(user){
   hideBoot();
   const params=new URLSearchParams(location.search),requested=params.get('page'),mode=params.get('mode');
   if(['access','areas','roteiro','approval','profile','notifications','system','installer','tour','docs','health'].includes(params.get('pane')))state.settingsPane=params.get('pane');
-  showPage(['chat','docs','automation','pgl','budget','audit','config'].includes(requested)?requested:'home');
+  showPage(['chat','docs','automation','pgl','budget','config'].includes(requested)?requested:'home');
   if(requested==='chat'&&['interview','policy','review','consult'].includes(mode))switchChatMode(mode);
   if(params.get('view'))loadDocuments().then(()=>openViewer(params.get('view')));
   window.nexusUpdate?.restore(requested);  // voltou de uma atualização: mesma página e o texto que estava digitado
@@ -4518,6 +4580,20 @@ const MINI={flow:'<circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="12" r="2.5"
 const mini=k=>`<svg viewBox="0 0 24 24" aria-hidden="true">${MINI[k]||MINI.page}</svg>`;
 const ago=iso=>{const t=new Date(iso);if(!iso||isNaN(t))return '';const m=Math.round((Date.now()-t)/60000);
   return m<1?'agora':m<60?`há ${m} min`:m<1440?`há ${Math.round(m/60)} h`:m<2880?'ontem':`há ${Math.round(m/1440)} dias`};
+
+/* Animação de gráficos e cards: preferência da pessoa (Configurações › Meu perfil, marcada por padrão). Desde 18/11/2026
+   (pedido do usuário) anima toda vez que a pessoa entra na página. */
+window.nexusAnim=(()=>{
+  const who=()=>state.user?.email||'anon',key=()=>'nexus.animacoes.'+who();
+  const ls=(k,v)=>{try{if(v===undefined)return localStorage.getItem(k);localStorage.setItem(k,v)}catch{}return null};
+  const pref=()=>ls(key())!=='0';
+  const enabled=()=>pref()&&!(window.matchMedia&&matchMedia('(prefers-reduced-motion: reduce)').matches);
+  function takeIntro(){return enabled()}
+  function set(on){ls(key(),on?'1':'0')}
+  return {pref,enabled,takeIntro,set};
+})();
+$('pref-anim').addEventListener('change',e=>{window.nexusAnim.set(e.target.checked);
+  $('pref-anim-status').textContent=e.target.checked?'Salvo: animação ligada.':'Salvo: animação desligada.'});
 
 /* Sino de notificações: o que depende de você, com as novidades ainda não vistas no contador */
 const BELL_SEEN='nexus.bell.seen';
@@ -4599,8 +4675,7 @@ const fold=s=>String(s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,''
 const GS_PAGES=[['Visão geral','Resumo, pendências e REF. DOCS','home'],['Chat Nexxus · Criar procedimento','Entrevista para um POP','chat:interview'],
   ['Chat Nexxus · Enviar documento','Guarda documentos que você já tem (com aviso de revisão) ou revisa no novo padrão','chat:review'],
   ['Chat Nexxus · Consultas gerais','Pergunte sobre processos e o uso do sistema','chat:consult'],['Documentos','Biblioteca, aprovação e lista mestra','docs'],
-  ['Mapa de automação','Oportunidades e transações SAP','automation'],['PGL','Processos executados pela PGL','pgl'],
-  ['Auditoria','Controles internos, recomendações e solicitações de evidência','audit'],
+  ['Mapa de automação','Oportunidades e transações SAP','automation'],['PGL','Processos executados pela PGL','pgl'],['Embarques','Pastas de embarque, documentos e pré-conferência','embarques'],['Custos','Custo por processo pelas MIROs e montagem do layout','custos'],['Custos · Frete internacional','Faturas da Asia Shipping e da DMS conferidas pelo BID','custos:frete'],
   ['REF. DOCS','Universo dos procedimentos da área','refdocs'],['Configurações · Meu perfil','Seus dados e pasta dos documentos','config:profile'],
   ['Configurações · Notificações','Avisos do Windows','config:notifications'],
   ['Configurações · Revisão e e-mails','Revisão periódica e e-mail de aprovado','config:approval'],['Configurações · Status do sistema','Conflitos do Drive e auditoria','config:system'],
@@ -4611,9 +4686,13 @@ const GS_PAGES=[['Visão geral','Resumo, pendências e REF. DOCS','home'],['Chat
 function gsGo(target){
   if(target==='refdocs'){showPage('home');openRefDocs();return}
   if(target==='faq'){window.nexusFaq.open();return}
-  const [page,sub]=target.split(':');showPage(page);
+  const [page,sub]=target.split(':');
+  if(page==='custos'&&sub)window.nexusCustos?.aba(sub);
+  showPage(page);
   if(page==='chat'&&sub)switchChatMode(sub);if(page==='config'&&sub)setSettingsPane(sub);
 }
+// Documento de fora do NexxusDoc (manual no Drive, enviado ou localizado): abre o próprio arquivo em outra aba.
+function gsOpenUrl(url){if(url)window.open(url,'_blank','noopener')}
 function gsMark(text,terms){let html=esc(text);for(const t of terms){if(!t)continue;const i=fold(text).indexOf(t);if(i>=0){const raw=text.slice(i,i+t.length);html=html.replace(esc(raw),`<mark>${esc(raw)}</mark>`)}}return html}
 function openSearch(){
   if($('gs-back'))return;
@@ -4635,17 +4714,32 @@ function openSearch(){
     GS_PAGES.filter(p=>!p[3]||isAdmin()).filter(p=>has(p[0]+' '+p[1])).slice(0,5).forEach(p=>results.push({group:'Páginas e seções',icon:'page',title:gsMark(p[0],terms),sub:esc(p[1]),go:'Abrir',act:()=>gsGo(p[2])}));
     (state.faq?.grupos||[]).flatMap(g=>g.perguntas.map((x,i)=>({g,x,i}))).filter(({x})=>has(x.p+' '+x.r.replace(/\*\*/g,''))).slice(0,4)
       .forEach(({g,x,i})=>results.push({group:'Dúvidas frequentes',icon:'page',title:gsMark(x.p,terms),sub:esc(g.titulo),go:'Ver resposta',act:()=>window.nexusFaq.open(`${g.id}-${i}`)}));
-    (state.docs||[]).filter(d=>has([d.code,d.title,d.process,d.area,d.owner_email].join(' '))).slice(0,6).forEach(d=>results.push({group:'Documentos',icon:'doc',
+    (state.docs||[]).filter(d=>has([d.code,d.title,d.process,d.area,d.owner_email].join(' '))).slice(0,6).forEach(d=>results.push({group:'Documentos',icon:'doc',docId:d.id,
       title:gsMark(`${d.code?d.code+' · ':''}${d.title||d.process}`,terms),sub:esc(`${d.area} · ${d.status_label||d.status||''}`),go:'Visualizar',act:()=>openViewer(d.id)}));
-    (state.refdocs?.stars||[]).filter(s=>has(s.n+' '+(s.d||''))).slice(0,6).forEach(s=>results.push({group:'Processos da área',icon:'star',title:gsMark(s.n,terms),
-      sub:esc(s.rid?'Documentado no NexxusDoc':s.s==='manual'?'Manual existente (fora do NexxusDoc)':'Sem documento'),go:s.rid?'Visualizar':'Documentar',
-      act:()=>s.rid?openViewer(s.rid):startFromName(s.n)}));
+    // Processos: os que têm a busca no NOME primeiro. O clique abre o documento do processo (PDF do NexxusDoc ou o
+    // manual); "Documentar" só quando o processo não tem documento nenhum (19/11/2026, pedido do usuário).
+    (state.refdocs?.stars||[]).map((s,i)=>({s,i,n:has(s.n)?0:1})).filter(({s})=>has(s.n+' '+(s.d||''))).sort((a,b)=>a.n-b.n||a.i-b.i).slice(0,6)
+      .forEach(({s})=>{const own=(s.docs||[]).find(d=>d.k!=='related'),url=s.rid?'':(s.url||own?.url||'');
+        results.push({group:'Processos da área',icon:'star',title:gsMark(s.n,terms),
+          sub:esc(s.rid?'Documentado no NexxusDoc':url?`Documento: ${own?.t||s.man||'manual da área'}`:'Sem documento'),go:s.rid||url?'Abrir documento':'Documentar',
+          act:()=>s.rid?openViewer(s.rid):url?gsOpenUrl(url):startFromName(s.n)})});
     (state.pgl?.processes||[]).filter(p=>has([p.nome,p.papel_pgl,p.papel_sbf,p.sla,p.controle].join(' '))).slice(0,5).forEach(p=>results.push({group:'PGL',icon:'ship',title:gsMark(p.nome,terms),
       sub:esc(p.sla?`SLA: ${p.sla}`:(p.papel_pgl||'')),go:'Ver card',act:()=>{showPage('pgl');state.pglFilter.q=p.nome;$('pgl-search').value=p.nome;showPglCards(true)}}));
     draw();
-    const mine=++seq;docTimer=setTimeout(async()=>{try{const r=await api('/api/docs/search?q='+encodeURIComponent(q));if(mine!==seq||!$('gs-results'))return;
-      r.pages.slice(0,4).forEach(h=>results.push({group:'Documentação técnica',icon:'book',title:esc(`Página ${h.page}${h.section?' · '+h.section:''}`),
-        sub:h.snippets?.[0]?docsHighlight(h.snippets[0]):'',go:'Abrir',act:()=>{showPage('config');setSettingsPane('docs');setTimeout(()=>docsShowPage(h.page),400)}}));draw()}catch{}},250);
+    const mine=++seq;docTimer=setTimeout(()=>{
+      // Texto dos documentos (POPs, manuais, enviados e localizados): entra logo depois de "Documentos".
+      api('/api/busca?q='+encodeURIComponent(q)).then(r=>{if(mine!==seq||!$('gs-results'))return;
+        const shown=new Set(results.filter(x=>x.docId).map(x=>x.docId));
+        const hits=(r.itens||[]).filter(h=>!shown.has(h.id)).slice(0,8).map(h=>({group:'No conteúdo dos documentos',icon:'doc',docId:h.id,
+          title:gsMark(`${h.codigo&&!h.titulo.includes(h.codigo)?h.codigo+' · ':''}${h.titulo}`,terms),
+          sub:`${esc(h.rotulo)}${h.citacoes?` · citado ${h.citacoes}x`:''}${h.trecho?`<br>${gsMark(h.trecho,terms)}`:''}`,go:'Abrir documento',
+          act:()=>h.tipo==='nexxusdoc'?openViewer(h.id):gsOpenUrl(h.url)}));
+        const at=results.findIndex(x=>!['Páginas e seções','Dúvidas frequentes','Documentos'].includes(x.group));
+        results.splice(at<0?results.length:at,0,...hits);draw()}).catch(()=>{});
+      api('/api/docs/search?q='+encodeURIComponent(q)).then(r=>{if(mine!==seq||!$('gs-results'))return;
+        r.pages.slice(0,4).forEach(h=>results.push({group:'Documentação técnica',icon:'book',title:esc(`Página ${h.page}${h.section?' · '+h.section:''}`),
+          sub:h.snippets?.[0]?docsHighlight(h.snippets[0]):'',go:'Abrir',act:()=>{showPage('config');setSettingsPane('docs');setTimeout(()=>docsShowPage(h.page),400)}}));draw()}).catch(()=>{});
+    },250);
   };
   const pick=i=>{const r=results[i];if(!r)return;close();r.act()};
   function onKey(e){if(e.key==='Escape'){e.preventDefault();close()}else if(e.key==='ArrowDown'){e.preventDefault();active=Math.min(results.length-1,active+1);draw()}
@@ -4682,7 +4776,7 @@ return {open,load};
    de recarregar, a tela guarda o texto digitado e a página (sessionStorage) e devolve tudo ao voltar (restore). */
 window.nexusUpdate=(()=>{
 const TAB=Math.random().toString(36).slice(2,12),KEY='nexus.atualizando',DRAFT='nexus.rascunho';
-const PAGES=['home','chat','docs','automation','query','pgl','revise','budget','audit','config'];
+const PAGES=['home','chat','docs','automation','query','pgl','embarques','custos','revise','budget','config'];
 const typed=new Set();let info=null,following=false,asking=false,stop=false,lastBusy='',lastSent=0,lastUse=0;
 // Campos em que a pessoa digitou (texto de trabalho). Busca e filtros não contam.
 const FIELD=/^(text|number|date|email|url|tel|time|datetime-local|month|)$/;
@@ -4753,10 +4847,19 @@ async function follow(from){
   const items=(info?.novidades||[]).flatMap(v=>v.itens||[]).slice(0,6);
   screen('Atualizando o NexxusDoc',`Aplicando a versão nova publicada pelo administrador.${items.length?`<ul class="upd-list">${items.map(x=>`<li>${esc(x)}</li>`).join('')}</ul>`:''}`,
     true,`<span>A tela volta sozinha em alguns segundos.</span>${info?.nova?`<code>v ${esc(info.nova)}</code>`:''}`);
-  const t0=Date.now();
+  // Voltou na MESMA versão (13/11/2026: o atalho recusou a publicação porque um arquivo do Drive mudou no meio do
+  // reinício): recarrega em vez de ficar presa; a atualização tenta de novo quando o Drive estiver em dia.
+  const t0=Date.now();let down=false,same=0;
   while(Date.now()-t0<180000){
     await new Promise(r=>setTimeout(r,1500));
-    try{const r=await fetch('/api/health',{cache:'no-store'});if(r.ok){const h=await r.json();if(h.versao&&(!from||h.versao!==from)){location.reload();return}}}catch{}
+    try{const r=await fetch('/api/health',{cache:'no-store'});if(!r.ok){down=true;same=0;continue}
+      const h=await r.json();if(h.versao&&(!from||h.versao!==from)){location.reload();return}
+      same=same||Date.now();if((down&&Date.now()-same>8000)||Date.now()-t0>120000){
+        let n=[];try{n=JSON.parse(sessionStorage.getItem('nexus.upd.mesma')||'[]').filter(x=>Date.now()-x<600000)}catch{}
+        if(n.length>=1)break;   // 2ª vez em 10 min: não insiste (evita ciclo de recarregar)
+        try{sessionStorage.setItem('nexus.upd.mesma',JSON.stringify([...n,Date.now()]))}catch{}
+        location.reload();return}}
+    catch{down=true;same=0}
   }
   screen('O NexxusDoc não voltou sozinho','Feche esta aba e abra o NexxusDoc pelo atalho da Área de Trabalho.',false);
 }
@@ -4923,11 +5026,11 @@ const PAUSE_SVG='<svg viewBox="0 0 24 24"><rect x="6" y="5" width="4" height="14
 const PLAY_SVG='<svg viewBox="0 0 24 24"><path d="M8 5.5v13l10-6.5z"/></svg>';
 const STEPS=[
  {page:'home',sel:'#pagesel-menu',icon:'home',kicker:'Navegação',title:'Barra de páginas',
-  text:'As páginas ficam na barra de ícones do centro do topo, e <b>um clique</b> troca de página: <b>Visão geral</b>, <b>Chat Nexxus</b> (onde os documentos nascem), <b>Documentos</b> (onde o owner da área aprova), <b>Automação</b>, <b>Query Console</b> (tabelas do BigQuery), <b>PGL</b>, <b>Budget</b> (números para master e owners), <b>Auditoria</b> (controles internos) e <b>Configurações</b>. Passe o mouse sobre um ícone para ver o nome; a página atual aparece com o nome ao lado do ícone.'},
+  text:'As páginas ficam na barra de ícones do centro do topo, e <b>um clique</b> troca de página: <b>Visão geral</b>, <b>Chat Nexxus</b> (onde os documentos nascem), <b>Documentos</b> (onde o owner da área aprova), <b>Automação</b>, <b>Query Console</b> (tabelas do BigQuery), <b>PGL</b>, <b>Resultados</b> (números para master e owners) e <b>Configurações</b>. Passe o mouse sobre um ícone para ver o nome; a página atual aparece com o nome ao lado do ícone.'},
  {page:'home',sel:'.account',icon:'home',kicker:'Topo da tela',title:'Busca e notificações',
-  text:'<b>Buscar</b> (ou <b>Ctrl+K</b> em qualquer página) procura documentos, processos da área, cards da PGL, páginas e a documentação técnica. O <b>sino</b> reúne o que depende de você: documentos para aprovar, seus documentos aprovados, revisões a vencer, entrevistas em andamento e os avisos que foram para o Windows nos últimos 14 dias.',
-  userText:'<b>Buscar</b> (ou <b>Ctrl+K</b> em qualquer página) procura documentos, processos da área, cards da PGL, páginas e a documentação técnica. O <b>sino</b> reúne o que é seu: documentos aprovados, revisões a vencer, entrevistas em andamento e os avisos que foram para o Windows nos últimos 14 dias.',
-  tip:'O número no sino mostra só o que você ainda não viu. Quando sair uma versão nova do NexxusDoc, ele se atualiza sozinho num momento em que você não está no meio de algo: aparece "Atualizando" por alguns segundos e a tela volta na mesma página, sem reinstalar.'}, {page:'home',sel:'.hero',icon:'home',kicker:'Visão geral',title:'Comece por aqui',
+  text:'<b>Buscar</b> (ou <b>Ctrl+K</b>) procura até no texto dos documentos, e o clique abre o próprio documento. O <b>sino</b> reúne o que depende de você.',
+  userText:'<b>Buscar</b> (ou <b>Ctrl+K</b>) procura até no texto dos documentos, e o clique abre o próprio documento. O <b>sino</b> reúne o que é seu.',
+  tip:'O número no sino mostra só o que você ainda não viu.'}, {page:'home',sel:'.hero',icon:'home',kicker:'Visão geral',title:'Comece por aqui',
   text:'Os atalhos levam direto ao Chat Nexxus: <b>Criar procedimento</b> (POP), <b>Enviar documento</b> (até 5 documentos que você já tem: guardar como estão ou revisar no novo padrão) e <b>Consultas gerais</b> (perguntas sobre processos e o próprio sistema).',
   tip:'Documentos só nascem pela entrevista com o agente: não existe formulário manual.'},
  {page:'home',sel:'#refdocs-open',icon:'home',kicker:'Visão geral',title:'REF. DOCS',
@@ -4939,13 +5042,9 @@ const STEPS=[
   text:'Clique numa estrela (ou busque pelo nome) e abre o card do processo: fase, situação da documentação, os documentos e manuais com link, os vínculos com a PGL, transações SAP e controles de auditoria, os processos ligados e as ações (abrir o PDF, documentar no NexxusDoc ou revisar o manual).'},
  {page:'home',group:'refdocs',before:rdDeck,sel:'#refdocs .rd-deck',icon:'home',kicker:'REF. DOCS',title:'Apresentação do fluxo de importação',
   text:'O botão <b>Fluxo de importação</b> abre a apresentação da jornada Fisia × Centauro: lead time, a rota no mapa até os CDs, as fases, o comparativo e a documentação de cada etapa. Ela passa sozinha; clique numa etapa para ver os processos e abrir o documento. O globo ao lado do botão troca o idioma (português, inglês ou espanhol).'},
- {page:'home',sel:'.metrics',icon:'home',kicker:'Visão geral',title:'Números do acervo',
-  text:'Documentos registrados, áreas documentadas, aguardando aprovação e vigentes e <b>Vencidos para revisão</b>. Clique neste último para abrir Documentos já filtrado nas revisões vencidas ou a vencer.',
-  tip:'O aviso de revisão vai por e-mail ao autor e a todos os owners da área, mesmo com o NexxusDoc fechado.'},
- {page:'home',sel:'#home-attention-panel',icon:'home',kicker:'Visão geral',title:'Pendências para você',
-  when:()=>!$('home-attention-panel').classList.contains('hidden'),  // só aparece quando há pendência
-  text:'Aqui aparece o que depende de você: documentos da sua área prontos para aprovar, com o botão <b>Aprovar</b>, e revisões periódicas dos seus documentos perto de vencer.',
-  userText:'Aqui aparecem as revisões periódicas dos seus documentos perto de vencer, com o botão para revisar.'},
+ {page:'home',sel:'#home-globe',icon:'home',kicker:'Visão geral',title:'Rede global de embarques',
+  text:'De onde vêm os embarques até o Brasil, com os dados de Embarques e da PGL. Clique num país (ou no Brasil) para ver o detalhe.',
+  tip:'Passe o mouse num card da esquerda para ver a análise por mês, trimestre, semestre e ano.'},
  {page:'chat',sel:'.chat-tabs',icon:'chat',stage:0,kicker:'Chat Nexxus',title:'Três formas de usar o agente',
   text:'<b>Criar procedimento</b>: entrevista com o agente para um POP novo. <b>Enviar documento</b>: junte até 5 procedimentos, políticas ou manuais (de pastas diferentes ou arrastando) e escolha, para cada um, <b>só guardar</b> ou <b>revisar com o agente</b>; vários para revisar formam uma <b>fila</b> e o próximo abre quando você salva o anterior. <b>Consultas gerais</b>: perguntas sobre os processos e o próprio sistema, com a fonte de cada resposta.',
   tip:'Documento que já está no NexxusDoc não é enviado de novo: atualize em Documentos › Editar.'},
@@ -4966,7 +5065,7 @@ const STEPS=[
   userText:'<b>Visualizar</b> abre o PDF e <b>Fluxo As Is</b> o fluxograma do processo. Nos documentos que você montou: <b>Editar</b> gera nova versão, <b>Salvar no Drive</b> grava na pasta da área e <b>Alterar data</b> troca a próxima revisão.',
   userTip:'Quem aprova é o owner da sua área ou o master; você recebe um e-mail quando o seu documento for aprovado.'},
  {page:'automation',sel:'#auto-matrix',icon:'automation',stage:2,kicker:'Automação',title:'Mapa de automação',
-  text:'Cada POP alimenta o mapa: tempo, volume e tarefas manuais viram oportunidades priorizadas por impacto × esforço. No card <b>Ganhos rápidos</b>, a pizza mostra a distribuição por prioridade, e <b>Exportar Excel</b> leva tudo para planilha.',
+  text:'POPs e Fluxos As Is dos documentos oficiais viram oportunidades priorizadas por impacto × esforço. <b>Exportar Excel</b> leva tudo para planilha.',
   empty:()=>!(state.autoRows||[]).length,emptySel:'#auto-tiles',
   emptyText:'Este mapa se forma sozinho com os procedimentos (POPs) criados ou revisados no NexxusDoc: tempo, volume e tarefas manuais de cada um viram oportunidades de automação, priorizadas por impacto × esforço. <b>Ainda não há procedimentos com essa análise</b>, por isso os números e os quadros estão zerados; o primeiro POP gerado já aparece aqui.',
   emptyTip:'Comece pelo Chat Nexxus › Criar procedimento ou Enviar documento.'},
@@ -5000,25 +5099,32 @@ const STEPS=[
   text:'Cada processo da área (do inventário e dos documentos do NexxusDoc), agrupado pela fase (Pré-embarque, Embarque, Chegada, Desembaraço, Entrega no CD e Financeiro), com as transações SAP citadas, as tabelas do BigQuery ligadas a ele e a consulta pronta, quando existe. Também mostra o que depende de dados fora do BigQuery, como a PGL e o Siscomex.'},
  {page:'query',group:'query',before:qcView('biblioteca'),sel:'#page-query .qc-lib',ready:()=>Boolean(document.querySelector('#page-query .qc-lib')),icon:'query',stage:2,kicker:'Query Console',title:'Minhas consultas',
   text:'As consultas prontas da área, as que você salvou (só você vê, a não ser que compartilhe), as <b>Consultas da equipe</b> (todas as que foram compartilhadas, inclusive as suas) e o histórico das suas execuções. Marque as que mais usa com a <b>estrela</b> e abra qualquer uma no editor.'},
- {page:'pgl',sel:'#pgl-journey',icon:'pgl',stage:3,kicker:'PGL',title:'Processos executados pela PGL',
+ {page:'pgl',before:()=>setPglView('proc',false),sel:'#pgl-journey',icon:'pgl',stage:3,kicker:'PGL',title:'Processos executados pela PGL',
   text:'O catálogo da PGL organizado pela jornada da importação. Clique numa fase ou frente para filtrar e veja, em cada processo, o que a PGL executa, o que é da equipe SBF, o SLA e os documentos ligados.'},
- {page:'pgl',sel:'#pgl-show',icon:'pgl',stage:3,kicker:'PGL',title:'Mostrar cards',
+ {page:'pgl',before:()=>setPglView('proc',false),sel:'#pgl-show',icon:'pgl',stage:3,kicker:'PGL',title:'Mostrar cards',
   text:'Os cards começam recolhidos. Clique em <b>Mostrar cards</b> para ver a grade; em cada card, <b>Documentar no NexxusDoc</b> já abre a entrevista com os dados da PGL.'},
- {page:'budget',sel:'#page-budget #bg-kpis',ready:()=>Boolean(document.querySelector('#page-budget .bg-hero')),icon:'budget',kicker:'Budget',title:'Orçamento Inbound',
+ {page:'pgl',before:()=>setPglView('rel'),sel:'#pgl-rel .pr-tabs',ready:()=>Boolean(document.querySelector('#pgl-rel .pr-tabs,#pgl-rel .pr-empty')),icon:'pgl',stage:3,kicker:'PGL',title:'Relatórios da PGL',
+  text:'O follow-up que a PGL manda por e-mail, lido sozinho: uma aba por relatório, com números, gráficos e a planilha completa.',
+  tip:'Clique num número ou gráfico para filtrar a planilha.'},
+ {page:'embarques',sel:'#page-embarques .em-head',ready:()=>Boolean(document.querySelector('#page-embarques .em-head,#page-embarques .em-empty')),icon:'pgl',stage:3,kicker:'Embarques',title:'Pastas de embarque',
+  text:'Cada pasta de Sua Area › Processos, lida sozinha, com a pré-conferência e as faturas conferidas com o OTR Nike.',
+  tip:'Clique num processo para ver a ficha; <b>Relatórios</b> e <b>Planilha proforma</b> ficam nas abas.'},
+ {page:'custos',sel:'#page-custos .cu-head',before:()=>window.nexusCustos?.aba('lista'),ready:()=>Boolean(document.querySelector('#page-custos .cu-head,#page-custos .cu-empty')),icon:'budget',stage:3,kicker:'Custos',title:'Custos por processo',
+  text:'O custo de cada importação pelas MIROs da PGL, ligado a Embarques e ao FUP.',
+  tip:'Em <b>Montar layout</b>, o sistema gera a MIRO no formato da PGL.'},
+ {page:'custos',sel:'#page-custos .fr-bid',before:()=>window.nexusCustos?.aba('frete'),ready:()=>Boolean(document.querySelector('#page-custos .fr-bid,#page-custos #fr-root .cu-empty')),icon:'budget',stage:3,kicker:'Custos',title:'Frete internacional',
+  text:'As faturas da Asia Shipping e da DMS chegam do e-mail e são conferidas com o BID mais recente.',
+  tip:'Clique na fatura para ver cada cobrança e dar o ok no sistema (nenhum e-mail é enviado).'},
+ {page:'budget',sel:'#page-budget #bg-kpis',ready:()=>{if(!document.querySelector('#page-budget .bg-hero'))return false;const p=document.querySelector('#page-budget [data-bgtab="painel"]');if(p&&!document.querySelector('#page-budget #bg-kpis')){p.click();return false}return true},icon:'budget',kicker:'Resultados',title:'Orçamento Inbound',
   empty:()=>Boolean(document.querySelector('#page-budget .bg-hero'))&&!document.querySelector('#page-budget #bg-kpis'),emptySel:'#page-budget .bg-hero',
-  emptyText:'Aqui fica o orçamento Inbound da área, com painel de gráficos, resumo mensal, comparativo com o ano anterior, premissas editáveis e alertas. <b>Ainda não há versão do orçamento</b>: envie a planilha (MODELO, FISIA ou outra) ou carregue o modelo aprovado para começar.',emptyTip:'',
-  userText:'O orçamento Inbound da área: custo total do ano, 1º e 2º semestre, comparação com o Forecast do ano anterior, custo por unit e contêineres, com o painel de gráficos, o resumo mensal e o comparativo. <b>Os números ficam só com o master e os owners</b>: para você eles aparecem mascarados, e os gráficos, desfocados.',
+  emptyText:'Orçamento Inbound da área. <b>Ainda não há versão</b>: envie a planilha ou carregue o modelo aprovado.',emptyTip:'',
+  userText:'Orçamento Inbound da área: painel, resumo mensal e comparativo. <b>Os números ficam só com master e owners</b>; para você aparecem mascarados.',
   userTip:'Se precisar dos valores, peça ao owner da sua área.',
-  text:'Números e edição só para master e owners (as demais pessoas veem a página com o aviso de acesso restrito). <b>Enviar planilha</b> lê o orçamento (o MODELO, a planilha FISIA ou outra, pelos rótulos), mostra a prévia com as premissas achadas e os alertas e cria uma versão. As subpáginas ficam na barra logo abaixo dos números (Painel, Resumo mensal, Comparativo, Premissas, Alertas e Histórico de versões); a selecionada fica em verde-lima. Em <b>Premissas</b> você muda câmbio, tarifas, volumes e reajustes e vê o total recalculado na hora; salvar cria uma nova versão, com histórico. <b>Resumo mensal</b> filtra Orçamento, Budget e Forecast do ano anterior mês a mês. <b>Baixar Excel</b> gera a planilha MODELO com os gráficos e o mesmo filtro.',
-  tip:'Tudo é calculado pelo sistema, com as regras da planilha MODELO; nada passa pelo agente.'},
- {page:'audit',when:()=>!state.user?.auditoria,sel:'#page-audit #au-locked',ready:()=>Boolean(document.querySelector('#page-audit #au-locked')),icon:'audit',kicker:'Auditoria',title:'Controles internos',
-  text:'A página de controles internos da área: os controles avaliados pela Auditoria Interna, as recomendações e as solicitações de evidência. <b>Por enquanto, só o master e a gerência da área entram nela</b>; para as demais pessoas o ícone aparece com um cadeado.'},
- {page:'audit',when:()=>Boolean(state.user?.auditoria),sel:'#page-audit #au-kpis',ready:()=>Boolean(document.querySelector('#page-audit #au-kpis')),icon:'audit',kicker:'Auditoria',title:'Controles internos',
-  text:'Os controles da área avaliados pela Auditoria Interna, as <b>recomendações</b> e as <b>solicitações de evidência</b>, cada um na sua aba, com busca e filtros por unidade, processo e situação. Clique numa linha para ver o risco, a descrição da atividade, as evidências e os responsáveis.',
-  tip:'A base vem da planilha de Controles Internos da área; o botão Abrir planilha leva ao original. Por enquanto só o master e a gerência da área entram nesta página.'},
+  text:'Orçamento Inbound da área. Em <b>Premissas</b> você ajusta; em <b>MBR</b> e <b>Apresentação Final</b>, os resultados para a diretoria.',
+  tip:'Tudo calculado pelo sistema, sem o agente.'},
  {page:'config',pane:'profile',sel:'.settings-nav',icon:'config',kicker:'Configurações',title:'Preferências e administração',
-  text:'Seu perfil e a pasta dos seus documentos, as notificações, a revisão periódica e os e-mails e o status das conexões (VPN, n8n e Drive). Owners e master também administram acessos e baixam o instalador para enviar a novos usuários.',
-  userText:'Seu perfil e a pasta dos seus documentos, as notificações, a regra de revisão periódica e e-mails (só para consulta), o status das conexões (VPN, n8n e Drive) e a Ajuda, com este tour e a documentação.'},
+  text:'Perfil, notificações, revisão e e-mails e status das conexões. Owners e master também administram acessos.',
+  userText:'Perfil, notificações, revisão e e-mails, status das conexões e a Ajuda (este tour e a documentação).'},
  {page:'config',pane:'notifications',sel:'#notif-info',icon:'pane-notifications',kicker:'Configurações',title:'Notificações',
   text:'Escolha quais avisos chegam como notificação do Windows: documentos para aprovar, seus documentos aprovados, revisões, respostas do agente, documento gerado, consulta da Query Console pronta e VPN desligada. Elas chegam mesmo com o NexxusDoc minimizado, uma de cada vez (várias juntas viram um resumo), o clique abre a página certa e cada aviso também fica no sino.',
   tip:'Use “Enviar notificação de teste” para ver como o aviso aparece.'},

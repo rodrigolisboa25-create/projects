@@ -10,6 +10,8 @@ Código Python, HTML, CSS e JavaScript da aplicação e do instalador; question�
 
 Cadastros e assinaturas de acesso, chaves de publicação, configurações de conexão, identificadores de recursos internos, entrevistas, procedimentos reais, bases de conhecimento, manuais corporativos, planilhas, relatórios, logs, backups, arquivos temporários e documentos gerados. A lista original de manuais e IDs do Drive foi retirada do utilitário e substituída por um manifesto externo de exemplo. Catálogos reais do BigQuery, SQL operacional, dados de auditoria, transcrições de reuniões, histórico de consultas e documentos de evidência permanecem fora do GitHub.
 
+Também ficaram fora os índices e resumos de embarques, histórico de custos, tarifário, relatórios PGL e exportações operacionais de n8n localizadas na raiz do projeto. O código do motor de orçamento usa números fictícios nesta cópia; os valores de budget, forecast, volume e tarifas reais precisam ser configurados antes do uso.
+
 ## Substituições na cópia
 
 - E-mails corporativos viraram endereços `example.com`.
@@ -18,5 +20,6 @@ Cadastros e assinaturas de acesso, chaves de publicação, configurações de co
 - Caminhos e nomes internos de pasta foram generalizados.
 - Projetos, nomes internos de tabelas, códigos de empresa e IDs de instância foram substituídos por exemplos.
 - O prompt público da auditoria conserva o contrato de saída e remove regras e controles específicos da empresa.
+- Os novos workflows de embarques, custos, frete e OTR foram desativados, sem credenciais, IDs de nós ou dados fixados.
 
 Isso preserva a estrutura do código, mas algumas integrações exigem ajuste antes de funcionar em outra implantação. Não use esta publicação como backup operacional. Revise `.env.example`, o instalador, os nós do n8n e as permissões antes de executar o sistema com dados reais.

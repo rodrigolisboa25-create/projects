@@ -24,6 +24,17 @@ import tempfile
 FILES = (
     "app.py",
     "budget_engine.py",      # pagina Budget: motor do orcamento, importacao e exportacao
+    "budget_resultados.py",  # pagina Budget, aba Resultados: leitura das bridges de custo e da Ferramenta de Controle
+    "budget_resultados_saida.py",  # pagina Budget, aba Resultados: apresentacao em PowerPoint e base em Excel
+    "budget_resultados_edicao.py",  # pagina Budget, aba MBR: alterar valores pela base em Excel
+    "budget_final.py",  # pagina Resultados, aba Apresentacao Final: Orcamento x Forecast e cenarios de frete
+    "budget_final_pptx.py",  # pagina Resultados, aba Apresentacao Final: download em PowerPoint
+    "budget_final_planilha.py",  # pagina Resultados, aba Apresentacao Final: planilha com os numeros
+    "embarques.py",          # pagina Embarques: leitura da pasta Sua Area > Processos
+    "proforma.py",           # pagina Embarques, aba Planilha proforma (planilha online + base da Ferramenta em DuckDB)
+    "pgl_relatorios.py",     # pagina PGL, Relatorios da PGL (FUP por e-mail) e entrega na pagina Embarques
+    "custos.py",             # pagina Custos (MIROs de debito posterior da PGL por processo; montagem do layout)
+    "frete.py",              # Custos > Frete internacional (faturas da Asia Shipping e DMS conferidas pelo BID)
     "budget_modelo.xlsx",    # planilha MODELO oficial do Budget (exportacao e "comecar pelo modelo")
     "budget_anterior_padrao.json",  # Budget e Forecast do ano anterior mes a mes (Ferramenta de Controle)
     "nexus_launcher.pyw",
@@ -41,8 +52,6 @@ FILES = (
     "bigquery_conhecimento.json",  # 12/11/2026: tabelas do BigQuery para o agente das Consultas gerais
     "bigquery_colunas.json",       # 13/11/2026: todas as colunas das tabelas (ficha do Catálogo da Query Console)
     "query_biblioteca.json",       # 12/11/2026: consultas prontas da Query Console (biblioteca do text_sql, só a área)
-    "auditoria_base.json",   # pagina Auditoria: controles, recomendacoes e solicitacoes (retrato da planilha de CI)
-    "auditoria_conhecimento.json",  # Auditoria: base de estudo do agente (ciclo, chaves SAP, receitas por controle)
     "novidades.json",        # o que muda em cada publicacao (mostrado ao clicar em Atualizar)
     "requirements.txt",
     "README.md",
@@ -92,8 +101,7 @@ def shortcut_candidates() -> list[Path]:
     found = []
     for root in drive_letters():
         targets = root / SHORTCUT_TARGETS
-        if NEWORG_ID != "CONFIGURE_DRIVE_FOLDER_ID":
-            found.append(targets / NEWORG_ID / "SeuProjeto" / "NexxusDoc")
+        found.append(targets / NEWORG_ID / "SeuProjeto" / "NexxusDoc")
         try:
             for by_id in targets.iterdir():
                 for folder in by_id.iterdir():
@@ -430,7 +438,7 @@ def create_desktop_shortcut(install: Path) -> None:
         'link.WorkingDirectory = WScript.Arguments(2)\n'
         'link.IconLocation = WScript.Arguments(3) & ",0"\n'
         'link.WindowStyle = 7\n'
-        'link.Description = "Abrir o NexxusDoc - Normas e Procedimentos Grupo SBF"\n'
+        'link.Description = "Abrir o NexxusDoc"\n'
         'link.Save\n'
     )
     with tempfile.TemporaryDirectory(prefix="nexus-installer-") as temp:

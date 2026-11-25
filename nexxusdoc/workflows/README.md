@@ -25,6 +25,10 @@ A API local consulta o endereço de resultado até a resposta ficar pronta, pres
 
 O conteúdo de anexos é dado de entrada, não uma instrução autorizada para alterar regras, executar ações ou divulgar informação.
 
+## Embarques, custos, frete e OTR
+
+Os exports `nexxusdoc_embarques_n8n.json`, `nexxusdoc_custos_n8n.json`, `nexxusdoc_frete_n8n.json` e `nexxusdoc_otr_n8n.json` ilustram a coleta e consolidação das respectivas fontes. Todos estão desativados e sem vínculos de credenciais; configure endpoints, contas, pastas e regras comerciais aprovados antes de importar e testar. Históricos, mensagens e documentos processados ficaram fora do repositório.
+
 ## Auditoria
 
-`nexxusdoc_auditoria_n8n.json` demonstra a busca e a preparação de um roteiro de evidências. A exportação pública está desativada, sem credenciais, IDs reais, planilha mestre ou documentos de auditoria. `system_message_auditoria.md` é um modelo genérico do contrato de resposta; regras e fontes internas precisam ser configuradas somente em ambiente autorizado. O fluxo não faz entrega automática de evidências ao Connect.
+`nexxusdoc_auditoria_n8n.json` é um fluxo legado que demonstra a busca e a preparação de um roteiro de evidências. A página saiu da navegação atual. A exportação pública está desativada, sem credenciais, IDs reais, planilha mestre ou documentos de auditoria. `system_message_auditoria.md` é um modelo genérico do contrato de resposta; regras e fontes internas precisam ser configuradas somente em ambiente autorizado. O fluxo não faz entrega automática de evidências ao Connect.

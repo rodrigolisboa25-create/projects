@@ -152,24 +152,35 @@ O aprovador deve ser um owner ou administrador ativo. O modo obrigatório ou opc
 - Instalador por usuário, atualização assinada e automática, backup, diagnóstico de VPN e sincronização.
 - Agenda de revisão com ajuste autorizado da data, alertas e histórico de notificações.
 - Consultas BigQuery com simulação de custo, limite de leitura e biblioteca por procedimento.
-- Roteiros assistidos de evidências de auditoria, matriz de risco e acompanhamento de solicitações.
+- Novos painéis de embarques, custos e relatórios operacionais, com acesso conforme o perfil.
 
 ## 🖥️ Páginas do sistema
 
 | Página | O que a pessoa encontra |
 | --- | --- |
-| **Visão geral** | Pendências, atalhos e acesso ao REF. DOCS, o universo visual dos procedimentos. |
+| **Visão geral** | Globo interativo dos embarques, atalhos e acesso ao REF. DOCS, o universo visual dos procedimentos. |
 | **Chat Nexxus** | Criar procedimento, enviar/revisar documento existente e fazer consultas gerais com fontes. |
 | **Documentos** | Biblioteca, versões, PDFs, aprovação, lista mestra e Fluxo As Is. |
 | **Automação** | Oportunidades por processo, matriz impacto × esforço, consultas autorizadas ao BigQuery, análise técnica das transações SAP e exportação. |
 | **Query Console** | Procedimentos, biblioteca de consultas, perguntas em linguagem natural e catálogo de tabelas e colunas. O master pode editar SQL, simular custo e executar leitura autorizada. |
 | **Levantamento** | Pontos, participantes e oportunidades registrados nas reuniões de entendimento, conforme os dados disponíveis. |
-| **Auditoria** | Solicitações, matriz de risco e roteiro assistido para localizar e conferir evidências; acesso restrito. |
-| **PGL** | Catálogo de processos do prestador na jornada de importação, com documentos e situação de cada processo. |
-| **Budget** | Cenários e análises de orçamento, conforme permissão do usuário. |
+| **Embarques** | Acompanhamento documental, resumos, checklist, proforma e vínculos entre embarques e processos. |
+| **Custos** | Custos por processo e validação de frete internacional, incluindo regras de faturas e encargos. |
+| **PGL** | Catálogo de processos do prestador, documentos, desempenho e relatórios operacionais. |
+| **Budget** | Premissas, cenários, resultados, edição e saída do orçamento final, conforme permissão. |
 | **Configurações** | Perfil, notificações, áreas, acessos, aprovação, saúde do sistema e instalador, conforme o perfil. |
 
 O REF. DOCS abre como uma visualização na Visão geral. O fluxo de aprovação é acessado a partir dos documentos; alguns recursos aparecem somente para perfis autorizados. O catálogo PGL e as visualizações da jornada dependem dos dados específicos da implantação.
+
+### 🧭 Novidades desde a publicação anterior
+
+- **Embarques e proforma:** o módulo organiza documentos e resumos por embarque, oferece checklist e prepara a planilha de proforma. Os índices e documentos reais permanecem na base privada.
+- **Custos e frete:** acompanha valores por processo, compara faturas com regras contratuais e trata conferências de MIRO e OTR. Tarifas e históricos operacionais precisam ser fornecidos pela implantação.
+- **PGL:** relatórios recebidos do prestador passam a compor uma visão de acompanhamento; a extração automática usa workflows n8n separados.
+- **Budget:** novas telas de resultados e rotinas de planilha e apresentação final. As premissas numéricas no código público são fictícias; é obrigatório configurar valores aprovados antes de usar análises financeiras.
+- **Globo de embarques:** representação geográfica na Visão geral, dependente do índice autorizado de embarques.
+
+A antiga página de **Auditoria** foi retirada da navegação nesta versão. O código e o workflow históricos permanecem como referência, sem indicar que a página esteja disponível.
 
 ## 🛠️ Componentes
 
@@ -178,6 +189,9 @@ O REF. DOCS abre como uma visualização na Visão geral. O fluxo de aprovação
 | [`app.py`](app.py) | API, sessões, entrevistas, documentos, PDF, acervo e aprovação. |
 | [`static/`](static/) | Interface e módulos de fluxo, orçamento e apresentação. |
 | [`budget_engine.py`](budget_engine.py) | Motor de orçamento e importação/exportação. |
+| [`budget_final.py`](budget_final.py) e [`budget_resultados.py`](budget_resultados.py) | Fechamento de cenários, resultados e saídas do orçamento. |
+| [`embarques.py`](embarques.py), [`proforma.py`](proforma.py) | Documentos de embarques e proforma. |
+| [`custos.py`](custos.py), [`frete.py`](frete.py), [`pgl_relatorios.py`](pgl_relatorios.py) | Custos, validação de frete e relatórios PGL. |
 | [`questionnaire.json`](questionnaire.json) | Roteiro estruturado de perguntas. |
 | [`workflows/`](workflows/) | Workflow n8n, prompt e instruções. |
 | [`instalador_nexus.py`](instalador_nexus.py) e [`nexus_launcher.pyw`](nexus_launcher.pyw) | Instalação, atualização e inicialização. |
@@ -185,7 +199,7 @@ O REF. DOCS abre como uma visualização na Visão geral. O fluxo de aprovação
 | [`modelos_referencias_por_area.json`](modelos_referencias_por_area.json) | Modelos de referência iniciais. |
 | [`tools/build_manuais.py`](tools/build_manuais.py) | Geração de catálogo a partir de manifesto privado configurável. |
 | [`tools/build_bigquery_conhecimento.py`](tools/build_bigquery_conhecimento.py) | Monta contexto do agente a partir de fontes externas autorizadas e manifesto privado. |
-| [`workflows/nexxusdoc_auditoria_n8n.json`](workflows/nexxusdoc_auditoria_n8n.json) | Fluxo de auditoria sem credenciais e com referências mascaradas. |
+| [`workflows/`](workflows/) | Também inclui fluxos desativados e sanitizados de embarques, custos, frete e OTR, além do legado de auditoria. |
 
 ## 📁 Estrutura
 

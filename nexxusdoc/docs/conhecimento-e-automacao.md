@@ -33,12 +33,14 @@ O backend associa registros por semelhança de nome e palavras-chave, identifica
 
 | Página | Papel na cadeia de conhecimento |
 | --- | --- |
-| Visão geral e REF. DOCS | Explorar a jornada, encontrar lacunas documentais e abrir processos relacionados. |
+| Visão geral e REF. DOCS | Explorar a jornada, encontrar lacunas documentais, abrir processos relacionados e acompanhar embarques no globo. |
 | Chat Nexxus | Capturar conhecimento, anexar fontes, revisar procedimentos e consultar o acervo. |
 | Documentos | Revisar, aprovar, versionar e consultar PDFs; examinar o Fluxo As Is. |
 | Automação | Reunir e priorizar oportunidades por processo, etapa, esforço e impacto; examinar transações SAP, BigQuery e fichas técnicas. |
-| PGL | Relacionar processos do prestador, SLA, fontes e documentos da área. |
-| Budget | Examinar cenários orçamentários para usuários autorizados. |
+| Embarques | Organizar documentos, resumos, checklist e proforma por embarque. |
+| Custos | Acompanhar custos por processo e validar faturas de frete internacional. |
+| PGL | Relacionar processos do prestador, SLA, fontes, documentos e relatórios operacionais. |
+| Budget | Examinar cenários, resultados e saídas do orçamento final para usuários autorizados. |
 | Configurações | Administrar áreas, perfis, workflow, instalação, notificações e diagnóstico. |
 
 ## O que é orquestrado hoje
@@ -86,7 +88,7 @@ flowchart TD
   D --> E["Confirmação e execução"]
 ```
 
-A página de Auditoria acompanha solicitações e recomendações, calcula uma matriz de risco e pode pedir ao agente um roteiro para encontrar evidências. A preparação e a conferência são da equipe; o fluxo não envia evidências ao Connect.
+O código legado de Auditoria inclui solicitações, recomendações, matriz de risco e roteiro de evidências. A página saiu da navegação atual. A preparação e a conferência são da equipe; o fluxo não envia evidências ao Connect.
 
 ```mermaid
 flowchart TD

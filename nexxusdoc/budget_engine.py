@@ -1,7 +1,7 @@
 """Budget Inbound (pagina Budget do NexxusDoc): motor de calculo, importacao de planilhas e exportacao no MODELO.
 
 Referencia: "Nexxus · Modulo de Auditoria de Orcamento Inbound" (04/11/2026) e a planilha
-Orcamento_Inbound_2027_Resumo_Executivo_MODELO.xlsx (budget_modelo.xlsx), que o usuario definiu como o modelo oficial.
+CONFIGURE_ID.xlsx (budget_modelo.xlsx), que o usuario definiu como o modelo oficial.
 
 - O calculo e DETERMINISTICO (secao 14.3 da especificacao): premissas -> tarifa vigente por mes -> volume, conteineres
   e processos -> custo de cada linha -> 13 rubricas -> total. Nada aqui passa por IA.
@@ -53,77 +53,11 @@ def xl_roundup(x: float) -> float:
 # Catalogo de premissas (secao 15.2). kind: int | pct | num | usd | brl
 # ---------------------------------------------------------------------------
 # Escalares (grupo, chave, rotulo, unidade, tipo, padrao, padroes de rotulo para importar)
-ESCALARES: list[dict[str, Any]] = [
-    {"g": "Principais", "k": "volume_total_units", "l": "Volume recebido", "u": "units no ano", "t": "int", "v": 16503483,
-     "re": [r"^volume recebido", r"^volume total"]},
-    {"g": "Principais", "k": "units_por_conteiner", "l": "Units por contêiner", "u": "units", "t": "int", "v": 10568,
-     "re": [r"^units por conteiner"]},
-    {"g": "Principais", "k": "pct_modal_aereo", "l": "Participação do modal aéreo", "u": "% das units", "t": "pct", "v": 0.0008,
-     "re": [r"participacao do modal aereo", r"^share modal aereo"]},
-    {"g": "Principais", "k": "cambio_usd_brl", "l": "Câmbio USD/BRL", "u": "R$ por US$", "t": "num", "v": 5.15,
-     "re": [r"^cambio"]},
-    {"g": "Principais", "k": "ipca", "l": "IPCA do ano", "u": "% ao ano", "t": "pct", "v": 0.0544, "re": [r"^ipca"]},
-    {"g": "Principais", "k": "afrmm", "l": "AFRMM", "u": "% sobre frete, bunker e capatazia", "t": "pct", "v": 0.08,
-     "re": [r"^afrmm"]},
-    {"g": "Principais", "k": "seguro_apolice_usd_ano", "l": "Seguro internacional (apólice)", "u": "US$ por ano", "t": "usd",
-     "v": 50029.13, "re": [r"^seguro internacional"]},
-    {"g": "Percentuais", "k": "pct_conteineres_biocombustivel", "l": "% contêineres com biocombustível", "u": "%", "t": "pct",
-     "v": 0.20, "re": [r"conteineres com biocombustivel"]},
-    {"g": "Percentuais", "k": "pct_processos_cif_acima_1m", "l": "% processos com CIF acima de R$1M", "u": "%", "t": "pct",
-     "v": 0.5025, "re": [r"processos com cif acima"]},
-    {"g": "Percentuais", "k": "pct_processos_armazenagem_acima_10_dias", "l": "% processos com armazenagem acima de 10 dias",
-     "u": "%", "t": "pct", "v": 0.59, "re": [r"armazenagem acima de 10"]},
-    {"g": "Percentuais", "k": "pct_nf_acima_1m_rodoviario", "l": "% NFs acima de R$1M (frete rodoviário)", "u": "%", "t": "pct",
-     "v": 0.91, "re": [r"nfs acima de r 1m"]},
-    {"g": "Percentuais", "k": "pct_conteineres_escolta_armada", "l": "% contêineres com escolta armada", "u": "%", "t": "pct",
-     "v": 0.11, "re": [r"conteineres com escolta"]},
-    {"g": "Percentuais", "k": "pct_conteineres_estadia_veiculo", "l": "% contêineres com estadia de veículo", "u": "%", "t": "pct",
-     "v": 0.03, "re": [r"conteineres com estadia"]},
-    {"g": "Percentuais", "k": "pct_conteineres_pre_stacking", "l": "% contêineres com pré-stacking / depot", "u": "%", "t": "pct",
-     "v": 0.02, "re": [r"conteineres com pre stacking"]},
-    {"g": "Percentuais", "k": "pct_conteineres_horas_paradas", "l": "% contêineres com horas paradas", "u": "%", "t": "pct",
-     "v": 0.06, "re": [r"conteineres com horas paradas"]},
-    {"g": "Percentuais", "k": "units_por_processo_aereo", "l": "Units por processo aéreo", "u": "units", "t": "int", "v": 590,
-     "re": [r"^units por processo aereo"]},
-    {"g": "Percentuais", "k": "reajuste_in_house", "l": "Reajuste In-House", "u": "% (dissídio)", "t": "pct", "v": 0.05,
-     "re": [r"reajuste adicional in house", r"reajuste.*in house"]},
-]
+ESCALARES: list[dict[str, Any]] = [{'g': 'Principais', 'k': 'volume_total_units', 'l': 'Volume recebido', 'u': 'units no ano', 't': 'int', 'v': 100.0, 're': ['^volume recebido', '^volume total']}, {'g': 'Principais', 'k': 'units_por_conteiner', 'l': 'Units por contêiner', 'u': 'units', 't': 'int', 'v': 100.0, 're': ['^units por conteiner']}, {'g': 'Principais', 'k': 'pct_modal_aereo', 'l': 'Participação do modal aéreo', 'u': '% das units', 't': 'pct', 'v': 0.05, 're': ['participacao do modal aereo', '^share modal aereo']}, {'g': 'Principais', 'k': 'cambio_usd_brl', 'l': 'Câmbio USD/BRL', 'u': 'R$ por US$', 't': 'num', 'v': 100.0, 're': ['^cambio']}, {'g': 'Principais', 'k': 'ipca', 'l': 'IPCA do ano', 'u': '% ao ano', 't': 'pct', 'v': 0.05, 're': ['^ipca']}, {'g': 'Principais', 'k': 'afrmm', 'l': 'AFRMM', 'u': '% sobre frete, bunker e capatazia', 't': 'pct', 'v': 0.05, 're': ['^afrmm']}, {'g': 'Principais', 'k': 'seguro_apolice_usd_ano', 'l': 'Seguro internacional (apólice)', 'u': 'US$ por ano', 't': 'usd', 'v': 100.0, 're': ['^seguro internacional']}, {'g': 'Percentuais', 'k': 'pct_conteineres_biocombustivel', 'l': '% contêineres com biocombustível', 'u': '%', 't': 'pct', 'v': 0.05, 're': ['conteineres com biocombustivel']}, {'g': 'Percentuais', 'k': 'pct_processos_cif_acima_1m', 'l': '% processos com CIF acima de R$1M', 'u': '%', 't': 'pct', 'v': 0.05, 're': ['processos com cif acima']}, {'g': 'Percentuais', 'k': 'pct_processos_armazenagem_acima_10_dias', 'l': '% processos com armazenagem acima de 10 dias', 'u': '%', 't': 'pct', 'v': 0.05, 're': ['armazenagem acima de 10']}, {'g': 'Percentuais', 'k': 'pct_armazenagem_no_total', 'l': 'Armazenagem: % do orçamento total', 'u': '% (0 = tarifas)', 't': 'pct', 'v': 0.05, 're': ['armazenagem.*do (orcamento )?total']}, {'g': 'Percentuais', 'k': 'pct_nf_acima_1m_rodoviario', 'l': '% NFs acima de R$1M (frete rodoviário)', 'u': '%', 't': 'pct', 'v': 0.05, 're': ['nfs acima de r 1m']}, {'g': 'Percentuais', 'k': 'pct_conteineres_escolta_armada', 'l': '% contêineres com escolta armada', 'u': '%', 't': 'pct', 'v': 0.05, 're': ['conteineres com escolta']}, {'g': 'Percentuais', 'k': 'pct_conteineres_estadia_veiculo', 'l': '% contêineres com estadia de veículo', 'u': '%', 't': 'pct', 'v': 0.05, 're': ['conteineres com estadia']}, {'g': 'Percentuais', 'k': 'pct_conteineres_pre_stacking', 'l': '% contêineres com pré-stacking / depot', 'u': '%', 't': 'pct', 'v': 0.05, 're': ['conteineres com pre stacking']}, {'g': 'Percentuais', 'k': 'pct_conteineres_horas_paradas', 'l': '% contêineres com horas paradas', 'u': '%', 't': 'pct', 'v': 0.05, 're': ['conteineres com horas paradas']}, {'g': 'Percentuais', 'k': 'units_por_processo_aereo', 'l': 'Units por processo aéreo', 'u': 'units', 't': 'int', 'v': 100.0, 're': ['^units por processo aereo']}, {'g': 'Percentuais', 'k': 'reajuste_in_house', 'l': 'Reajuste In-House', 'u': '% (dissídio)', 't': 'pct', 'v': 0.05, 're': ['reajuste adicional in house', 'reajuste.*in house']}]
 
 # Tarifas (linha da aba Premissas Detalhadas no MODELO; mesma linha na aba Premissas da planilha FISIA)
 # reajuste: ipca | inhouse | nenhum | fixo
-TARIFAS: list[dict[str, Any]] = [
-    {"k": "frete_maritimo_1", "row": 28, "l": "Frete marítimo – 1ª tarifa", "drv": "por contêiner", "m": "USD", "rj": "nenhum", "mes": 1, "v": 1223, "re": [r"frete maritimo 1"]},
-    {"k": "frete_maritimo_2", "row": 29, "l": "Frete marítimo – 2ª tarifa", "drv": "por contêiner", "m": "USD", "rj": "nenhum", "mes": 7, "v": 1754, "re": [r"frete maritimo 2"]},
-    {"k": "frete_aereo", "row": 30, "l": "Frete aéreo", "drv": "por unit aérea", "m": "BRL", "rj": "ipca", "mes": 1, "v": 35.70, "re": [r"^frete aereo"]},
-    {"k": "bunker", "row": 31, "l": "Bunker", "drv": "por contêiner", "m": "USD", "rj": "nenhum", "mes": 1, "v": 1254, "re": [r"^bunker"]},
-    {"k": "biocombustivel", "row": 32, "l": "Biocombustível", "drv": "por contêiner c/ bio", "m": "USD", "rj": "nenhum", "mes": 1, "v": 581, "re": [r"^biocombustivel"]},
-    {"k": "capatazias", "row": 33, "l": "Capatazias", "drv": "por contêiner", "m": "BRL", "rj": "ipca", "mes": 1, "v": 988.05, "re": [r"^capatazia"]},
-    {"k": "taxa_siscomex", "row": 34, "l": "Taxa Siscomex", "drv": "por unit", "m": "BRL", "rj": "nenhum", "mes": 1, "v": 0.0398, "re": [r"siscomex"]},
-    {"k": "arm_cif_maior_ate10", "row": 35, "l": "Armazenagem – CIF >1M, até 10 dias", "drv": "por contêiner", "m": "BRL", "rj": "ipca", "mes": 5, "v": 3066.72, "re": [r"armazenagem cif maior 1m ate 10"]},
-    {"k": "arm_cif_menor_ate10", "row": 36, "l": "Armazenagem – CIF <1M, até 10 dias", "drv": "por contêiner", "m": "BRL", "rj": "ipca", "mes": 5, "v": 2357.10, "re": [r"armazenagem cif menor 1m ate 10"]},
-    {"k": "arm_cif_maior_acima10", "row": 37, "l": "Armazenagem – CIF >1M, acima de 10 dias", "drv": "por contêiner", "m": "BRL", "rj": "ipca", "mes": 5, "v": 0, "re": [r"armazenagem cif maior 1m acima de 10"]},
-    {"k": "arm_cif_menor_acima10", "row": 38, "l": "Armazenagem – CIF <1M, acima de 10 dias", "drv": "por contêiner", "m": "BRL", "rj": "ipca", "mes": 5, "v": 0, "re": [r"armazenagem cif menor 1m acima de 10"]},
-    {"k": "desembaraco", "row": 39, "l": "Desembaraço (DI/DUIMP)", "drv": "por processo", "m": "BRL", "rj": "ipca", "mes": 1, "v": 532.29, "re": [r"^desembaraco"]},
-    {"k": "carta_protesto", "row": 40, "l": "Carta protesto", "drv": "fixo mensal", "m": "BRL", "rj": "ipca", "mes": 1, "v": 1154.85, "re": [r"^carta protesto"]},
-    {"k": "licenca_ncm", "row": 41, "l": "Licença de Importação / NCM", "drv": "fixo mensal", "m": "BRL", "rj": "ipca", "mes": 1, "v": 9274.33, "re": [r"^licenca de importacao"]},
-    {"k": "servico_dev", "row": 42, "l": "Serviço de desenvolvimento", "drv": "fixo mensal", "m": "BRL", "rj": "ipca", "mes": 2, "v": 593.75, "re": [r"^servico de desenvolvimento"]},
-    {"k": "duimp_catalogo", "row": 43, "l": "DUIMP – catálogo de produto", "drv": "fixo mensal", "m": "BRL", "rj": "nenhum", "mes": 0, "v": 0, "re": [r"^duimp"]},
-    {"k": "flowls", "row": 44, "l": "Flowls", "drv": "fixo mensal", "m": "BRL", "rj": "ipca", "mes": 1, "v": 15000, "re": [r"^flowls"]},
-    {"k": "ttms", "row": 45, "l": "TTMS", "drv": "fixo mensal", "m": "BRL", "rj": "ipca", "mes": 1, "v": 5410, "re": [r"^ttms"]},
-    {"k": "in_house", "row": 46, "l": "In-House (4 recursos)", "drv": "fixo mensal", "m": "BRL", "rj": "inhouse", "mes": 7, "v": 57123, "re": [r"^in house"]},
-    {"k": "demurrage", "row": 47, "l": "Demurrage", "drv": "fixo mensal", "m": "BRL", "rj": "nenhum", "mes": 0, "v": 0, "re": [r"^demurrage"]},
-    {"k": "multa", "row": 48, "l": "Multa", "drv": "por unit", "m": "BRL", "rj": "nenhum", "mes": 0, "v": 0, "re": [r"^multa"]},
-    {"k": "rod_nf_maior", "row": 49, "l": "Frete Santos → Extrema – NF >1M", "drv": "por contêiner", "m": "BRL", "rj": "ipca", "mes": 2, "v": 6637.19, "re": [r"santos extrema nf maior 1m", r"frete santos extrema base"]},
-    {"k": "rod_nf_menor", "row": 50, "l": "Frete Santos → Extrema – NF <1M", "drv": "por contêiner", "m": "BRL", "rj": "ipca", "mes": 2, "v": 6218.31, "re": [r"santos extrema nf menor 1m"]},
-    {"k": "rod_aereo", "row": 51, "l": "Rodoviário aéreo GRU/VCP", "drv": "por processo aéreo", "m": "BRL", "rj": "ipca", "mes": 2, "v": 698.06, "re": [r"rodoviario aereo"]},
-    {"k": "escolta", "row": 52, "l": "Escolta armada", "drv": "por evento", "m": "BRL", "rj": "ipca", "mes": 2, "v": 4608.98, "re": [r"^escolta armada$"]},
-    {"k": "escolta_fixo", "row": 53, "l": "Escolta armada – fixo", "drv": "fixo mensal", "m": "BRL", "rj": "nenhum", "mes": 2, "v": 0, "re": [r"^escolta armada fixo"]},
-    {"k": "trava", "row": 54, "l": "Trava Ciltronics (16 travas)", "drv": "fixo mensal", "m": "BRL", "rj": "ipca", "mes": 2, "v": 16704.71, "re": [r"^trava"]},
-    {"k": "estadia", "row": 55, "l": "Estadia de veículo (12h)", "drv": "por evento", "m": "BRL", "rj": "ipca", "mes": 2, "v": 1824.86, "re": [r"^estadia"]},
-    {"k": "pre_stacking", "row": 56, "l": "Pré-stacking / Depot", "drv": "por evento", "m": "BRL", "rj": "ipca", "mes": 2, "v": 1878.66, "re": [r"^pre stacking"]},
-    {"k": "horas_paradas", "row": 57, "l": "Horas paradas (3h)", "drv": "por evento", "m": "BRL", "rj": "ipca", "mes": 2, "v": 327, "re": [r"^horas paradas"]},
-    {"k": "ajudantes", "row": 58, "l": "Ajudantes (5)", "drv": "por mês de uso", "m": "BRL", "rj": "ipca", "mes": 2, "v": 120000, "re": [r"^ajudantes"]},
-]
+TARIFAS: list[dict[str, Any]] = [{'k': 'frete_maritimo_1', 'row': 28, 'l': 'Frete marítimo – 1ª tarifa', 'drv': 'por contêiner', 'm': 'USD', 'rj': 'nenhum', 'mes': 1, 'v': 100.0, 're': ['frete maritimo 1']}, {'k': 'frete_maritimo_2', 'row': 29, 'l': 'Frete marítimo – 2ª tarifa', 'drv': 'por contêiner', 'm': 'USD', 'rj': 'nenhum', 'mes': 7, 'v': 100.0, 're': ['frete maritimo 2']}, {'k': 'frete_aereo', 'row': 30, 'l': 'Frete aéreo', 'drv': 'por unit aérea', 'm': 'BRL', 'rj': 'ipca', 'mes': 1, 'v': 100.0, 're': ['^frete aereo']}, {'k': 'bunker', 'row': 31, 'l': 'Bunker', 'drv': 'por contêiner', 'm': 'USD', 'rj': 'nenhum', 'mes': 1, 'v': 100.0, 're': ['^bunker']}, {'k': 'biocombustivel', 'row': 32, 'l': 'Biocombustível', 'drv': 'por contêiner c/ bio', 'm': 'USD', 'rj': 'nenhum', 'mes': 1, 'v': 100.0, 're': ['^biocombustivel']}, {'k': 'capatazias', 'row': 33, 'l': 'Capatazias', 'drv': 'por contêiner', 'm': 'BRL', 'rj': 'ipca', 'mes': 1, 'v': 100.0, 're': ['^capatazia']}, {'k': 'taxa_siscomex', 'row': 34, 'l': 'Taxa Siscomex', 'drv': 'por unit', 'm': 'BRL', 'rj': 'nenhum', 'mes': 1, 'v': 100.0, 're': ['siscomex']}, {'k': 'arm_cif_maior_ate10', 'row': 35, 'l': 'Armazenagem – CIF >1M, até 10 dias', 'drv': 'por contêiner', 'm': 'BRL', 'rj': 'ipca', 'mes': 5, 'v': 100.0, 're': ['armazenagem cif maior 1m ate 10']}, {'k': 'arm_cif_menor_ate10', 'row': 36, 'l': 'Armazenagem – CIF <1M, até 10 dias', 'drv': 'por contêiner', 'm': 'BRL', 'rj': 'ipca', 'mes': 5, 'v': 100.0, 're': ['armazenagem cif menor 1m ate 10']}, {'k': 'arm_cif_maior_acima10', 'row': 37, 'l': 'Armazenagem – CIF >1M, acima de 10 dias', 'drv': 'por contêiner', 'm': 'BRL', 'rj': 'ipca', 'mes': 5, 'v': 100.0, 're': ['armazenagem cif maior 1m acima de 10']}, {'k': 'arm_cif_menor_acima10', 'row': 38, 'l': 'Armazenagem – CIF <1M, acima de 10 dias', 'drv': 'por contêiner', 'm': 'BRL', 'rj': 'ipca', 'mes': 5, 'v': 100.0, 're': ['armazenagem cif menor 1m acima de 10']}, {'k': 'desembaraco', 'row': 39, 'l': 'Desembaraço (DI/DUIMP)', 'drv': 'por processo', 'm': 'BRL', 'rj': 'ipca', 'mes': 1, 'v': 100.0, 're': ['^desembaraco']}, {'k': 'carta_protesto', 'row': 40, 'l': 'Carta protesto', 'drv': 'fixo mensal', 'm': 'BRL', 'rj': 'ipca', 'mes': 1, 'v': 100.0, 're': ['^carta protesto']}, {'k': 'licenca_ncm', 'row': 41, 'l': 'Licença de Importação / NCM', 'drv': 'fixo mensal', 'm': 'BRL', 'rj': 'ipca', 'mes': 1, 'v': 100.0, 're': ['^licenca de importacao']}, {'k': 'servico_dev', 'row': 42, 'l': 'Serviço de desenvolvimento', 'drv': 'fixo mensal', 'm': 'BRL', 'rj': 'ipca', 'mes': 2, 'v': 100.0, 're': ['^servico de desenvolvimento']}, {'k': 'duimp_catalogo', 'row': 43, 'l': 'DUIMP – catálogo de produto', 'drv': 'fixo mensal', 'm': 'BRL', 'rj': 'nenhum', 'mes': 0, 'v': 100.0, 're': ['^duimp']}, {'k': 'flowls', 'row': 44, 'l': 'Flowls', 'drv': 'fixo mensal', 'm': 'BRL', 'rj': 'ipca', 'mes': 1, 'v': 100.0, 're': ['^flowls']}, {'k': 'ttms', 'row': 45, 'l': 'TTMS', 'drv': 'fixo mensal', 'm': 'BRL', 'rj': 'ipca', 'mes': 1, 'v': 100.0, 're': ['^ttms']}, {'k': 'in_house', 'row': 46, 'l': 'In-House (4 recursos)', 'drv': 'fixo mensal', 'm': 'BRL', 'rj': 'inhouse', 'mes': 7, 'v': 100.0, 're': ['^in house']}, {'k': 'demurrage', 'row': 47, 'l': 'Demurrage', 'drv': 'fixo mensal', 'm': 'BRL', 'rj': 'nenhum', 'mes': 0, 'v': 100.0, 're': ['^demurrage']}, {'k': 'multa', 'row': 48, 'l': 'Multa', 'drv': 'por unit', 'm': 'BRL', 'rj': 'nenhum', 'mes': 0, 'v': 100.0, 're': ['^multa']}, {'k': 'rod_nf_maior', 'row': 49, 'l': 'Frete Santos → Extrema – NF >1M', 'drv': 'por contêiner', 'm': 'BRL', 'rj': 'ipca', 'mes': 2, 'v': 100.0, 're': ['santos extrema nf maior 1m', 'frete santos extrema base']}, {'k': 'rod_nf_menor', 'row': 50, 'l': 'Frete Santos → Extrema – NF <1M', 'drv': 'por contêiner', 'm': 'BRL', 'rj': 'ipca', 'mes': 2, 'v': 100.0, 're': ['santos extrema nf menor 1m']}, {'k': 'rod_aereo', 'row': 51, 'l': 'Rodoviário aéreo GRU/VCP', 'drv': 'por processo aéreo', 'm': 'BRL', 'rj': 'ipca', 'mes': 2, 'v': 100.0, 're': ['rodoviario aereo']}, {'k': 'escolta', 'row': 52, 'l': 'Escolta armada', 'drv': 'por evento', 'm': 'BRL', 'rj': 'ipca', 'mes': 2, 'v': 100.0, 're': ['^escolta armada$']}, {'k': 'escolta_fixo', 'row': 53, 'l': 'Escolta armada – fixo', 'drv': 'fixo mensal', 'm': 'BRL', 'rj': 'nenhum', 'mes': 2, 'v': 100.0, 're': ['^escolta armada fixo']}, {'k': 'trava', 'row': 54, 'l': 'Trava Ciltronics (16 travas)', 'drv': 'fixo mensal', 'm': 'BRL', 'rj': 'ipca', 'mes': 2, 'v': 100.0, 're': ['^trava']}, {'k': 'estadia', 'row': 55, 'l': 'Estadia de veículo (12h)', 'drv': 'por evento', 'm': 'BRL', 'rj': 'ipca', 'mes': 2, 'v': 100.0, 're': ['^estadia']}, {'k': 'pre_stacking', 'row': 56, 'l': 'Pré-stacking / Depot', 'drv': 'por evento', 'm': 'BRL', 'rj': 'ipca', 'mes': 2, 'v': 100.0, 're': ['^pre stacking']}, {'k': 'horas_paradas', 'row': 57, 'l': 'Horas paradas (3h)', 'drv': 'por evento', 'm': 'BRL', 'rj': 'ipca', 'mes': 2, 'v': 100.0, 're': ['^horas paradas']}, {'k': 'ajudantes', 'row': 58, 'l': 'Ajudantes (5)', 'drv': 'por mês de uso', 'm': 'BRL', 'rj': 'ipca', 'mes': 2, 'v': 100.0, 're': ['^ajudantes']}]
 TARIFA_BY_KEY = {t["k"]: t for t in TARIFAS}
 TARIFA_BY_ROW = {t["row"]: t for t in TARIFAS}
 # Na aba Premissas do MODELO as tarifas estao na coluna C (linhas 11-16 e 30-56); mapa linha -> tarifa
@@ -139,26 +73,12 @@ MODELO_PREM_ESCALAR = {6: "volume_total_units", 7: "units_por_conteiner", 8: "pc
                        23: "pct_nf_acima_1m_rodoviario", 24: "pct_conteineres_escolta_armada",
                        25: "pct_conteineres_estadia_veiculo", 26: "pct_conteineres_pre_stacking",
                        27: "pct_conteineres_horas_paradas", 28: "units_por_processo_aereo", 29: "reajuste_in_house"}
-CURVA_PADRAO = [1559723, 936905, 1172760, 1459059, 1247703, 1710052, 1787466, 1426489, 1529181, 1503043, 1116546, 1060770]
+CURVA_PADRAO = [1000] * 12  # Valores fictícios para a demonstração pública
 
 # Rubricas (13) na ordem da aba de calculo; budget/forecast do ano anterior por rubrica
-RUBRICAS: list[dict[str, Any]] = [
-    {"k": "frete_maritimo", "l": "Frete marítimo", "re": r"^frete maritimo", "b": 13841520, "f": 10324324.8},
-    {"k": "frete_aereo", "l": "Frete aéreo", "re": r"^frete aereo", "b": 413197.16, "f": 2530202.14},
-    {"k": "bunker", "l": "Bunker + biocombustível", "re": r"^bunker", "b": 6896052.97, "f": 8735872.16},
-    {"k": "capatazias", "l": "Capatazias", "re": r"^capatazia", "b": 1430414.10, "f": 1312622.01},
-    {"k": "afrmm", "l": "Marinha Mercante (AFRMM) + Siscomex", "re": r"marinha mercante|afrmm", "b": 2313832.77, "f": 1991396.20},
-    {"k": "armazenagem", "l": "Armazenagem", "re": r"^armazenagem", "b": 4109984.12, "f": 5063589.57},
-    {"k": "despachante", "l": "Despachante aduaneiro", "re": r"^despachante", "b": 810767.15, "f": 811867.17},
-    {"k": "sistemas", "l": "Sistemas & desenvolvimento", "re": r"^sistemas", "b": 404938.31, "f": 364036.63},
-    {"k": "in_house", "l": "Equipe In-House", "re": r"in house", "b": 653709.47, "f": 671756.71},
-    {"k": "demurrage", "l": "Demurrage", "re": r"^demurrage", "b": 36972, "f": 23099.15},
-    {"k": "multa", "l": "Multa", "re": r"^multa", "b": 0, "f": 0},
-    {"k": "rodoviario", "l": "Frete rodoviário (total)", "re": r"^frete rodoviario", "b": 11370173.56, "f": 10618384.92},
-    {"k": "seguro", "l": "Seguro internacional (apólice em USD)", "re": r"^seguro", "b": 316310.94, "f": 305115.41},
-]
+RUBRICAS: list[dict[str, Any]] = [{'k': 'frete_maritimo', 'l': 'Frete marítimo', 're': '^frete maritimo', 'b': 12000.0, 'f': 12000.0}, {'k': 'frete_aereo', 'l': 'Frete aéreo', 're': '^frete aereo', 'b': 12000.0, 'f': 12000.0}, {'k': 'bunker', 'l': 'Bunker + biocombustível', 're': '^bunker', 'b': 12000.0, 'f': 12000.0}, {'k': 'capatazias', 'l': 'Capatazias', 're': '^capatazia', 'b': 12000.0, 'f': 12000.0}, {'k': 'afrmm', 'l': 'Marinha Mercante (AFRMM) + Siscomex', 're': 'marinha mercante|afrmm', 'b': 12000.0, 'f': 12000.0}, {'k': 'armazenagem', 'l': 'Armazenagem', 're': '^armazenagem', 'b': 12000.0, 'f': 12000.0}, {'k': 'despachante', 'l': 'Despachante aduaneiro', 're': '^despachante', 'b': 12000.0, 'f': 12000.0}, {'k': 'sistemas', 'l': 'Sistemas & desenvolvimento', 're': '^sistemas', 'b': 12000.0, 'f': 12000.0}, {'k': 'in_house', 'l': 'Equipe In-House', 're': 'in house', 'b': 12000.0, 'f': 12000.0}, {'k': 'demurrage', 'l': 'Demurrage', 're': '^demurrage', 'b': 12000.0, 'f': 12000.0}, {'k': 'multa', 'l': 'Multa', 're': '^multa', 'b': 12000.0, 'f': 12000.0}, {'k': 'rodoviario', 'l': 'Frete rodoviário (total)', 're': '^frete rodoviario', 'b': 12000.0, 'f': 12000.0}, {'k': 'seguro', 'l': 'Seguro internacional (apólice em USD)', 're': '^seguro', 'b': 12000.0, 'f': 12000.0}]
 RUBRICA_BY_KEY = {r["k"]: r for r in RUBRICAS}
-VOLUME_ANTERIOR = {"b": 14810556, "f": 14876089}
+VOLUME_ANTERIOR = {'b': 12000.0, 'f': 12000.0}
 # Budget e Forecast do ano anterior MES A MES (Ferramenta de Controle 2026, fechamento de agosto, aba Outlook): por
 # rubrica, mais o frete Santos-Extrema (para o rodoviario aparecer dividido em 2), units e conteineres. A soma de cada
 # rubrica bate com o anual do Comparativo; se o anual for alterado, o mensal daquela rubrica deixa de valer (n/d).
@@ -340,6 +260,15 @@ def calcular(params: dict[str, Any]) -> dict[str, Any]:
         det["horas_paradas"][i] = c * e["pct_conteineres_horas_paradas"] * T("horas_paradas", m)
         det["ajudantes"][i] = p["ajudantes_uso"][i] * T("ajudantes", m)
         det["seguro"][i] = seguro_mensal(p)
+    # Armazenagem fixada como % do orcamento total: o ano = s x (demais custos) / (1 - s), repartido nos meses na
+    # proporcao do calculo pelas tarifas (sem tarifa em nenhum mes, pelos conteineres).
+    share = e.get("pct_armazenagem_no_total") or 0.0
+    if 0 < share < 1:
+        outros = sum(det[k][i] for k in det if k != "armazenagem" for i in range(12))
+        alvo = share * outros / (1 - share)
+        base = det["armazenagem"] if sum(det["armazenagem"]) > 0 else [float(x) for x in cntr]
+        peso = sum(base) or 1.0
+        det["armazenagem"] = [alvo * b / peso for b in base]
     soma_linhas = lambda *ks: [sum(det[k][i] for k in ks) for i in range(12)]  # noqa: E731
     rub = {
         "frete_maritimo": det["frete_maritimo"], "frete_aereo": det["frete_aereo"],
@@ -525,19 +454,22 @@ def _graficos(p, linhas, comp, kpi, mensal) -> dict[str, Any]:
     # Variacao vs forecast: rubricas com |var| >= R$ 200 mil e o resto em "Demais (N)"
     grandes = [c for c in comp if abs(c["var_f"]) >= 200000]
     pequenas = [c for c in comp if abs(c["var_f"]) < 200000]
-    variacao = [{"l": c["l"], "v": c["var_f"]} for c in grandes]
+    # "ks" (13/11/2026): rubricas de cada item, para o clique no grafico filtrar o Painel inteiro
+    variacao = [{"l": c["l"], "v": c["var_f"], "ks": [c["k"]]} for c in grandes]
     if pequenas:
-        variacao.append({"l": f"Demais ({len(pequenas)} rubricas)", "v": sum(c["var_f"] for c in pequenas)})
+        variacao.append({"l": f"Demais ({len(pequenas)} rubricas)", "v": sum(c["var_f"] for c in pequenas),
+                         "ks": [c["k"] for c in pequenas]})
     variacao.sort(key=lambda x: -x["v"])
     curto = {"rodoviario": "Rodoviário", "frete_maritimo": "Marítimo", "bunker": "Bunker", "afrmm": "AFRMM",
              "armazenagem": "Armazenagem", "capatazias": "Capatazias", "despachante": "Despachante", "in_house": "In-House",
              "frete_aereo": "Aéreo", "sistemas": "Sistemas", "seguro": "Seguro", "demurrage": "Demurrage", "multa": "Multa"}
     top5 = comp[:5]
     resto = comp[5:]
-    comparacao = [{"l": curto[c["k"]], "atual": c["atual"], "budget": c["budget"], "forecast": c["forecast"]} for c in top5]
+    comparacao = [{"l": curto[c["k"]], "atual": c["atual"], "budget": c["budget"], "forecast": c["forecast"], "ks": [c["k"]]}
+                  for c in top5]
     if resto:
         comparacao.append({"l": "Demais", "atual": sum(c["atual"] for c in resto), "budget": sum(c["budget"] for c in resto),
-                           "forecast": sum(c["forecast"] for c in resto)})
+                           "forecast": sum(c["forecast"] for c in resto), "ks": [c["k"] for c in resto]})
     difs = sorted(comparacao, key=lambda c: c["atual"] - c["forecast"])
     altas = [c for c in reversed(difs) if c["atual"] - c["forecast"] > 0][:2]
     queda = difs[0] if difs and difs[0]["atual"] - difs[0]["forecast"] < 0 else None
@@ -552,7 +484,7 @@ def _graficos(p, linhas, comp, kpi, mensal) -> dict[str, Any]:
                            f"frete marítimo (USD {_br(t2['base'], 0)}/cntr) vale de {MESES_LONGOS[mes2 - 1]} a dezembro")},
         "composicao": {"titulo": f"Onde está o custo de {p['ano']}",
                        "sub": f"Marítimo, bunker e Santos/Extrema somam {_br(top3 / tot * 100, 0)}% do total",
-                       "itens": [{"l": ln["l"].replace(" (apólice em USD)", ""), "v": ln["total"], "pct": ln["pct"],
+                       "itens": [{"l": ln["l"].replace(" (apólice em USD)", ""), "v": ln["total"], "pct": ln["pct"], "k": ln["k"],
                                   "usd": kpi["seguro_usd_ano"] if ln["k"] == "seguro" else None} for ln in linhas]},
         "variacao": {"titulo": f"{p['ano']} × Forecast {p['ano'] - 1}: {sinal(kpi['var_forecast'])}R$ {_fmt_mi(abs(kpi['var_forecast']))} mi "
                                f"({sinal(kpi['var_forecast_pct'])}{_br(abs(kpi['var_forecast_pct']) * 100, 0)}%)",
@@ -569,18 +501,7 @@ def _graficos(p, linhas, comp, kpi, mensal) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 # Referencias de mercado (secao 7) e alertas de premissa
 # ---------------------------------------------------------------------------
-BENCHMARKS_PADRAO = {
-    "fx": {"v": 5.22, "rotulo": "Focus/BCB 19/10/2026: câmbio fim de 2027 R$ 5,22",
-           "url": "https://www.infomoney.com.br/economia/boletim-focus-projecoes-19102026/"},
-    "ipca": {"v": 0.0432, "rotulo": "Focus/BCB 19/10/2026: IPCA 2027 4,32%",
-             "url": "https://www.infomoney.com.br/economia/boletim-focus-projecoes-19102026/"},
-    "inctl": {"v": 0.0684, "rotulo": "NTC&Logística: INCT-L +6,84% em 12 meses até set/26",
-              "url": "https://www.portalntc.org.br/relatorio-mensal-do-indice-nacional-de-custos-do-transporte-inctf-e-inctl-setembro-26/"},
-    "afrmm": {"v": 0.08, "rotulo": "Lei 10.893/2004, art. 6º: 8% no longo curso",
-              "url": "https://www.planalto.gov.br/CCiVil_03/_Ato2004-2006/2004/Lei/L10.893.htm"},
-    "siscomex_limite": {"v": 1500, "rotulo": "Limite de plausibilidade: R$ 1.500 por DI (Portaria ME 4.131/2021: R$ 115,67/DI + adições)",
-                        "url": "https://www.aasp.org.br/?p=33557"},
-}
+BENCHMARKS_PADRAO = {'fx': {'v': 1000.0, 'rotulo': 'Parâmetro ilustrativo', 'url': 'https://www.infomoney.com.br/economia/boletim-focus-projecoes-19102026/'}, 'ipca': {'v': 0.05, 'rotulo': 'Parâmetro ilustrativo', 'url': 'https://www.infomoney.com.br/economia/boletim-focus-projecoes-19102026/'}, 'inctl': {'v': 0.05, 'rotulo': 'Parâmetro ilustrativo', 'url': 'https://www.portalntc.org.br/relatorio-mensal-do-indice-nacional-de-custos-do-transporte-inctf-e-inctl-setembro-26/'}, 'afrmm': {'v': 0.05, 'rotulo': 'Parâmetro ilustrativo', 'url': 'https://www.planalto.gov.br/CCiVil_03/_Ato2004-2006/2004/Lei/L10.893.htm'}, 'siscomex_limite': {'v': 1000.0, 'rotulo': 'Parâmetro ilustrativo', 'url': 'https://www.aasp.org.br/?p=33557'}}
 
 
 def alertas_premissas(p: dict[str, Any], res: dict[str, Any], bench: dict[str, Any] | None = None) -> list[dict[str, Any]]:
@@ -593,7 +514,13 @@ def alertas_premissas(p: dict[str, Any], res: dict[str, Any], bench: dict[str, A
         out.append({"sev": sev, "cod": cod, "onde": onde, "titulo": titulo, "detalhe": detalhe, "acao": acao, "impacto": impacto})
 
     zer = [TARIFA_BY_KEY[k]["l"] for k in ("arm_cif_maior_acima10", "arm_cif_menor_acima10") if t[k]["base"] == 0]
-    if zer:
+    share = e.get("pct_armazenagem_no_total") or 0.0
+    if 0 < share < 1:
+        # Armazenagem fixada como % do total: as tarifas so repartem o valor nos meses (o alerta R04 nao se aplica).
+        add("Baixa", "R26", "Armazenagem fixada em % do orçamento total",
+            f"A armazenagem do ano é {_br(share * 100, 1)}% do orçamento total; as tarifas e o % de processos acima de "
+            "10 dias só repartem esse valor nos meses.", "Conferir o percentual quando houver tarifa do terminal.")
+    elif zer:
         arm = sum(next(r for r in res["rubricas"] if r["k"] == "armazenagem")["v"])
         p10 = e["pct_processos_armazenagem_acima_10_dias"]
         piso = arm / (1 - p10) - arm if p10 < 1 else None
@@ -1213,6 +1140,22 @@ def _set_cell(xml: str, ref: str, value: Any = None, formula: str | None = None)
     return xml[:start] + inner2 + xml[start + len(inner):]
 
 
+def p10_equivalente(p: dict[str, Any]) -> float | None:
+    """Com a armazenagem fixada em % do total: o % de processos acima de 10 dias que, pelas tarifas, da o mesmo valor
+    no ano (a armazenagem e linear nesse percentual). None quando a armazenagem segue as tarifas."""
+    share = p["escalares"].get("pct_armazenagem_no_total") or 0.0
+    if not 0 < share < 1:
+        return None
+    arm = lambda res: sum(next(r for r in res["rubricas"] if r["k"] == "armazenagem")["v"])  # noqa: E731
+    alvo = arm(calcular(p))
+    sem = lambda p10: {**p, "escalares": {**p["escalares"], "pct_armazenagem_no_total": 0.0,  # noqa: E731
+                                          "pct_processos_armazenagem_acima_10_dias": p10}}
+    k0, k1 = arm(calcular(sem(0.0))), arm(calcular(sem(1.0)))
+    if abs(k0 - k1) < 1e-9:
+        return None
+    return max(0.0, min(1.0, (k0 - alvo) / (k0 - k1)))
+
+
 def exportar_modelo(params: dict[str, Any], modelo: Path, subtitulo: str = "") -> bytes:
     """Gera a planilha MODELO com as premissas da versao. O Excel recalcula tudo ao abrir."""
     p, _ = clean_params(params)
@@ -1224,6 +1167,13 @@ def exportar_modelo(params: dict[str, Any], modelo: Path, subtitulo: str = "") -
     P = xml["Premissas"]
     for r, k in MODELO_PREM_ESCALAR.items():
         P = _set_cell(P, f"C{r}", e[k])
+    p10_eq = p10_equivalente(p)
+    if p10_eq is not None:
+        # O MODELO calcula a armazenagem pelas tarifas: o % de processos acima de 10 dias que da o mesmo valor do ano.
+        P = _set_cell(P, "C22", p10_eq)
+        nota = (f"armazenagem fixada em {_br(e['pct_armazenagem_no_total'] * 100, 1)}% do orçamento total "
+                f"(no Excel, pelo % de processos acima de 10 dias equivalente: {_br(p10_eq * 100, 1)}%)")
+        subtitulo = f"{subtitulo} · {nota}" if subtitulo else nota
     for r, k in MODELO_PREM_TARIFA.items():
         P = _set_cell(P, f"C{r}", t[k]["base"])
     for i, v in enumerate(p["curva"]):

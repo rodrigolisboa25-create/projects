@@ -1,0 +1,489 @@
+{
+  "name": "NexxusDoc - Custos",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 7-20 * * 1-5"
+            }
+          ]
+        }
+      },
+      "name": "Custos: de hora em hora",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://www.googleapis.com/drive/v3/files",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "q",
+              "value": "name = 'nexxusdoc_custos_n8n.json' and 'CONFIGURE_ID' in parents and trashed = false"
+            },
+            {
+              "name": "corpora",
+              "value": "drive"
+            },
+            {
+              "name": "driveId",
+              "value": "0AFFPxJzHkValUk9PVA"
+            },
+            {
+              "name": "includeItemsFromAllDrives",
+              "value": "true"
+            },
+            {
+              "name": "supportsAllDrives",
+              "value": "true"
+            },
+            {
+              "name": "pageSize",
+              "value": "1000"
+            },
+            {
+              "name": "fields",
+              "value": "files(id,name,modifiedTime)"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "name": "Custos: achar estado",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        260,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "try {\nconst f = $input.first().json.files || [];\nif (!f.length) throw new Error('Arquivo nexxusdoc_custos_n8n.json nao encontrado em Sua Area > Nexxus > NexxusDoc.');\nreturn [{ json: { id: f[0].id } }];\n} catch (erro) {\n  const m = erro && erro.message ? erro.message : (typeof erro === 'string' ? erro : JSON.stringify(erro));\n  throw new Error('[Custos: escolher estado] ' + m + (erro && erro.stack ? ' | ' + String(erro.stack).split('\\n').slice(0, 4).join(' / ') : ''));\n}"
+      },
+      "name": "Custos: escolher estado",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        520,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ 'https://www.googleapis.com/drive/v3/files/' + $json.id + '?alt=media&supportsAllDrives=true' }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "name": "Custos: baixar estado",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        780,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://www.googleapis.com/drive/v3/files",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "q",
+              "value": "'CONFIGURE_ID' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false"
+            },
+            {
+              "name": "corpora",
+              "value": "drive"
+            },
+            {
+              "name": "driveId",
+              "value": "0AFFPxJzHkValUk9PVA"
+            },
+            {
+              "name": "includeItemsFromAllDrives",
+              "value": "true"
+            },
+            {
+              "name": "supportsAllDrives",
+              "value": "true"
+            },
+            {
+              "name": "pageSize",
+              "value": "1000"
+            },
+            {
+              "name": "fields",
+              "value": "files(id,name)"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "name": "Custos: pastas dos meses",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1040,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "try {\n\nconst MESES = ['JANEIRO', 'FEVEREIRO', 'MARCO', 'ABRIL', 'MAIO', 'JUNHO', 'JULHO', 'AGOSTO', 'SETEMBRO', 'OUTUBRO', 'NOVEMBRO', 'DEZEMBRO'];\nconst sem = s => String(s || '').normalize('NFD').replace(/[\\u0300-\\u036f]/g, '').toUpperCase().trim();\nconst est = $('Custos: baixar estado').first().json || {};\nconst pastas = $input.all().flatMap(it => it.json.files || []).filter(p => MESES.includes(sem(p.name)));\nif (!pastas.length) throw new Error('Pastas de mes nao encontradas em Layouts - MIRO de Deb. Post.');\nconst desde = new Date(new Date(est.ultima_execucao || '2026-11-24T00:00:00Z').getTime() - 10 * 60000).toISOString().slice(0, 19);\nconst q = '(' + pastas.map(p => \"'\" + p.id + \"' in parents\").join(' or ') + \") and modifiedTime > '\" + desde + \"' and trashed = false and mimeType != 'application/vnd.google-apps.folder'\";\nreturn [{json: {q, _agora: new Date().toISOString().slice(0, 19) + 'Z', _meses: Object.fromEntries(pastas.map(p => [p.id, p.name]))}}];\n\n} catch (erro) {\n  const m = erro && erro.message ? erro.message : (typeof erro === 'string' ? erro : JSON.stringify(erro));\n  throw new Error('[Custos: consulta] ' + m + (erro && erro.stack ? ' | ' + String(erro.stack).split('\\n').slice(0, 4).join(' / ') : ''));\n}"
+      },
+      "name": "Custos: consulta",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1300,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://www.googleapis.com/drive/v3/files",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "q",
+              "value": "={{ $json.q }}"
+            },
+            {
+              "name": "corpora",
+              "value": "drive"
+            },
+            {
+              "name": "driveId",
+              "value": "0AFFPxJzHkValUk9PVA"
+            },
+            {
+              "name": "includeItemsFromAllDrives",
+              "value": "true"
+            },
+            {
+              "name": "supportsAllDrives",
+              "value": "true"
+            },
+            {
+              "name": "pageSize",
+              "value": "1000"
+            },
+            {
+              "name": "fields",
+              "value": "nextPageToken,files(id,name,parents,modifiedTime,size)"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          },
+          "pagination": {
+            "pagination": {
+              "parameters": {
+                "parameters": [
+                  {
+                    "name": "pageToken",
+                    "value": "={{ $response.body.nextPageToken }}"
+                  }
+                ]
+              },
+              "paginationCompleteWhen": "other",
+              "completeExpression": "={{ !$response.body.nextPageToken }}",
+              "limitPagesFetched": true,
+              "maxRequests": 20,
+              "requestInterval": 200
+            }
+          }
+        }
+      },
+      "name": "Custos: layouts alterados",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        0,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "try {\n\nconst est = $('Custos: baixar estado').first().json || {};\nconst cons = $('Custos: consulta').first().json;\nconst ja = est.arquivos || {};\nconst vistos = new Set();\nlet fila = [];\nfor (const p of (est.pendentes || [])) { if (!vistos.has(p.drive_id)) { vistos.add(p.drive_id); fila.push({...p}); } }\nconst alterados = $input.all().flatMap(it => it.json.files || []).filter(f => /\\.csv$/i.test(f.name || ''));\nfor (const f of alterados) {\n  if (vistos.has(f.id)) continue;\n  const atual = ja[String(f.name).toUpperCase()];\n  if (atual && atual.drive_id === f.id && atual.mod_drive === f.modifiedTime) continue;\n  vistos.add(f.id);\n  fila.push({drive_id: f.id, nome: f.name, pasta: cons._meses[(f.parents || [])[0]] || '', mod_drive: f.modifiedTime, tentativas: 0});\n}\nfila.sort((a, b) => String(a.mod_drive).localeCompare(String(b.mod_drive)));\nconst agora = fila.slice(0, 120), resto = fila.slice(120);\nconst out = agora.length ? agora.map(f => ({json: {...f}})) : [{json: {dummy: true}}];\nout[0].json._pendentes = resto.map(f => ({...f}));\nout[0].json._alterados = alterados.length;\nreturn out;\n\n} catch (erro) {\n  const m = erro && erro.message ? erro.message : (typeof erro === 'string' ? erro : JSON.stringify(erro));\n  throw new Error('[Custos: fila] ' + m + (erro && erro.stack ? ' | ' + String(erro.stack).split('\\n').slice(0, 4).join(' / ') : ''));\n}"
+      },
+      "name": "Custos: fila",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        260,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "7a16ce0c-2835-54e5-85ad-15ccbcff04ee",
+              "leftValue": "={{ $json.dummy ? 'nao' : 'sim' }}",
+              "rightValue": "sim",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "Custos: tem layout novo?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        520,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ 'https://www.googleapis.com/drive/v3/files/' + $json.drive_id + '?alt=media&supportsAllDrives=true' }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text",
+              "outputPropertyName": "data"
+            }
+          },
+          "batching": {
+            "batch": {
+              "batchSize": 8,
+              "batchInterval": 250
+            }
+          }
+        }
+      },
+      "name": "Custos: baixar layouts",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        780,
+        300
+      ],
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "try {\n// ===== Leitura dos layouts de MIRO de debito posterior (igual ao custos.py do NexxusDoc) =====\nconst RUB_GRUPO = {\n  'PGTOFRETE': 'frete', 'PGTOBUNKER': 'frete', 'PGTOFOSSIL': 'frete', 'PGTOTXADD FRET': 'frete', 'PGTOECODELIV': 'frete',\n  'PGTOCAPATAZIAS': 'porto', 'PGTOCEMERCANTE': 'porto', 'PGTOJUROSMMERC': 'porto', 'PGTODEMURRAGE': 'porto',\n  'DEBITOII/1% Cof': 'impostos', 'DEBITOTX. SISC.': 'impostos', 'DEBITODUMPING': 'impostos', 'DEBITOMULTA': 'impostos',\n  'PGTOARMAZ': 'armazenagem', 'PGTOARMAZDSA': 'armazenagem', 'PGTOFRETEROD': 'transporte', 'PGTOFRETRODCPL': 'transporte',\n  'PGTOAJDESCARGA': 'transporte', 'PGTOTRAVAELET': 'transporte', 'PGTODESEMB': 'desembaraco', 'PGTOCOORDENA': 'desembaraco',\n  'PGTOSERVADM': 'desembaraco', 'PGTOSERVLI': 'desembaraco', 'PGTOFLOWLS': 'desembaraco', 'PGTOSEGURO': 'seguro', 'PGTOADMSEG': 'seguro'\n};\nfunction rubricaGrupo(codigo) {\n  const c = String(codigo || '').toUpperCase().replace(/^(PGTO|PREST(A[CÇ][AÃ]O)?|ANTECIPA[CÇ][AÃ]O|D[EÉ]BITO)\\s*/, '');\n  for (const [k, g] of Object.entries(RUB_GRUPO)) if (k.replace(/^(PGTO|DEBITO)/, '') === c) return g;\n  if (/FRETE ?ROD|FRETROD|FRETENACIO|AJDESC|TRAVA|MOTO|TTMS/.test(c)) return 'transporte';\n  if (c.includes('ARMAZ')) return 'armazenagem';\n  if (/II|SISC|DUMPING|MULTA/.test(c) && !c.includes('SERV')) return 'impostos';\n  if (/CAPATAZ|MERC|DEMURR|INSPE|MOVCARGA|TRANSPTER|FOTOGRAF/.test(c)) return 'porto';\n  if (/FRETE|BUNKER|FOSSIL|BL|DELIV|CONSOL|COLLECT|CHC|DOC FEE|IOF/.test(c)) return 'frete';\n  if (c.includes('SEGUR')) return 'seguro';\n  if (/DESEMB|SERV|COORD|FLOWLS|SISTEMA|ADM|CARTA|DESP|JURO/.test(c)) return 'desembaraco';\n  return 'outros';\n}\n// Mesmo arredondamento do round(v, 2) do Python (pelo valor binario exato; toFixed faz o mesmo)\nconst r2 = v => Number(Number(v).toFixed(2));\nfunction numBR(v) {\n  v = String(v || '').trim().replace(/^\"|\"$/g, '').replace(/ /g, '');\n  if (!v) return 0;\n  if (v.includes(',')) v = v.replace(/\\./g, '').replace(',', '.');\n  const n = Number(v);\n  return Number.isFinite(n) ? n : 0;\n}\nfunction dataBR(v) {\n  const m = /^(\\d{2})\\.(\\d{2})\\.(\\d{4})/.exec(String(v || '').trim().replace(/^\"|\"$/g, ''));\n  return m ? `${m[3]}-${m[2]}-${m[1]}` : '';\n}\nfunction tipoDoNome(nome) {\n  const m = /^[\\s_]*MIRO[\\s_]+DE[\\s_]+(IMPOSTOS|DESPESAS|FRETE)/.exec(String(nome || '').toUpperCase());\n  return m ? m[1].toLowerCase() : 'outro';\n}\nfunction lerLayout(txt, nome) {\n  // Baixado como texto UTF-8: o raro espaco especial do cp1252 (\\xa0 apos o BL) vira caractere invalido; sai aqui\n  txt = String(txt || '').replace(/^﻿/, '').replace(/�/g, '');\n  const linhas = txt.split(/\\r\\n|\\r|\\n/).filter(l => l.trim());\n  if (linhas.length < 2) return null;\n  const rub = {}, itens = {}, ordem = [];\n  let ref = '', emp = '', data = '';\n  for (const l of linhas.slice(1)) {\n    const c = l.split(';').map(v => v.trim().replace(/^\"+|\"+$/g, '').trim());\n    if (c.length < 24) continue;\n    ref = ref || c[0]; emp = emp || c[5]; data = data || dataBR(c[3]);\n    const cod = c[15] || '(sem texto)';\n    if (!rub[cod]) rub[cod] = {fornecedor: c[6], cabecalho: c[13], atribuicao: c[14], nf: 0, _refs: [], venc: dataBR(c[10]), total: 0, itens: 0};\n    const r = rub[cod];\n    if (!r._refs.includes(c[0])) { r._refs.push(c[0]); r.nf += numBR(c[9]); }\n    const v = numBR(c[22]);\n    r.total += v; r.itens += 1;\n    const k = c[18] + '/' + (c[19].replace(/^0+/, '') || c[19]);\n    if (!itens[k]) { itens[k] = {po: c[18], item: c[19], qtd: numBR(c[23]), valores: {}}; ordem.push(k); }\n    itens[k].valores[cod] = r2((itens[k].valores[cod] || 0) + v);\n  }\n  if (!Object.keys(rub).length) return null;\n  for (const r of Object.values(rub)) { delete r._refs; r.total = r2(r.total); r.nf = r2(r.nf); }\n  const nm = String(nome || '').toUpperCase();\n  const wf = /WFADIM\\d{8,9}/.exec(nm);\n  const ver = /-(\\d{1,2})(?:\\s|\\.CSV|$)/.exec(nm.replace(/\\.CSV$/, '') + ' ');\n  return {nome, tipo: tipoDoNome(nome), versao: ver ? Number(ver[1]) : 1, wfadim: wf ? wf[0] : '', ref, empresa: emp, data,\n          rubricas: rub, itens: ordem.map(k => itens[k])};\n}\nfunction compacto(a) {\n  const pos = {};\n  for (const it of a.itens || []) {\n    const p = pos[it.po] = pos[it.po] || {qtd: 0, itens: 0, g: {}};\n    p.itens += 1; p.qtd += it.qtd || 0;\n    for (const [cod, v] of Object.entries(it.valores)) { const g = rubricaGrupo(cod); p.g[g] = r2((p.g[g] || 0) + v); }\n  }\n  const out = {};\n  for (const [k, v] of Object.entries(a)) if (k !== 'itens') out[k] = v;\n  out.pos = pos; out.n_itens = (a.itens || []).length;\n  return out;\n}\n\n// ===== Le os CSVs baixados e grava o estado (so o n8n escreve este arquivo) =====\nconst estado = JSON.parse(JSON.stringify($('Custos: baixar estado').first().json || {}));\nconst cons = $('Custos: consulta').first().json;\nconst fila = $('Custos: fila').all();\nconst seguro = n => { try { return $(n).all(); } catch (e) { return []; } };\nconst baixados = seguro('Custos: baixar layouts');\nestado.arquivos = estado.arquivos || {};\nconst pend = (((fila[0] || {}).json || {})._pendentes || []).map(p => ({...p}));\nlet lidos = 0, erros = 0;\nconst ultimosErros = [];\nfila.forEach((it, i) => {\n  const meta = it.json;\n  if (meta.dummy || !meta.drive_id) return;\n  const r = (baixados[i] || {}).json || {};\n  const txt = typeof r.data === 'string' ? r.data : '';\n  const a = txt && !r.error ? lerLayout(txt, meta.nome) : null;\n  if (!a) {\n    erros++;\n    ultimosErros.push({nome: meta.nome, erro: r.error ? 'não foi possível baixar' : 'layout vazio ou fora do formato'});\n    if ((meta.tentativas || 0) < 2) { const p = {...meta, tentativas: (meta.tentativas || 0) + 1}; delete p._pendentes; delete p._alterados; pend.push(p); }\n    return;\n  }\n  const c = compacto(a);\n  c.mod = String(meta.mod_drive || '').slice(0, 19);\n  c.mod_drive = meta.mod_drive; c.drive_id = meta.drive_id; c.pasta = meta.pasta;\n  c.caminho = (meta.pasta ? meta.pasta + '\\\\' : '') + meta.nome;\n  c.lido_em = cons._agora;\n  estado.arquivos[String(meta.nome).toUpperCase()] = c;\n  lidos++;\n});\nestado.versao = 1;\nestado.ultima_execucao = cons._agora;\nestado.pendentes = pend;\nestado.ultima_rodada = {em: cons._agora, alterados: ((fila[0] || {}).json || {})._alterados || 0, lidos, erros,\n  pendentes: pend.length, erros_exemplo: ultimosErros.slice(0, 5)};\nreturn [{json: {id: $('Custos: escolher estado').first().json.id, conteudo: JSON.stringify(estado)}}];\n\n} catch (erro) {\n  const m = erro && erro.message ? erro.message : (typeof erro === 'string' ? erro : JSON.stringify(erro));\n  throw new Error('[Custos: ler e montar estado] ' + m + (erro && erro.stack ? ' | ' + String(erro.stack).split('\\n').slice(0, 4).join(' / ') : ''));\n}"
+      },
+      "name": "Custos: ler e montar estado",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1040,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ 'https://www.googleapis.com/upload/drive/v3/files/' + $json.id + '?uploadType=media&supportsAllDrives=true' }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "options": {},
+        "method": "PATCH",
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ $json.conteudo }}"
+      },
+      "name": "Custos: gravar no Drive",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1300,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Custos: de hora em hora": {
+      "main": [
+        [
+          {
+            "node": "Custos: achar estado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Custos: achar estado": {
+      "main": [
+        [
+          {
+            "node": "Custos: escolher estado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Custos: escolher estado": {
+      "main": [
+        [
+          {
+            "node": "Custos: baixar estado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Custos: baixar estado": {
+      "main": [
+        [
+          {
+            "node": "Custos: pastas dos meses",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Custos: pastas dos meses": {
+      "main": [
+        [
+          {
+            "node": "Custos: consulta",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Custos: consulta": {
+      "main": [
+        [
+          {
+            "node": "Custos: layouts alterados",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Custos: layouts alterados": {
+      "main": [
+        [
+          {
+            "node": "Custos: fila",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Custos: fila": {
+      "main": [
+        [
+          {
+            "node": "Custos: tem layout novo?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Custos: tem layout novo?": {
+      "main": [
+        [
+          {
+            "node": "Custos: baixar layouts",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Custos: ler e montar estado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Custos: baixar layouts": {
+      "main": [
+        [
+          {
+            "node": "Custos: ler e montar estado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Custos: ler e montar estado": {
+      "main": [
+        [
+          {
+            "node": "Custos: gravar no Drive",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "America/Sao_Paulo",
+    "executionTimeout": 1800
+  }
+}

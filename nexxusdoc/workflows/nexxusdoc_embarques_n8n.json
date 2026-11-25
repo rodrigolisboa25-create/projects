@@ -1,0 +1,1422 @@
+{
+  "name": "NexxusDoc - Embarques",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 8-18 * * 1-5"
+            }
+          ]
+        }
+      },
+      "name": "Embarques: de hora em hora",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://www.googleapis.com/drive/v3/files",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "q",
+              "value": "name = 'nexxusdoc_embarques_n8n.json' and 'CONFIGURE_ID' in parents and trashed = false"
+            },
+            {
+              "name": "corpora",
+              "value": "drive"
+            },
+            {
+              "name": "driveId",
+              "value": "0AFFPxJzHkValUk9PVA"
+            },
+            {
+              "name": "includeItemsFromAllDrives",
+              "value": "true"
+            },
+            {
+              "name": "supportsAllDrives",
+              "value": "true"
+            },
+            {
+              "name": "pageSize",
+              "value": "1000"
+            },
+            {
+              "name": "fields",
+              "value": "files(id,name,modifiedTime)"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "name": "Embarques: achar estado",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        260,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "try {\nconst f = $input.first().json.files || [];\nif (!f.length) throw new Error('Arquivo nexxusdoc_embarques_n8n.json nao encontrado em Sua Area > Nexxus > NexxusDoc.');\nreturn [{ json: { id: f[0].id } }];\n} catch (erro) {\n  const m = erro && erro.message ? erro.message : (typeof erro === 'string' ? erro : JSON.stringify(erro));\n  throw new Error('[Embarques: escolher estado] ' + m + (erro && erro.stack ? ' | ' + String(erro.stack).split('\\n').slice(0, 4).join(' / ') : ''));\n}"
+      },
+      "name": "Embarques: escolher estado",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        520,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ 'https://www.googleapis.com/drive/v3/files/' + $json.id + '?alt=media&supportsAllDrives=true' }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "name": "Embarques: baixar estado",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        780,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "try {\n\nconst PROCESSOS_ID = 'CONFIGURE_ID';\n// Responsavel (24/11/2026): o Drive compartilhado nao guarda o dono; lastModifyingUser e quem criou enquanto a pasta nao\n// foi alterada (modifiedTime = createdTime: certo = 1). Criador ja conhecido nao e trocado por quem renomeou depois.\nfunction quemDe(f, antigo) {\n  const nome = ((f.lastModifyingUser || {}).displayName || '').trim();\n  const certo = !!f.createdTime && !!f.modifiedTime && Math.abs(Date.parse(f.modifiedTime) - Date.parse(f.createdTime)) < 120e3;\n  if (antigo && antigo[4] === 1 && !certo) return [antigo[3], 1];\n  return nome ? [nome, certo ? 1 : 0] : (antigo && antigo[3] ? [antigo[3], antigo[4] || 0] : ['', 0]);\n}\nfunction arvorePastas(estado, listagem, completa) {\n  const m = {}, antigas = estado.pastas || {};\n  if (!completa) for (const [id, v] of Object.entries(antigas)) m[id] = {id, name: v[0], parents: [v[1]], createdTime: v[2] || '', quem: v[3] || '', certo: v[4] || 0};\n  for (const f of listagem) { const [quem, certo] = quemDe(f, antigas[f.id]); m[f.id] = {id: f.id, name: f.name, parents: [(f.parents || [])[0] || ''], createdTime: f.createdTime || '', quem, certo}; }\n  const ok = {};  // fica so o que esta dentro de Processos\n  const dentro = id => {\n    const vistos = []; let cur = id, n = 0, r = false;\n    for (;;) {\n      if (cur === PROCESSOS_ID) { r = true; break; }\n      if (ok[cur] !== undefined) { r = ok[cur]; break; }\n      const f = m[cur]; if (!f || n++ > 15) break;\n      vistos.push(cur); cur = f.parents[0];\n    }\n    for (const v of vistos) ok[v] = r;\n    return r;\n  };\n  const out = {};\n  for (const id of Object.keys(m)) if (dentro(id)) out[id] = m[id];\n  return out;\n}\nfunction pastasCompactas(arv) {\n  const o = {};\n  for (const f of Object.values(arv)) o[f.id] = [f.name, f.parents[0], (f.createdTime || '').slice(0, 19), f.quem || '', f.certo || 0];\n  return o;\n}\nconst hojeSP = () => new Date(Date.now() - 3 * 3600e3).toISOString().slice(0, 10);\n\n// ===== Completa (1a do dia ou sem lista guardada) ou so as pastas novas/alteradas =====\nconst est = $('Embarques: baixar estado').first().json || {};\nconst guardadas = Object.keys(est.pastas || {}).length;\nconst desde = est.ultima_execucao || '';\n// pastas_quem: a lista guardada ja tem o responsavel de cada pasta (sem ele, uma listagem completa preenche)\nconst completa = guardadas < 100 || !desde || est.pastas_completa_em !== hojeSP() || !est.pastas_quem;\nconst base = \"mimeType = 'application/vnd.google-apps.folder' and trashed = false\";\nconst q = completa ? base : base + \" and (modifiedTime > '\" + desde + \"' or createdTime > '\" + desde + \"')\";\nreturn [{json: {q, completa, guardadas}}];\n\n} catch (erro) {\n  const m = erro && erro.message ? erro.message : (typeof erro === 'string' ? erro : JSON.stringify(erro));\n  throw new Error('[Embarques: modo das pastas] ' + m + (erro && erro.stack ? ' | ' + String(erro.stack).split('\\n').slice(0, 4).join(' / ') : ''));\n}"
+      },
+      "name": "Embarques: modo das pastas",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1040,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://www.googleapis.com/drive/v3/files",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "q",
+              "value": "={{ $json.q }}"
+            },
+            {
+              "name": "corpora",
+              "value": "drive"
+            },
+            {
+              "name": "driveId",
+              "value": "0AFFPxJzHkValUk9PVA"
+            },
+            {
+              "name": "includeItemsFromAllDrives",
+              "value": "true"
+            },
+            {
+              "name": "supportsAllDrives",
+              "value": "true"
+            },
+            {
+              "name": "pageSize",
+              "value": "1000"
+            },
+            {
+              "name": "fields",
+              "value": "nextPageToken,files(id,name,parents,createdTime,modifiedTime,lastModifyingUser/displayName)"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          },
+          "pagination": {
+            "pagination": {
+              "parameters": {
+                "parameters": [
+                  {
+                    "name": "pageToken",
+                    "value": "={{ $response.body.nextPageToken }}"
+                  }
+                ]
+              },
+              "paginationCompleteWhen": "other",
+              "completeExpression": "={{ !$response.body.nextPageToken }}",
+              "limitPagesFetched": true,
+              "maxRequests": 80,
+              "requestInterval": 200
+            }
+          }
+        }
+      },
+      "name": "Embarques: pastas do drive",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1300,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://www.googleapis.com/drive/v3/files",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "q",
+              "value": "={{ \"modifiedTime > '\" + ($('Embarques: baixar estado').first().json.ultima_execucao || '2026-11-19T16:40:00Z') + \"' and trashed = false and mimeType != 'application/vnd.google-apps.folder'\" }}"
+            },
+            {
+              "name": "corpora",
+              "value": "drive"
+            },
+            {
+              "name": "driveId",
+              "value": "0AFFPxJzHkValUk9PVA"
+            },
+            {
+              "name": "includeItemsFromAllDrives",
+              "value": "true"
+            },
+            {
+              "name": "supportsAllDrives",
+              "value": "true"
+            },
+            {
+              "name": "pageSize",
+              "value": "1000"
+            },
+            {
+              "name": "fields",
+              "value": "nextPageToken,files(id,name,parents,mimeType,modifiedTime,size)"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          },
+          "pagination": {
+            "pagination": {
+              "parameters": {
+                "parameters": [
+                  {
+                    "name": "pageToken",
+                    "value": "={{ $response.body.nextPageToken }}"
+                  }
+                ]
+              },
+              "paginationCompleteWhen": "other",
+              "completeExpression": "={{ !$response.body.nextPageToken }}",
+              "limitPagesFetched": true,
+              "maxRequests": 80,
+              "requestInterval": 200
+            }
+          }
+        }
+      },
+      "name": "Embarques: arquivos alterados",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1560,
+        0
+      ],
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "jsCode": "try {\n// ===== Leitura dos documentos de embarque (mesmas regras do embarques.py do NexxusDoc) =====\nconst OPS = ['INLINE', 'PROMO', 'AMOSTRAS', 'ZELUS'];\nconst PROC_RE = /^(BL|BOL|HAWB|AWB|MAWB)\\s*\\S|\\(FISIA\\s*\\d+\\)|^FISIA\\s*\\d+|^\\d{0,2}[A-Z]{2,5}-?\\d{6,}/i;\nconst SCAC = {MAEU: 'Maersk', CMDU: 'CMA CGM', SUDU: 'Hamburg Süd', HLCU: 'Hapag-Lloyd', ONEY: 'ONE', MSCU: 'MSC', MEDU: 'MSC', COSU: 'COSCO', EGLV: 'Evergreen', OOLU: 'OOCL', ZIMU: 'ZIM', HDMU: 'HMM', YMLU: 'Yang Ming'};\nconst norm = s => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');\nconst find = (re, t) => { const m = re.exec(t || ''); return m ? m[1].replace(/\\s+/g, ' ').trim() : ''; };\nfunction numEu(v) { v = String(v || '').trim().replace(/ /g, ''); if (!v) return null; if (v.includes(',') || /^\\d{1,3}(\\.\\d{3})+$/.test(v)) v = v.replace(/\\./g, '').replace(',', '.'); const n = Number(v); return Number.isFinite(n) ? n : null; }\nfunction numUs(v) { const n = Number(String(v || '').replace(/,/g, '')); return v && Number.isFinite(n) ? n : null; }\nconst ISO = {}; { let v = 10; for (const ch of 'ABCDEFGHIJKLMNOPQRSTUVWXYZ') { if (v % 11 === 0) v++; ISO[ch] = v++; } }\nfunction cntrOk(c) { if (!/^[A-Z]{4}\\d{7}$/.test(c || '')) return false; let s = 0; for (let i = 0; i < 10; i++) s += (/[A-Z]/.test(c[i]) ? ISO[c[i]] : +c[i]) * 2 ** i; return s % 11 % 10 === +c[10]; }\nfunction conteineres(t) { const out = new Set(); const re = /(?<![A-Z])([A-Z]{4}\\d{7})(?!\\d)/g; let m; while ((m = re.exec(t || ''))) if (cntrOk(m[1])) out.add(m[1]); return [...out].sort(); }\nconst INVOICE_NAME = /^[A-Z0-9-]{6,}_\\d{10}_\\d{5}/i;\nfunction tipoArquivo(name) {\n  const n = norm(name);\n  if (n.includes('checklist')) return 'checklist';\n  if (n.includes('tcci') || INVOICE_NAME.test(name)) return 'tcci';\n  if (/pro ?forma/.test(n)) return 'proforma';\n  if (/(^|[^a-z])(pl|pls)([^a-z]|$)|packing/.test(n)) return 'pl';\n  if (/(^|[^a-z])(hawb|awb|mawb)([^a-z]|$)/.test(n)) return 'awb';\n  if (/(^|[^a-z])(bl|bol|mbl|hbl)([^a-z]|$)|bill of lading/.test(n)) return 'bl';\n  if (/(^|[^a-z])(ci|invoice|invoices|fatura|commercial)([^a-z]|$)/.test(n)) return 'ci';\n  if (/(^|[^a-z])(nf|nfe|danfe)([^a-z]|$)|nota fiscal/.test(n)) return 'nf';\n  if (/(^|[^a-z])fci([^a-z]|$)/.test(n)) return 'fci';\n  return 'outro';\n}\nconst MESES_EN = {january: 1, february: 2, march: 3, april: 4, may: 5, june: 6, july: 7, august: 8, september: 9, october: 10, november: 11, december: 12};\n// Modelo com os rotulos em bloco e os valores depois (auditoria de 25/11/2026: o numero saia \"Invoice\")\nfunction cabecalhoEmBloco(t) {\n  const linhas = String(t || '').split('\\n').map(l => l.replace(/\\s+/g, ' ').trim());\n  let i = linhas.indexOf('Invoice Number:'); if (i < 0) return null;\n  const rot = [];\n  while (i < linhas.length && linhas[i].endsWith(':') && linhas[i].length < 40) { rot.push(linhas[i].slice(0, -1).trim()); i++; }\n  if (rot.length < 2) return null;\n  const vals = linhas.slice(i, i + rot.length + 6).filter(Boolean).slice(0, rot.length);\n  return vals.length === rot.length ? rot.map((r, k) => [r, vals[k]]) : null;\n}\nconst MES3 = {jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12};\n// Fatura manual da Nike (\"Commercial Invoice\" com \"Invoice No:\"); o pedido vem do nome do arquivo (validarFatura)\nfunction lerFaturaManual(t) {\n  if (!t || !t.includes('Commercial Invoice') || !/Invoice No:\\s*\\d/.test(t)) return null;\n  const it = /\\n([A-Z0-9]{4,8}-\\d{3})\\s+.+?\\s+(\\d+)\\s+([\\d.,]+)\\s+([\\d.,]+)\\s+([\\d.,]+)\\s+\\$/.exec(t);\n  const d = /Inv Date:\\s*(\\d{1,2})-([A-Za-z]{3})-(\\d{2,4})/.exec(t);\n  const mes = d && MES3[d[2].toLowerCase()];\n  const data = mes ? `${d[3].length === 2 ? '20' + d[3] : d[3]}-${String(mes).padStart(2, '0')}-${d[1].padStart(2, '0')}` : '';\n  return {fatura: find(/Invoice No:\\s*(\\d+)/, t), data, vendedor: 'NIKE (fatura manual)', incoterm: find(/Price Term:\\s*(\\S+)/, t), modal: '',\n    origem: find(/Port of Loading:\\s*(.+)/, t), doc_transporte: find(/BL No:\\s*(\\S+)/, t), po_cliente: '', po: '',\n    material: it ? it[1] : '', temporada: '', quantidade: it ? numUs(it[3]) : null,\n    valor: numUs(find(/Grand Total \\$\\s*\\n?.*?([\\d,]+\\.\\d{2})\\s*$/m, t)), peso_bruto: it ? numUs(it[5]) : null,\n    peso_liquido: it ? numUs(it[4]) : null, caixas: it ? numUs(it[2]) : null, fabricante: '', manual: true};\n}\n// O que o NOME do PDF diz: pedido e linha (\"..._4511085550_00020.pdf\"; manual \"7609566260_10_4511030311\") ou o numero\nfunction nomePdfFatura(nome) {\n  const base = String(nome || '').replace(/\\\\/g, '/').split('/').pop().split('›').pop().trim().replace(/\\.pdf$/i, '');\n  let m = /(?<!\\d)\\d{10}_(\\d{1,5})_(\\d{10})(?!\\d)/.exec(base); if (m) return {po: m[2], linha: m[1].replace(/^0+/, '')};\n  m = /_(\\d{10})_(\\d{5})(?!\\d)/.exec(base); if (m) return {po: m[1], linha: m[2].replace(/^0+/, '')};\n  m = /(?<!\\d)(45[2-9]\\d{7})(?!\\d)/.exec(base); return m ? {fatura: m[1]} : {};\n}\nconst numeroFaturaOk = v => /^\\d{8,12}$/.test(String(v || ''));\n// Trava da leitura (os PDFs nem sempre vem no mesmo layout): so vale numero de 8 a 12 digitos; pedido e numero\n// comparados com o nome do arquivo (diferenca vira alerta). Devolve [fatura ou null, motivo]\nfunction validarFatura(f, nome) {\n  if (!f) return [null, ''];\n  if (!numeroFaturaOk(f.fatura)) return [null, `número da fatura não reconhecido no PDF (lido: \"${String(f.fatura || '').slice(0, 20)}\")`];\n  const info = nomePdfFatura(nome), al = [];\n  if (info.po) { if (!f.po) f.po = info.po; else if (f.po !== info.po) al.push(`pedido no PDF (${f.po}) diferente do nome do arquivo (${info.po})`); }\n  if (info.fatura && info.fatura !== f.fatura) al.push(`número no PDF (${f.fatura}) diferente do nome do arquivo (${info.fatura})`);\n  if (!f.material) al.push('material não lido no PDF');\n  if (f.quantidade === null || f.quantidade === undefined || f.quantidade === 0) al.push('quantidade não lida no PDF');\n  if (f.manual) al.push('fatura manual (outro modelo de PDF)');\n  if (al.length) f.alerta = al.join('; ');\n  return [f, ''];\n}\nfunction lerFaturaNike(t) {\n  if (!t || !t.includes('COMMERCIAL INVOICE') || !t.includes('Invoice Number:')) return null;\n  const blk = cabecalhoEmBloco(t);\n  if (blk) t = blk.map(([k, v]) => k + ': ' + v).join('\\n') + '\\n' + t.replace(/Invoice Number:/g, 'Invoice Number (bloco):');\n  let fab = '';\n  const f = /Manufacturing Factory:\\s*\\n(.+?)\\n(.*?)\\n/.exec(t);\n  if (f) { fab = f[1].trim(); const l2 = f[2].trim(); if (l2 && l2 === l2.toUpperCase() && l2.length < 40 && !/\\d/.test(l2) && /[A-Z]/.test(l2)) fab += ' ' + l2; }\n  const d = /Invoice Date:\\s*([A-Za-z]+) (\\d{1,2}), (\\d{4})/.exec(t);\n  const data = d && MESES_EN[d[1].toLowerCase()] ? `${d[3]}-${String(MESES_EN[d[1].toLowerCase()]).padStart(2, '0')}-${d[2].padStart(2, '0')}` : '';\n  return {fatura: find(/Invoice Number:\\s*(\\S+)/, t), data, vendedor: t.trim().split('\\n')[0].trim().slice(0, 80),\n    incoterm: find(/Terms of Sale:\\s*(\\S+)/, t), modal: find(/Mode of Transportation:\\s*(.+)/, t),\n    origem: find(/Country of Origin:\\s*\\n?\\s*([A-Za-z][A-Za-z .,'-]+)/, t) || find(/From:\\s*(.+)/, t),\n    doc_transporte: find(/Transport Document #:\\s*(\\S+)/, t), po_cliente: find(/Customer PO number #:\\s*(\\S+)/, t),\n    po: find(/\\bPO#:\\s*(\\S+)/, t), material: find(/Material#:\\s*(\\S+)/, t), temporada: find(/Season Code & Year#:\\s*(\\S+)/, t),\n    quantidade: numEu(find(/Total Invoice\\s*\\n?\\s*Quantity:\\s*\\n?\\s*([\\d.,]+)/, t)), valor: numEu(find(/Total Amount:\\s*([\\d.,]+)/, t)),\n    peso_bruto: numEu(find(/Total Gross Weight:\\s*([\\d.,]+)/, t)), peso_liquido: numEu(find(/Total Net Weight:\\s*([\\d.,]+)/, t)),\n    caixas: numEu(find(/Total Number of\\s*\\n?\\s*Cartons:\\s*\\n?\\s*([\\d.,]+)/, t)), fabricante: fab};\n}\nfunction lerBl(t, nome) {\n  const flat = String(t || '').replace(/\\s*\\n\\s*/g, '');\n  const out = {conteineres: conteineres(t).length ? conteineres(t) : conteineres(flat)};\n  const sc = new RegExp('\\\\b(' + Object.keys(SCAC).join('|') + ')').exec(`${nome} ${flat.slice(0, 3000)}`.toUpperCase());\n  out.armador = sc ? SCAC[sc[1]] : (/maersk/i.test(t) ? 'Maersk' : '');\n  const ncm = /NCM\\s*:?\\s*((?:\\d{4,8}[\\s,;/.]*){1,40})/.exec(t || '');\n  out.ncm = ncm ? [...new Set((ncm[1].match(/\\d{4,8}/g) || []).map(c => c.slice(0, 4)))].sort() : [];\n  if (out.armador === 'Maersk') {\n    const nomeOk = v => /^[A-Za-z][A-Za-z0-9 ,.'/-]{2,}$/.test(v || '') ? v.slice(0, 60) : '';\n    out.navio = nomeOk(find(/Vessel(.+?)Voyage No\\./, flat));\n    out.viagem = find(/Voyage No\\.([A-Z0-9]{2,8})(?:Port of Loading|Place of)/, flat);\n    out.porto_embarque = nomeOk(find(/Port of Loading(.+?)Place of/, flat));\n    out.porto_descarga = nomeOk(find(/Port of Discharge(.+?)(?:Signed|Place of|Freight)/, flat));\n    out.embarque = find(/Shipped on Board Date \\( ?Local Time ?\\)(\\d{4}-\\d{2}-\\d{2})/, flat);\n    const tot = /B\\/L TOTAL SUMMARY-+(\\d+)CTN ([\\d.,]+)CBM ([\\d.,]+)KGS/.exec(flat);\n    if (tot) { out.caixas = +tot[1]; out.cbm = numUs(tot[2]); out.peso_bruto = numUs(tot[3]); }\n    const fr = /Basic Ocean Freight([\\d.,]+)Per ContainerUSD/.exec(flat), bk = /Fossil Fuel Fee([\\d.,]+)Per ContainerUSD/.exec(flat);\n    out.frete_usd_cntr = fr ? numUs(fr[1]) : null; out.bunker_usd_cntr = bk ? numUs(bk[1]) : null;\n  } else {\n    const re = /([A-Z]{4}\\d{7})\\s+\\d+\\s*x\\s*(\\w+)\\s+(\\d+)\\s+CARTONS?\\s+([\\d.,]+)\\s+[\\d.,]+\\s+([\\d.,]+)/g; let m, cx = 0, pb = 0, cb = 0, n = 0;\n    while ((m = re.exec(t || ''))) { n++; cx += +m[3]; pb += numUs(m[4]) || 0; cb += numUs(m[5]) || 0; }\n    if (n) { out.caixas = cx; out.peso_bruto = Math.round(pb * 1000) / 1000; out.cbm = Math.round(cb * 1000) / 1000; }\n  }\n  return out;\n}\nfunction lerFaturaZelus(t) {\n  if (!/IMPORTER OF RECORD/i.test(t || '') && !(t || '').includes('Zelus')) return null;\n  return {fatura: find(/Invoice Number\\s+(\\S+)/, t), fabricante: find(/Co Name\\s+(.+?),/, t).slice(0, 80), modal: find(/Mode of Transport:\\s*(\\w+)/, t),\n    origem: find(/Country of Origin:\\s*([A-Za-z ]+?)(?:\\s{2,}|\\n|VAT|$)/, t), peso_bruto: numUs(find(/Gross Weight:\\s*([\\d.,]+)/, t)),\n    peso_liquido: numUs(find(/Net Weight:\\s*([\\d.,]+)/, t)), caixas: numUs(find(/Cartons:\\s*([\\d.,]+)/, t))};\n}\nfunction lerProforma(rows) {\n  // rows: lista de linhas (arrays de celulas) da 1a aba\n  const want = {'quantity': 'quantidade', 'gross weight': 'peso_bruto', 'net weight': 'peso_liquido', 'total $': 'valor', 'factory name': 'fabricantes', 'hts code': 'ncm', 'tcci number': 'tcci', 'cntr. id': 'conteineres', 'flag alt. preco': 'alt_preco', 'flag. alt. qtd.': 'alt_qtd'};\n  let cols = null; const out = {linhas: 0, quantidade: 0, peso_bruto: 0, peso_liquido: 0, valor: 0, fabricantes: new Set(), ncm: new Set(), tcci: new Set(), conteineres: new Set(), alt_preco: 0, alt_qtd: 0};\n  for (const row of rows.slice(0, 3000)) {\n    if (!cols) { const labels = row.map(c => typeof c === 'string' ? norm(c).trim() : ''); if (labels.includes('po fisia') && labels.includes('quantity')) { cols = {}; labels.forEach((l, j) => { if (want[l]) cols[want[l]] = j; }); } continue; }\n    const q = row[cols.quantidade]; if (typeof q !== 'number') continue;\n    out.linhas++;\n    for (const k of ['quantidade', 'peso_bruto', 'peso_liquido', 'valor']) { const v = row[cols[k]]; if (typeof v === 'number') out[k] += v; }\n    for (const k of ['fabricantes', 'ncm', 'tcci', 'conteineres']) { const v = row[cols[k]]; if (v !== undefined && v !== null && v !== '') { const s = String(v).trim(); out[k].add(k === 'ncm' ? s.slice(0, 4) : s.slice(0, 80)); } }\n    for (const k of ['alt_preco', 'alt_qtd']) { const v = row[cols[k]]; if (v !== undefined && v !== null && v !== '' && v !== 0 && v !== '0' && !['nao', 'n', '-', 'ok'].includes(norm(v))) out[k]++; }\n  }\n  if (!cols) return {lida: false};\n  for (const k of ['fabricantes', 'ncm', 'tcci', 'conteineres']) out[k] = [...out[k]].sort();\n  for (const k of ['quantidade', 'peso_bruto', 'peso_liquido', 'valor']) out[k] = Math.round(out[k] * 1000) / 1000;\n  out.conteineres = out.conteineres.filter(c => cntrOk(c.toUpperCase()));\n  out.lida = true; return out;\n}\nfunction lerChecklist(text, nome) {\n  // Itens \"- Shipper - OK\" (conferido) ou \"- Shipper - \" (vazio); \"Numeracao/Identificacao BOL\" trazem o numero e nao contam\n  const oks = (text.match(/-\\s*OK\\b/gi) || []).length, an = find(/Nome Analista:[ \\t]*([^\\n]+)/, text);\n  let itens = 0;\n  for (const linha of String(text || '').split('\\n')) { const re = /-\\s*([^-\\n]+?)\\s*-\\s*(OK\\b)?/gi; let m; while ((m = re.exec(linha))) if (!m[1].toUpperCase().includes('BOL')) itens++; }\n  const bol = find(/BOL:[ \\t]*([A-Z0-9]{6,})/, String(text || '').toUpperCase());\n  return {id: find(/ID\\s*(\\d+)/, nome), revisado: find(/REVISADO\\s*(\\d{2}\\.\\d{2}\\.\\d{4})/, nome.toUpperCase()), itens_ok: oks, itens_total: itens,\n          identificado: !!bol, preenchido: oks >= 3, analista: an && an.length > 2 ? an.slice(0, 60) : ''};\n}\n// XLSX (descompactado pelo n8n): textos compartilhados + 1a aba -> linhas\nconst xmlDec = s => s.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '\"').replace(/&apos;/g, \"'\").replace(/&amp;/g, '&');\nfunction xlsxRows(sheetXml, sharedXml) {\n  const shared = []; const si = /<si>([\\s\\S]*?)<\\/si>/g; let m;\n  while ((m = si.exec(sharedXml || ''))) shared.push(xmlDec((m[1].match(/<t[^>]*>([\\s\\S]*?)<\\/t>/g) || []).map(x => x.replace(/<[^>]+>/g, '')).join('')));\n  const rows = []; const rr = /<row[^>]*>([\\s\\S]*?)<\\/row>/g;\n  while ((m = rr.exec(sheetXml || '')) && rows.length < 3200) {\n    const row = []; const cr = /<c r=\"([A-Z]+)\\d+\"([^>]*?)(?:\\/>|>([\\s\\S]*?)<\\/c>)/g; let c;\n    while ((c = cr.exec(m[1]))) {\n      let col = 0; for (const ch of c[1]) col = col * 26 + (ch.charCodeAt(0) - 64); col--;\n      const attrs = c[2] || '', inner = c[3] || ''; const v = /<v>([\\s\\S]*?)<\\/v>/.exec(inner);\n      let val = null;\n      if (/t=\"s\"/.test(attrs) && v) val = shared[+v[1]] ?? '';\n      else if (/t=\"inlineStr\"/.test(attrs)) val = xmlDec((inner.match(/<t[^>]*>([\\s\\S]*?)<\\/t>/) || [, ''])[1]);\n      else if (/t=\"(str|e)\"/.test(attrs) && v) val = xmlDec(v[1]);\n      else if (/t=\"b\"/.test(attrs) && v) val = v[1] === '1';\n      else if (v) val = Number(v[1]);\n      row[col] = val;\n    }\n    rows.push(row);\n  }\n  return rows;\n}\nfunction docxText(xml) { return (xml || '').split(/<\\/w:p>/).map(p => xmlDec((p.match(/<w:t[^>]*>([\\s\\S]*?)<\\/w:t>/g) || []).map(x => x.replace(/<[^>]+>/g, '')).join(''))).filter(Boolean).join('\\n'); }\nfunction numeroProcesso(name) {\n  let b = name.replace(/\\(.*?\\)/g, ' ').trim().split(/\\s+-\\s+|\\s{2,}/)[0];\n  b = b.trim().replace(/^(BL|BOL|HAWB|AWB|MAWB)\\s+/i, '');\n  return b.replace(/\\s+/g, '').toUpperCase().slice(0, 30);\n}\nfunction obsPasta(name) { return (name.match(/\\(([^)]{3,60})\\)/g) || []).map(x => x.slice(1, -1).trim()).filter(o => !/^\\s*(FISIA\\s*\\d+|\\d+)\\s*$/i.test(o)).join('; '); }\nfunction modalDe(nome, grupos, tipos) {\n  const n = norm(nome), g = norm(grupos.join(' '));\n  if (/^(bl|bol)\\b/.test(n) || g.includes('maritimo')) return 'Marítimo';\n  if (/^(hawb|awb|mawb)\\b/.test(n) || g.includes('aereo') || tipos.has('awb')) return 'Aéreo';\n  return tipos.has('bl') ? 'Marítimo' : '';\n}\n// SHA-1 (o id do processo e o mesmo do sistema: sha1 do caminho relativo em minusculas, 16 primeiros caracteres)\nfunction sha1(str) {\n  const b = unescape(encodeURIComponent(str)), w = [], l = b.length * 8;\n  for (let i = 0; i < b.length; i++) w[i >> 2] |= b.charCodeAt(i) << (24 - (i % 4) * 8);\n  w[l >> 5] |= 0x80 << (24 - l % 32); w[((l + 64 >> 9) << 4) + 15] = l;\n  let [h0, h1, h2, h3, h4] = [0x67452301, 0xEFCDAB89, 0x98BADCFE, 0x10325476, 0xC3D2E1F0];\n  const rol = (n, c) => (n << c) | (n >>> (32 - c));\n  for (let i = 0; i < w.length; i += 16) {\n    const x = []; for (let j = 0; j < 80; j++) x[j] = j < 16 ? (w[i + j] | 0) : rol(x[j - 3] ^ x[j - 8] ^ x[j - 14] ^ x[j - 16], 1);\n    let [a, bb, c, d, e] = [h0, h1, h2, h3, h4];\n    for (let j = 0; j < 80; j++) {\n      const f = j < 20 ? (bb & c) | (~bb & d) : j < 40 ? bb ^ c ^ d : j < 60 ? (bb & c) | (bb & d) | (c & d) : bb ^ c ^ d;\n      const k = j < 20 ? 0x5A827999 : j < 40 ? 0x6ED9EBA1 : j < 60 ? 0x8F1BBCDC : 0xCA62C1D6;\n      const t = (rol(a, 5) + f + e + k + x[j]) | 0; e = d; d = c; c = rol(bb, 30); bb = a; a = t;\n    }\n    h0 = (h0 + a) | 0; h1 = (h1 + bb) | 0; h2 = (h2 + c) | 0; h3 = (h3 + d) | 0; h4 = (h4 + e) | 0;\n  }\n  return [h0, h1, h2, h3, h4].map(h => (h >>> 0).toString(16).padStart(8, '0')).join('');\n}\nconst pidDe = rel => sha1(rel.toLowerCase()).slice(0, 16);\n\nconst PROCESSOS_ID = 'CONFIGURE_ID';\n// Responsavel (24/11/2026): o Drive compartilhado nao guarda o dono; lastModifyingUser e quem criou enquanto a pasta nao\n// foi alterada (modifiedTime = createdTime: certo = 1). Criador ja conhecido nao e trocado por quem renomeou depois.\nfunction quemDe(f, antigo) {\n  const nome = ((f.lastModifyingUser || {}).displayName || '').trim();\n  const certo = !!f.createdTime && !!f.modifiedTime && Math.abs(Date.parse(f.modifiedTime) - Date.parse(f.createdTime)) < 120e3;\n  if (antigo && antigo[4] === 1 && !certo) return [antigo[3], 1];\n  return nome ? [nome, certo ? 1 : 0] : (antigo && antigo[3] ? [antigo[3], antigo[4] || 0] : ['', 0]);\n}\nfunction arvorePastas(estado, listagem, completa) {\n  const m = {}, antigas = estado.pastas || {};\n  if (!completa) for (const [id, v] of Object.entries(antigas)) m[id] = {id, name: v[0], parents: [v[1]], createdTime: v[2] || '', quem: v[3] || '', certo: v[4] || 0};\n  for (const f of listagem) { const [quem, certo] = quemDe(f, antigas[f.id]); m[f.id] = {id: f.id, name: f.name, parents: [(f.parents || [])[0] || ''], createdTime: f.createdTime || '', quem, certo}; }\n  const ok = {};  // fica so o que esta dentro de Processos\n  const dentro = id => {\n    const vistos = []; let cur = id, n = 0, r = false;\n    for (;;) {\n      if (cur === PROCESSOS_ID) { r = true; break; }\n      if (ok[cur] !== undefined) { r = ok[cur]; break; }\n      const f = m[cur]; if (!f || n++ > 15) break;\n      vistos.push(cur); cur = f.parents[0];\n    }\n    for (const v of vistos) ok[v] = r;\n    return r;\n  };\n  const out = {};\n  for (const id of Object.keys(m)) if (dentro(id)) out[id] = m[id];\n  return out;\n}\nfunction pastasCompactas(arv) {\n  const o = {};\n  for (const f of Object.values(arv)) o[f.id] = [f.name, f.parents[0], (f.createdTime || '').slice(0, 19), f.quem || '', f.certo || 0];\n  return o;\n}\nconst hojeSP = () => new Date(Date.now() - 3 * 3600e3).toISOString().slice(0, 10);\n\n// ===== Pastas de embarque com arquivo novo ou alterado desde a ultima execucao =====\nconst LIMITE = 25;  // processos por execucao (os que passarem ficam para a proxima hora)\nconst agora = new Date(Date.now() - 10 * 60 * 1000).toISOString();  // folga de 10 min\nconst estado = $('Embarques: baixar estado').first().json || {};\nconst modo = $('Embarques: modo das pastas').first().json;\nconst listagem = $('Embarques: pastas do drive').all().flatMap(it => it.json.files || []);\nconst pastas = arvorePastas(estado, listagem, modo.completa);\nconst alterados = $('Embarques: arquivos alterados').all().flatMap(it => it.json.files || []);\nfunction caminho(id) {\n  const nomes = []; let cur = id, n = 0;\n  while (cur && cur !== PROCESSOS_ID && n++ < 12) { const f = pastas[cur]; if (!f) return null; nomes.unshift(f); cur = (f.parents || [])[0]; }\n  return cur === PROCESSOS_ID ? nomes : null;\n}\nfunction processoDe(parentId) {\n  const ch = caminho(parentId);\n  if (!ch || !ch.length || !OPS.includes(ch[0].name)) return null;\n  for (let k = 1; k < ch.length && k <= 4; k++) {\n    if (PROC_RE.test(ch[k].name) && !(ch[0].name === 'ZELUS' && k === 1)) {\n      const rel = ch.slice(0, k + 1).map(f => f.name).join('/');\n      return {pid: pidDe(rel), folderId: ch[k].id, rel, op: ch[0].name, nome: ch[k].name, grupos: ch.slice(1, k).map(f => f.name), criada: ch[k].createdTime || ''};\n    }\n  }\n  return null;\n}\nconst achados = new Map();\nfor (const p of (estado.pendentes || [])) achados.set(p.pid, {...p, ultima: ''});\n// Releitura (23/11/2026): processos gravados antes da correcao do .docx/.xlsx (v < 4) com o erro de abrir o compactado\n// voltam para a fila sozinhos (sem ninguem mexer na pasta); depois de relidos ficam com v 4 e nao voltam mais.\n// (v 5, 23/11/2026: checklist lido antes da contagem dos itens tambem volta, para ganhar \"X de N itens com OK\")\nfor (const p of Object.values(estado.processos || {})) {\n  if ((p.v || 0) >= 5 || achados.has(p.id) || !p.pasta_drive) continue;\n  const erroZip = (p.arquivos || []).some(a => a.erro === 'não foi possível abrir o arquivo compactado');\n  const ckSemTotal = (p.arquivos || []).some(a => a.tipo === 'checklist' && a.dados && a.dados.itens_total === undefined);\n  if (!erroZip && !ckSemTotal) continue;\n  achados.set(p.id, {pid: p.id, folderId: p.pasta_drive, rel: p.rel, op: p.op, nome: p.nome, grupos: [...(p.grupos || [])], criada: p.criada || '', ultima: ''});\n}\nfor (const f of alterados) {\n  const p = processoDe((f.parents || [])[0]);\n  if (!p) continue;\n  const old = achados.get(p.pid);\n  if (!old || (f.modifiedTime || '') > (old.ultima || '')) achados.set(p.pid, {...p, ultima: f.modifiedTime || ''});\n}\nconst lista = [...achados.values()].sort((a, b) => (b.ultima || '').localeCompare(a.ultima || ''));\nconst agoraLista = lista.slice(0, LIMITE), pendentes = lista.slice(LIMITE).map(({ultima, ...p}) => p);\nconst out = agoraLista.length ? agoraLista.map(p => ({json: p})) : [{json: {vazio: true}}];\nout[0].json._agora = agora; out[0].json._pendentes = pendentes; out[0].json._alterados = alterados.length;\nreturn out;\n\n} catch (erro) {\n  const m = erro && erro.message ? erro.message : (typeof erro === 'string' ? erro : JSON.stringify(erro));\n  throw new Error('[Embarques: processos alterados] ' + m + (erro && erro.stack ? ' | ' + String(erro.stack).split('\\n').slice(0, 4).join(' / ') : ''));\n}"
+      },
+      "name": "Embarques: processos alterados",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1820,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "15cb094c-b3ac-5adf-8345-03ba6021818e",
+              "leftValue": "={{ $json.vazio ? 'nao' : 'sim' }}",
+              "rightValue": "sim",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "Embarques: tem processo?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        2080,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://www.googleapis.com/drive/v3/files",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "q",
+              "value": "={{ $json.folderId ? \"'\" + $json.folderId + \"' in parents and trashed = false\" : \"name = 'nexxusdoc-nada-a-listar' and trashed = false\" }}"
+            },
+            {
+              "name": "corpora",
+              "value": "drive"
+            },
+            {
+              "name": "driveId",
+              "value": "0AFFPxJzHkValUk9PVA"
+            },
+            {
+              "name": "includeItemsFromAllDrives",
+              "value": "true"
+            },
+            {
+              "name": "supportsAllDrives",
+              "value": "true"
+            },
+            {
+              "name": "pageSize",
+              "value": "1000"
+            },
+            {
+              "name": "fields",
+              "value": "files(id,name,mimeType,size,modifiedTime)"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "name": "Embarques: listar pasta",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        0,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "try {\n\n// ===== Subpastas dos processos (ex.: 'TCCIs'): uma consulta so para todas =====\nconst procs = $('Embarques: processos alterados').all(), resp = $input.all();\nconst subs = [];\nprocs.forEach((p, i) => { if (p.json.vazio) return; for (const f of ((resp[i] || {}).json || {}).files || []) if (f.mimeType === 'application/vnd.google-apps.folder') subs.push({pi: i, id: f.id, name: f.name}); });\nconst sel = subs.slice(0, 80);\nconst q = sel.length ? sel.map(s => `'${s.id}' in parents`).join(' or ') : '';  // sem subpasta: a consulta do Drive vira uma busca valida que volta vazia\nreturn [{json: {q, subs: sel}}];\n\n} catch (erro) {\n  const m = erro && erro.message ? erro.message : (typeof erro === 'string' ? erro : JSON.stringify(erro));\n  throw new Error('[Embarques: subpastas] ' + m + (erro && erro.stack ? ' | ' + String(erro.stack).split('\\n').slice(0, 4).join(' / ') : ''));\n}"
+      },
+      "name": "Embarques: subpastas",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        260,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://www.googleapis.com/drive/v3/files",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "q",
+              "value": "={{ $json.q ? '(' + $json.q + ') and trashed = false' : \"name = 'nexxusdoc-nada-a-listar' and trashed = false\" }}"
+            },
+            {
+              "name": "corpora",
+              "value": "drive"
+            },
+            {
+              "name": "driveId",
+              "value": "0AFFPxJzHkValUk9PVA"
+            },
+            {
+              "name": "includeItemsFromAllDrives",
+              "value": "true"
+            },
+            {
+              "name": "supportsAllDrives",
+              "value": "true"
+            },
+            {
+              "name": "pageSize",
+              "value": "1000"
+            },
+            {
+              "name": "fields",
+              "value": "files(id,name,mimeType,size,modifiedTime,parents)"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "name": "Embarques: listar subpastas",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        520,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "try {\n// ===== Leitura dos documentos de embarque (mesmas regras do embarques.py do NexxusDoc) =====\nconst OPS = ['INLINE', 'PROMO', 'AMOSTRAS', 'ZELUS'];\nconst PROC_RE = /^(BL|BOL|HAWB|AWB|MAWB)\\s*\\S|\\(FISIA\\s*\\d+\\)|^FISIA\\s*\\d+|^\\d{0,2}[A-Z]{2,5}-?\\d{6,}/i;\nconst SCAC = {MAEU: 'Maersk', CMDU: 'CMA CGM', SUDU: 'Hamburg Süd', HLCU: 'Hapag-Lloyd', ONEY: 'ONE', MSCU: 'MSC', MEDU: 'MSC', COSU: 'COSCO', EGLV: 'Evergreen', OOLU: 'OOCL', ZIMU: 'ZIM', HDMU: 'HMM', YMLU: 'Yang Ming'};\nconst norm = s => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');\nconst find = (re, t) => { const m = re.exec(t || ''); return m ? m[1].replace(/\\s+/g, ' ').trim() : ''; };\nfunction numEu(v) { v = String(v || '').trim().replace(/ /g, ''); if (!v) return null; if (v.includes(',') || /^\\d{1,3}(\\.\\d{3})+$/.test(v)) v = v.replace(/\\./g, '').replace(',', '.'); const n = Number(v); return Number.isFinite(n) ? n : null; }\nfunction numUs(v) { const n = Number(String(v || '').replace(/,/g, '')); return v && Number.isFinite(n) ? n : null; }\nconst ISO = {}; { let v = 10; for (const ch of 'ABCDEFGHIJKLMNOPQRSTUVWXYZ') { if (v % 11 === 0) v++; ISO[ch] = v++; } }\nfunction cntrOk(c) { if (!/^[A-Z]{4}\\d{7}$/.test(c || '')) return false; let s = 0; for (let i = 0; i < 10; i++) s += (/[A-Z]/.test(c[i]) ? ISO[c[i]] : +c[i]) * 2 ** i; return s % 11 % 10 === +c[10]; }\nfunction conteineres(t) { const out = new Set(); const re = /(?<![A-Z])([A-Z]{4}\\d{7})(?!\\d)/g; let m; while ((m = re.exec(t || ''))) if (cntrOk(m[1])) out.add(m[1]); return [...out].sort(); }\nconst INVOICE_NAME = /^[A-Z0-9-]{6,}_\\d{10}_\\d{5}/i;\nfunction tipoArquivo(name) {\n  const n = norm(name);\n  if (n.includes('checklist')) return 'checklist';\n  if (n.includes('tcci') || INVOICE_NAME.test(name)) return 'tcci';\n  if (/pro ?forma/.test(n)) return 'proforma';\n  if (/(^|[^a-z])(pl|pls)([^a-z]|$)|packing/.test(n)) return 'pl';\n  if (/(^|[^a-z])(hawb|awb|mawb)([^a-z]|$)/.test(n)) return 'awb';\n  if (/(^|[^a-z])(bl|bol|mbl|hbl)([^a-z]|$)|bill of lading/.test(n)) return 'bl';\n  if (/(^|[^a-z])(ci|invoice|invoices|fatura|commercial)([^a-z]|$)/.test(n)) return 'ci';\n  if (/(^|[^a-z])(nf|nfe|danfe)([^a-z]|$)|nota fiscal/.test(n)) return 'nf';\n  if (/(^|[^a-z])fci([^a-z]|$)/.test(n)) return 'fci';\n  return 'outro';\n}\nconst MESES_EN = {january: 1, february: 2, march: 3, april: 4, may: 5, june: 6, july: 7, august: 8, september: 9, october: 10, november: 11, december: 12};\n// Modelo com os rotulos em bloco e os valores depois (auditoria de 25/11/2026: o numero saia \"Invoice\")\nfunction cabecalhoEmBloco(t) {\n  const linhas = String(t || '').split('\\n').map(l => l.replace(/\\s+/g, ' ').trim());\n  let i = linhas.indexOf('Invoice Number:'); if (i < 0) return null;\n  const rot = [];\n  while (i < linhas.length && linhas[i].endsWith(':') && linhas[i].length < 40) { rot.push(linhas[i].slice(0, -1).trim()); i++; }\n  if (rot.length < 2) return null;\n  const vals = linhas.slice(i, i + rot.length + 6).filter(Boolean).slice(0, rot.length);\n  return vals.length === rot.length ? rot.map((r, k) => [r, vals[k]]) : null;\n}\nconst MES3 = {jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12};\n// Fatura manual da Nike (\"Commercial Invoice\" com \"Invoice No:\"); o pedido vem do nome do arquivo (validarFatura)\nfunction lerFaturaManual(t) {\n  if (!t || !t.includes('Commercial Invoice') || !/Invoice No:\\s*\\d/.test(t)) return null;\n  const it = /\\n([A-Z0-9]{4,8}-\\d{3})\\s+.+?\\s+(\\d+)\\s+([\\d.,]+)\\s+([\\d.,]+)\\s+([\\d.,]+)\\s+\\$/.exec(t);\n  const d = /Inv Date:\\s*(\\d{1,2})-([A-Za-z]{3})-(\\d{2,4})/.exec(t);\n  const mes = d && MES3[d[2].toLowerCase()];\n  const data = mes ? `${d[3].length === 2 ? '20' + d[3] : d[3]}-${String(mes).padStart(2, '0')}-${d[1].padStart(2, '0')}` : '';\n  return {fatura: find(/Invoice No:\\s*(\\d+)/, t), data, vendedor: 'NIKE (fatura manual)', incoterm: find(/Price Term:\\s*(\\S+)/, t), modal: '',\n    origem: find(/Port of Loading:\\s*(.+)/, t), doc_transporte: find(/BL No:\\s*(\\S+)/, t), po_cliente: '', po: '',\n    material: it ? it[1] : '', temporada: '', quantidade: it ? numUs(it[3]) : null,\n    valor: numUs(find(/Grand Total \\$\\s*\\n?.*?([\\d,]+\\.\\d{2})\\s*$/m, t)), peso_bruto: it ? numUs(it[5]) : null,\n    peso_liquido: it ? numUs(it[4]) : null, caixas: it ? numUs(it[2]) : null, fabricante: '', manual: true};\n}\n// O que o NOME do PDF diz: pedido e linha (\"..._4511085550_00020.pdf\"; manual \"7609566260_10_4511030311\") ou o numero\nfunction nomePdfFatura(nome) {\n  const base = String(nome || '').replace(/\\\\/g, '/').split('/').pop().split('›').pop().trim().replace(/\\.pdf$/i, '');\n  let m = /(?<!\\d)\\d{10}_(\\d{1,5})_(\\d{10})(?!\\d)/.exec(base); if (m) return {po: m[2], linha: m[1].replace(/^0+/, '')};\n  m = /_(\\d{10})_(\\d{5})(?!\\d)/.exec(base); if (m) return {po: m[1], linha: m[2].replace(/^0+/, '')};\n  m = /(?<!\\d)(45[2-9]\\d{7})(?!\\d)/.exec(base); return m ? {fatura: m[1]} : {};\n}\nconst numeroFaturaOk = v => /^\\d{8,12}$/.test(String(v || ''));\n// Trava da leitura (os PDFs nem sempre vem no mesmo layout): so vale numero de 8 a 12 digitos; pedido e numero\n// comparados com o nome do arquivo (diferenca vira alerta). Devolve [fatura ou null, motivo]\nfunction validarFatura(f, nome) {\n  if (!f) return [null, ''];\n  if (!numeroFaturaOk(f.fatura)) return [null, `número da fatura não reconhecido no PDF (lido: \"${String(f.fatura || '').slice(0, 20)}\")`];\n  const info = nomePdfFatura(nome), al = [];\n  if (info.po) { if (!f.po) f.po = info.po; else if (f.po !== info.po) al.push(`pedido no PDF (${f.po}) diferente do nome do arquivo (${info.po})`); }\n  if (info.fatura && info.fatura !== f.fatura) al.push(`número no PDF (${f.fatura}) diferente do nome do arquivo (${info.fatura})`);\n  if (!f.material) al.push('material não lido no PDF');\n  if (f.quantidade === null || f.quantidade === undefined || f.quantidade === 0) al.push('quantidade não lida no PDF');\n  if (f.manual) al.push('fatura manual (outro modelo de PDF)');\n  if (al.length) f.alerta = al.join('; ');\n  return [f, ''];\n}\nfunction lerFaturaNike(t) {\n  if (!t || !t.includes('COMMERCIAL INVOICE') || !t.includes('Invoice Number:')) return null;\n  const blk = cabecalhoEmBloco(t);\n  if (blk) t = blk.map(([k, v]) => k + ': ' + v).join('\\n') + '\\n' + t.replace(/Invoice Number:/g, 'Invoice Number (bloco):');\n  let fab = '';\n  const f = /Manufacturing Factory:\\s*\\n(.+?)\\n(.*?)\\n/.exec(t);\n  if (f) { fab = f[1].trim(); const l2 = f[2].trim(); if (l2 && l2 === l2.toUpperCase() && l2.length < 40 && !/\\d/.test(l2) && /[A-Z]/.test(l2)) fab += ' ' + l2; }\n  const d = /Invoice Date:\\s*([A-Za-z]+) (\\d{1,2}), (\\d{4})/.exec(t);\n  const data = d && MESES_EN[d[1].toLowerCase()] ? `${d[3]}-${String(MESES_EN[d[1].toLowerCase()]).padStart(2, '0')}-${d[2].padStart(2, '0')}` : '';\n  return {fatura: find(/Invoice Number:\\s*(\\S+)/, t), data, vendedor: t.trim().split('\\n')[0].trim().slice(0, 80),\n    incoterm: find(/Terms of Sale:\\s*(\\S+)/, t), modal: find(/Mode of Transportation:\\s*(.+)/, t),\n    origem: find(/Country of Origin:\\s*\\n?\\s*([A-Za-z][A-Za-z .,'-]+)/, t) || find(/From:\\s*(.+)/, t),\n    doc_transporte: find(/Transport Document #:\\s*(\\S+)/, t), po_cliente: find(/Customer PO number #:\\s*(\\S+)/, t),\n    po: find(/\\bPO#:\\s*(\\S+)/, t), material: find(/Material#:\\s*(\\S+)/, t), temporada: find(/Season Code & Year#:\\s*(\\S+)/, t),\n    quantidade: numEu(find(/Total Invoice\\s*\\n?\\s*Quantity:\\s*\\n?\\s*([\\d.,]+)/, t)), valor: numEu(find(/Total Amount:\\s*([\\d.,]+)/, t)),\n    peso_bruto: numEu(find(/Total Gross Weight:\\s*([\\d.,]+)/, t)), peso_liquido: numEu(find(/Total Net Weight:\\s*([\\d.,]+)/, t)),\n    caixas: numEu(find(/Total Number of\\s*\\n?\\s*Cartons:\\s*\\n?\\s*([\\d.,]+)/, t)), fabricante: fab};\n}\nfunction lerBl(t, nome) {\n  const flat = String(t || '').replace(/\\s*\\n\\s*/g, '');\n  const out = {conteineres: conteineres(t).length ? conteineres(t) : conteineres(flat)};\n  const sc = new RegExp('\\\\b(' + Object.keys(SCAC).join('|') + ')').exec(`${nome} ${flat.slice(0, 3000)}`.toUpperCase());\n  out.armador = sc ? SCAC[sc[1]] : (/maersk/i.test(t) ? 'Maersk' : '');\n  const ncm = /NCM\\s*:?\\s*((?:\\d{4,8}[\\s,;/.]*){1,40})/.exec(t || '');\n  out.ncm = ncm ? [...new Set((ncm[1].match(/\\d{4,8}/g) || []).map(c => c.slice(0, 4)))].sort() : [];\n  if (out.armador === 'Maersk') {\n    const nomeOk = v => /^[A-Za-z][A-Za-z0-9 ,.'/-]{2,}$/.test(v || '') ? v.slice(0, 60) : '';\n    out.navio = nomeOk(find(/Vessel(.+?)Voyage No\\./, flat));\n    out.viagem = find(/Voyage No\\.([A-Z0-9]{2,8})(?:Port of Loading|Place of)/, flat);\n    out.porto_embarque = nomeOk(find(/Port of Loading(.+?)Place of/, flat));\n    out.porto_descarga = nomeOk(find(/Port of Discharge(.+?)(?:Signed|Place of|Freight)/, flat));\n    out.embarque = find(/Shipped on Board Date \\( ?Local Time ?\\)(\\d{4}-\\d{2}-\\d{2})/, flat);\n    const tot = /B\\/L TOTAL SUMMARY-+(\\d+)CTN ([\\d.,]+)CBM ([\\d.,]+)KGS/.exec(flat);\n    if (tot) { out.caixas = +tot[1]; out.cbm = numUs(tot[2]); out.peso_bruto = numUs(tot[3]); }\n    const fr = /Basic Ocean Freight([\\d.,]+)Per ContainerUSD/.exec(flat), bk = /Fossil Fuel Fee([\\d.,]+)Per ContainerUSD/.exec(flat);\n    out.frete_usd_cntr = fr ? numUs(fr[1]) : null; out.bunker_usd_cntr = bk ? numUs(bk[1]) : null;\n  } else {\n    const re = /([A-Z]{4}\\d{7})\\s+\\d+\\s*x\\s*(\\w+)\\s+(\\d+)\\s+CARTONS?\\s+([\\d.,]+)\\s+[\\d.,]+\\s+([\\d.,]+)/g; let m, cx = 0, pb = 0, cb = 0, n = 0;\n    while ((m = re.exec(t || ''))) { n++; cx += +m[3]; pb += numUs(m[4]) || 0; cb += numUs(m[5]) || 0; }\n    if (n) { out.caixas = cx; out.peso_bruto = Math.round(pb * 1000) / 1000; out.cbm = Math.round(cb * 1000) / 1000; }\n  }\n  return out;\n}\nfunction lerFaturaZelus(t) {\n  if (!/IMPORTER OF RECORD/i.test(t || '') && !(t || '').includes('Zelus')) return null;\n  return {fatura: find(/Invoice Number\\s+(\\S+)/, t), fabricante: find(/Co Name\\s+(.+?),/, t).slice(0, 80), modal: find(/Mode of Transport:\\s*(\\w+)/, t),\n    origem: find(/Country of Origin:\\s*([A-Za-z ]+?)(?:\\s{2,}|\\n|VAT|$)/, t), peso_bruto: numUs(find(/Gross Weight:\\s*([\\d.,]+)/, t)),\n    peso_liquido: numUs(find(/Net Weight:\\s*([\\d.,]+)/, t)), caixas: numUs(find(/Cartons:\\s*([\\d.,]+)/, t))};\n}\nfunction lerProforma(rows) {\n  // rows: lista de linhas (arrays de celulas) da 1a aba\n  const want = {'quantity': 'quantidade', 'gross weight': 'peso_bruto', 'net weight': 'peso_liquido', 'total $': 'valor', 'factory name': 'fabricantes', 'hts code': 'ncm', 'tcci number': 'tcci', 'cntr. id': 'conteineres', 'flag alt. preco': 'alt_preco', 'flag. alt. qtd.': 'alt_qtd'};\n  let cols = null; const out = {linhas: 0, quantidade: 0, peso_bruto: 0, peso_liquido: 0, valor: 0, fabricantes: new Set(), ncm: new Set(), tcci: new Set(), conteineres: new Set(), alt_preco: 0, alt_qtd: 0};\n  for (const row of rows.slice(0, 3000)) {\n    if (!cols) { const labels = row.map(c => typeof c === 'string' ? norm(c).trim() : ''); if (labels.includes('po fisia') && labels.includes('quantity')) { cols = {}; labels.forEach((l, j) => { if (want[l]) cols[want[l]] = j; }); } continue; }\n    const q = row[cols.quantidade]; if (typeof q !== 'number') continue;\n    out.linhas++;\n    for (const k of ['quantidade', 'peso_bruto', 'peso_liquido', 'valor']) { const v = row[cols[k]]; if (typeof v === 'number') out[k] += v; }\n    for (const k of ['fabricantes', 'ncm', 'tcci', 'conteineres']) { const v = row[cols[k]]; if (v !== undefined && v !== null && v !== '') { const s = String(v).trim(); out[k].add(k === 'ncm' ? s.slice(0, 4) : s.slice(0, 80)); } }\n    for (const k of ['alt_preco', 'alt_qtd']) { const v = row[cols[k]]; if (v !== undefined && v !== null && v !== '' && v !== 0 && v !== '0' && !['nao', 'n', '-', 'ok'].includes(norm(v))) out[k]++; }\n  }\n  if (!cols) return {lida: false};\n  for (const k of ['fabricantes', 'ncm', 'tcci', 'conteineres']) out[k] = [...out[k]].sort();\n  for (const k of ['quantidade', 'peso_bruto', 'peso_liquido', 'valor']) out[k] = Math.round(out[k] * 1000) / 1000;\n  out.conteineres = out.conteineres.filter(c => cntrOk(c.toUpperCase()));\n  out.lida = true; return out;\n}\nfunction lerChecklist(text, nome) {\n  // Itens \"- Shipper - OK\" (conferido) ou \"- Shipper - \" (vazio); \"Numeracao/Identificacao BOL\" trazem o numero e nao contam\n  const oks = (text.match(/-\\s*OK\\b/gi) || []).length, an = find(/Nome Analista:[ \\t]*([^\\n]+)/, text);\n  let itens = 0;\n  for (const linha of String(text || '').split('\\n')) { const re = /-\\s*([^-\\n]+?)\\s*-\\s*(OK\\b)?/gi; let m; while ((m = re.exec(linha))) if (!m[1].toUpperCase().includes('BOL')) itens++; }\n  const bol = find(/BOL:[ \\t]*([A-Z0-9]{6,})/, String(text || '').toUpperCase());\n  return {id: find(/ID\\s*(\\d+)/, nome), revisado: find(/REVISADO\\s*(\\d{2}\\.\\d{2}\\.\\d{4})/, nome.toUpperCase()), itens_ok: oks, itens_total: itens,\n          identificado: !!bol, preenchido: oks >= 3, analista: an && an.length > 2 ? an.slice(0, 60) : ''};\n}\n// XLSX (descompactado pelo n8n): textos compartilhados + 1a aba -> linhas\nconst xmlDec = s => s.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '\"').replace(/&apos;/g, \"'\").replace(/&amp;/g, '&');\nfunction xlsxRows(sheetXml, sharedXml) {\n  const shared = []; const si = /<si>([\\s\\S]*?)<\\/si>/g; let m;\n  while ((m = si.exec(sharedXml || ''))) shared.push(xmlDec((m[1].match(/<t[^>]*>([\\s\\S]*?)<\\/t>/g) || []).map(x => x.replace(/<[^>]+>/g, '')).join('')));\n  const rows = []; const rr = /<row[^>]*>([\\s\\S]*?)<\\/row>/g;\n  while ((m = rr.exec(sheetXml || '')) && rows.length < 3200) {\n    const row = []; const cr = /<c r=\"([A-Z]+)\\d+\"([^>]*?)(?:\\/>|>([\\s\\S]*?)<\\/c>)/g; let c;\n    while ((c = cr.exec(m[1]))) {\n      let col = 0; for (const ch of c[1]) col = col * 26 + (ch.charCodeAt(0) - 64); col--;\n      const attrs = c[2] || '', inner = c[3] || ''; const v = /<v>([\\s\\S]*?)<\\/v>/.exec(inner);\n      let val = null;\n      if (/t=\"s\"/.test(attrs) && v) val = shared[+v[1]] ?? '';\n      else if (/t=\"inlineStr\"/.test(attrs)) val = xmlDec((inner.match(/<t[^>]*>([\\s\\S]*?)<\\/t>/) || [, ''])[1]);\n      else if (/t=\"(str|e)\"/.test(attrs) && v) val = xmlDec(v[1]);\n      else if (/t=\"b\"/.test(attrs) && v) val = v[1] === '1';\n      else if (v) val = Number(v[1]);\n      row[col] = val;\n    }\n    rows.push(row);\n  }\n  return rows;\n}\nfunction docxText(xml) { return (xml || '').split(/<\\/w:p>/).map(p => xmlDec((p.match(/<w:t[^>]*>([\\s\\S]*?)<\\/w:t>/g) || []).map(x => x.replace(/<[^>]+>/g, '')).join(''))).filter(Boolean).join('\\n'); }\nfunction numeroProcesso(name) {\n  let b = name.replace(/\\(.*?\\)/g, ' ').trim().split(/\\s+-\\s+|\\s{2,}/)[0];\n  b = b.trim().replace(/^(BL|BOL|HAWB|AWB|MAWB)\\s+/i, '');\n  return b.replace(/\\s+/g, '').toUpperCase().slice(0, 30);\n}\nfunction obsPasta(name) { return (name.match(/\\(([^)]{3,60})\\)/g) || []).map(x => x.slice(1, -1).trim()).filter(o => !/^\\s*(FISIA\\s*\\d+|\\d+)\\s*$/i.test(o)).join('; '); }\nfunction modalDe(nome, grupos, tipos) {\n  const n = norm(nome), g = norm(grupos.join(' '));\n  if (/^(bl|bol)\\b/.test(n) || g.includes('maritimo')) return 'Marítimo';\n  if (/^(hawb|awb|mawb)\\b/.test(n) || g.includes('aereo') || tipos.has('awb')) return 'Aéreo';\n  return tipos.has('bl') ? 'Marítimo' : '';\n}\n// SHA-1 (o id do processo e o mesmo do sistema: sha1 do caminho relativo em minusculas, 16 primeiros caracteres)\nfunction sha1(str) {\n  const b = unescape(encodeURIComponent(str)), w = [], l = b.length * 8;\n  for (let i = 0; i < b.length; i++) w[i >> 2] |= b.charCodeAt(i) << (24 - (i % 4) * 8);\n  w[l >> 5] |= 0x80 << (24 - l % 32); w[((l + 64 >> 9) << 4) + 15] = l;\n  let [h0, h1, h2, h3, h4] = [0x67452301, 0xEFCDAB89, 0x98BADCFE, 0x10325476, 0xC3D2E1F0];\n  const rol = (n, c) => (n << c) | (n >>> (32 - c));\n  for (let i = 0; i < w.length; i += 16) {\n    const x = []; for (let j = 0; j < 80; j++) x[j] = j < 16 ? (w[i + j] | 0) : rol(x[j - 3] ^ x[j - 8] ^ x[j - 14] ^ x[j - 16], 1);\n    let [a, bb, c, d, e] = [h0, h1, h2, h3, h4];\n    for (let j = 0; j < 80; j++) {\n      const f = j < 20 ? (bb & c) | (~bb & d) : j < 40 ? bb ^ c ^ d : j < 60 ? (bb & c) | (bb & d) | (c & d) : bb ^ c ^ d;\n      const k = j < 20 ? 0x5A827999 : j < 40 ? 0x6ED9EBA1 : j < 60 ? 0x8F1BBCDC : 0xCA62C1D6;\n      const t = (rol(a, 5) + f + e + k + x[j]) | 0; e = d; d = c; c = rol(bb, 30); bb = a; a = t;\n    }\n    h0 = (h0 + a) | 0; h1 = (h1 + bb) | 0; h2 = (h2 + c) | 0; h3 = (h3 + d) | 0; h4 = (h4 + e) | 0;\n  }\n  return [h0, h1, h2, h3, h4].map(h => (h >>> 0).toString(16).padStart(8, '0')).join('');\n}\nconst pidDe = rel => sha1(rel.toLowerCase()).slice(0, 16);\n\n// ===== Arquivos de cada processo e o que precisa ser baixado =====\nconst procs = $('Embarques: processos alterados').all(), listaTopo = $('Embarques: listar pasta').all();\nconst subs = $('Embarques: subpastas').first().json.subs || [], subFiles = ($('Embarques: listar subpastas').first().json || {}).files || [];\nconst todos = [];\nprocs.forEach((p, i) => {\n  if (p.json.vazio) return;\n  const add = (f, prefix) => {\n    if (f.mimeType === 'application/vnd.google-apps.folder') return;\n    if (/^(desktop\\.ini|thumbs\\.db)$/i.test(f.name) || f.name.startsWith('~$')) return;\n    const ext = (f.name.match(/\\.[^.]+$/) || [''])[0].toLowerCase();\n    todos.push({pid: p.json.pid, rel: prefix + f.name, nome: f.name, tipo: tipoArquivo(f.name), tam: Number(f.size || 0),\n                mod: f.modifiedTime || '', drive_id: f.id, ext});\n  };\n  for (const f of ((listaTopo[i] || {}).json || {}).files || []) add(f, '');\n  for (const s of subs.filter(s => s.pi === i)) for (const f of subFiles.filter(f => (f.parents || [])[0] === s.id)) add(f, s.name + '/');\n});\nconst compactados = todos.filter(f => (f.tipo === 'tcci' && f.ext === '.zip') || (f.tipo === 'proforma' && ['.xlsx', '.xlsm'].includes(f.ext)) || (f.tipo === 'checklist' && f.ext === '.docx'))\n  .filter(f => f.tam < 40e6);\nconst pdfs = todos.filter(f => f.ext === '.pdf' && ['tcci', 'ci', 'bl', 'awb'].includes(f.tipo) && f.tam < 25e6);\n// Copias: o 1o item leva a lista de todos os arquivos, e o item nao pode estar dentro da propria lista (referencia\n// circular: o n8n nao consegue repassar e acusa 'Unknown error').\nconst out = compactados.length ? compactados.map(f => ({json: {...f}})) : [{json: {dummy: true}}];\nout[0].json._todos = todos.map(f => ({...f})); out[0].json._pdfs = pdfs.map(f => ({...f}));\nreturn out;\n\n} catch (erro) {\n  const m = erro && erro.message ? erro.message : (typeof erro === 'string' ? erro : JSON.stringify(erro));\n  throw new Error('[Embarques: arquivos] ' + m + (erro && erro.stack ? ' | ' + String(erro.stack).split('\\n').slice(0, 4).join(' / ') : ''));\n}"
+      },
+      "name": "Embarques: arquivos",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        780,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "cab5bc77-7a8f-5525-8abd-e68a83dcaa90",
+              "leftValue": "={{ $json.dummy ? 'nao' : 'sim' }}",
+              "rightValue": "sim",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "Embarques: tem compactado?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        1040,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ 'https://www.googleapis.com/drive/v3/files/' + $json.drive_id + '?alt=media&supportsAllDrives=true' }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 5,
+              "batchInterval": 300
+            }
+          },
+          "response": {
+            "response": {
+              "responseFormat": "file"
+            }
+          }
+        }
+      },
+      "name": "Embarques: baixar compactados",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1300,
+        300
+      ],
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {},
+      "name": "Embarques: descompactar",
+      "type": "n8n-nodes-base.compression",
+      "typeVersion": 1.1,
+      "position": [
+        1820,
+        300
+      ],
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "try {\n// ===== Leitura dos documentos de embarque (mesmas regras do embarques.py do NexxusDoc) =====\nconst OPS = ['INLINE', 'PROMO', 'AMOSTRAS', 'ZELUS'];\nconst PROC_RE = /^(BL|BOL|HAWB|AWB|MAWB)\\s*\\S|\\(FISIA\\s*\\d+\\)|^FISIA\\s*\\d+|^\\d{0,2}[A-Z]{2,5}-?\\d{6,}/i;\nconst SCAC = {MAEU: 'Maersk', CMDU: 'CMA CGM', SUDU: 'Hamburg Süd', HLCU: 'Hapag-Lloyd', ONEY: 'ONE', MSCU: 'MSC', MEDU: 'MSC', COSU: 'COSCO', EGLV: 'Evergreen', OOLU: 'OOCL', ZIMU: 'ZIM', HDMU: 'HMM', YMLU: 'Yang Ming'};\nconst norm = s => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');\nconst find = (re, t) => { const m = re.exec(t || ''); return m ? m[1].replace(/\\s+/g, ' ').trim() : ''; };\nfunction numEu(v) { v = String(v || '').trim().replace(/ /g, ''); if (!v) return null; if (v.includes(',') || /^\\d{1,3}(\\.\\d{3})+$/.test(v)) v = v.replace(/\\./g, '').replace(',', '.'); const n = Number(v); return Number.isFinite(n) ? n : null; }\nfunction numUs(v) { const n = Number(String(v || '').replace(/,/g, '')); return v && Number.isFinite(n) ? n : null; }\nconst ISO = {}; { let v = 10; for (const ch of 'ABCDEFGHIJKLMNOPQRSTUVWXYZ') { if (v % 11 === 0) v++; ISO[ch] = v++; } }\nfunction cntrOk(c) { if (!/^[A-Z]{4}\\d{7}$/.test(c || '')) return false; let s = 0; for (let i = 0; i < 10; i++) s += (/[A-Z]/.test(c[i]) ? ISO[c[i]] : +c[i]) * 2 ** i; return s % 11 % 10 === +c[10]; }\nfunction conteineres(t) { const out = new Set(); const re = /(?<![A-Z])([A-Z]{4}\\d{7})(?!\\d)/g; let m; while ((m = re.exec(t || ''))) if (cntrOk(m[1])) out.add(m[1]); return [...out].sort(); }\nconst INVOICE_NAME = /^[A-Z0-9-]{6,}_\\d{10}_\\d{5}/i;\nfunction tipoArquivo(name) {\n  const n = norm(name);\n  if (n.includes('checklist')) return 'checklist';\n  if (n.includes('tcci') || INVOICE_NAME.test(name)) return 'tcci';\n  if (/pro ?forma/.test(n)) return 'proforma';\n  if (/(^|[^a-z])(pl|pls)([^a-z]|$)|packing/.test(n)) return 'pl';\n  if (/(^|[^a-z])(hawb|awb|mawb)([^a-z]|$)/.test(n)) return 'awb';\n  if (/(^|[^a-z])(bl|bol|mbl|hbl)([^a-z]|$)|bill of lading/.test(n)) return 'bl';\n  if (/(^|[^a-z])(ci|invoice|invoices|fatura|commercial)([^a-z]|$)/.test(n)) return 'ci';\n  if (/(^|[^a-z])(nf|nfe|danfe)([^a-z]|$)|nota fiscal/.test(n)) return 'nf';\n  if (/(^|[^a-z])fci([^a-z]|$)/.test(n)) return 'fci';\n  return 'outro';\n}\nconst MESES_EN = {january: 1, february: 2, march: 3, april: 4, may: 5, june: 6, july: 7, august: 8, september: 9, october: 10, november: 11, december: 12};\n// Modelo com os rotulos em bloco e os valores depois (auditoria de 25/11/2026: o numero saia \"Invoice\")\nfunction cabecalhoEmBloco(t) {\n  const linhas = String(t || '').split('\\n').map(l => l.replace(/\\s+/g, ' ').trim());\n  let i = linhas.indexOf('Invoice Number:'); if (i < 0) return null;\n  const rot = [];\n  while (i < linhas.length && linhas[i].endsWith(':') && linhas[i].length < 40) { rot.push(linhas[i].slice(0, -1).trim()); i++; }\n  if (rot.length < 2) return null;\n  const vals = linhas.slice(i, i + rot.length + 6).filter(Boolean).slice(0, rot.length);\n  return vals.length === rot.length ? rot.map((r, k) => [r, vals[k]]) : null;\n}\nconst MES3 = {jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12};\n// Fatura manual da Nike (\"Commercial Invoice\" com \"Invoice No:\"); o pedido vem do nome do arquivo (validarFatura)\nfunction lerFaturaManual(t) {\n  if (!t || !t.includes('Commercial Invoice') || !/Invoice No:\\s*\\d/.test(t)) return null;\n  const it = /\\n([A-Z0-9]{4,8}-\\d{3})\\s+.+?\\s+(\\d+)\\s+([\\d.,]+)\\s+([\\d.,]+)\\s+([\\d.,]+)\\s+\\$/.exec(t);\n  const d = /Inv Date:\\s*(\\d{1,2})-([A-Za-z]{3})-(\\d{2,4})/.exec(t);\n  const mes = d && MES3[d[2].toLowerCase()];\n  const data = mes ? `${d[3].length === 2 ? '20' + d[3] : d[3]}-${String(mes).padStart(2, '0')}-${d[1].padStart(2, '0')}` : '';\n  return {fatura: find(/Invoice No:\\s*(\\d+)/, t), data, vendedor: 'NIKE (fatura manual)', incoterm: find(/Price Term:\\s*(\\S+)/, t), modal: '',\n    origem: find(/Port of Loading:\\s*(.+)/, t), doc_transporte: find(/BL No:\\s*(\\S+)/, t), po_cliente: '', po: '',\n    material: it ? it[1] : '', temporada: '', quantidade: it ? numUs(it[3]) : null,\n    valor: numUs(find(/Grand Total \\$\\s*\\n?.*?([\\d,]+\\.\\d{2})\\s*$/m, t)), peso_bruto: it ? numUs(it[5]) : null,\n    peso_liquido: it ? numUs(it[4]) : null, caixas: it ? numUs(it[2]) : null, fabricante: '', manual: true};\n}\n// O que o NOME do PDF diz: pedido e linha (\"..._4511085550_00020.pdf\"; manual \"7609566260_10_4511030311\") ou o numero\nfunction nomePdfFatura(nome) {\n  const base = String(nome || '').replace(/\\\\/g, '/').split('/').pop().split('›').pop().trim().replace(/\\.pdf$/i, '');\n  let m = /(?<!\\d)\\d{10}_(\\d{1,5})_(\\d{10})(?!\\d)/.exec(base); if (m) return {po: m[2], linha: m[1].replace(/^0+/, '')};\n  m = /_(\\d{10})_(\\d{5})(?!\\d)/.exec(base); if (m) return {po: m[1], linha: m[2].replace(/^0+/, '')};\n  m = /(?<!\\d)(45[2-9]\\d{7})(?!\\d)/.exec(base); return m ? {fatura: m[1]} : {};\n}\nconst numeroFaturaOk = v => /^\\d{8,12}$/.test(String(v || ''));\n// Trava da leitura (os PDFs nem sempre vem no mesmo layout): so vale numero de 8 a 12 digitos; pedido e numero\n// comparados com o nome do arquivo (diferenca vira alerta). Devolve [fatura ou null, motivo]\nfunction validarFatura(f, nome) {\n  if (!f) return [null, ''];\n  if (!numeroFaturaOk(f.fatura)) return [null, `número da fatura não reconhecido no PDF (lido: \"${String(f.fatura || '').slice(0, 20)}\")`];\n  const info = nomePdfFatura(nome), al = [];\n  if (info.po) { if (!f.po) f.po = info.po; else if (f.po !== info.po) al.push(`pedido no PDF (${f.po}) diferente do nome do arquivo (${info.po})`); }\n  if (info.fatura && info.fatura !== f.fatura) al.push(`número no PDF (${f.fatura}) diferente do nome do arquivo (${info.fatura})`);\n  if (!f.material) al.push('material não lido no PDF');\n  if (f.quantidade === null || f.quantidade === undefined || f.quantidade === 0) al.push('quantidade não lida no PDF');\n  if (f.manual) al.push('fatura manual (outro modelo de PDF)');\n  if (al.length) f.alerta = al.join('; ');\n  return [f, ''];\n}\nfunction lerFaturaNike(t) {\n  if (!t || !t.includes('COMMERCIAL INVOICE') || !t.includes('Invoice Number:')) return null;\n  const blk = cabecalhoEmBloco(t);\n  if (blk) t = blk.map(([k, v]) => k + ': ' + v).join('\\n') + '\\n' + t.replace(/Invoice Number:/g, 'Invoice Number (bloco):');\n  let fab = '';\n  const f = /Manufacturing Factory:\\s*\\n(.+?)\\n(.*?)\\n/.exec(t);\n  if (f) { fab = f[1].trim(); const l2 = f[2].trim(); if (l2 && l2 === l2.toUpperCase() && l2.length < 40 && !/\\d/.test(l2) && /[A-Z]/.test(l2)) fab += ' ' + l2; }\n  const d = /Invoice Date:\\s*([A-Za-z]+) (\\d{1,2}), (\\d{4})/.exec(t);\n  const data = d && MESES_EN[d[1].toLowerCase()] ? `${d[3]}-${String(MESES_EN[d[1].toLowerCase()]).padStart(2, '0')}-${d[2].padStart(2, '0')}` : '';\n  return {fatura: find(/Invoice Number:\\s*(\\S+)/, t), data, vendedor: t.trim().split('\\n')[0].trim().slice(0, 80),\n    incoterm: find(/Terms of Sale:\\s*(\\S+)/, t), modal: find(/Mode of Transportation:\\s*(.+)/, t),\n    origem: find(/Country of Origin:\\s*\\n?\\s*([A-Za-z][A-Za-z .,'-]+)/, t) || find(/From:\\s*(.+)/, t),\n    doc_transporte: find(/Transport Document #:\\s*(\\S+)/, t), po_cliente: find(/Customer PO number #:\\s*(\\S+)/, t),\n    po: find(/\\bPO#:\\s*(\\S+)/, t), material: find(/Material#:\\s*(\\S+)/, t), temporada: find(/Season Code & Year#:\\s*(\\S+)/, t),\n    quantidade: numEu(find(/Total Invoice\\s*\\n?\\s*Quantity:\\s*\\n?\\s*([\\d.,]+)/, t)), valor: numEu(find(/Total Amount:\\s*([\\d.,]+)/, t)),\n    peso_bruto: numEu(find(/Total Gross Weight:\\s*([\\d.,]+)/, t)), peso_liquido: numEu(find(/Total Net Weight:\\s*([\\d.,]+)/, t)),\n    caixas: numEu(find(/Total Number of\\s*\\n?\\s*Cartons:\\s*\\n?\\s*([\\d.,]+)/, t)), fabricante: fab};\n}\nfunction lerBl(t, nome) {\n  const flat = String(t || '').replace(/\\s*\\n\\s*/g, '');\n  const out = {conteineres: conteineres(t).length ? conteineres(t) : conteineres(flat)};\n  const sc = new RegExp('\\\\b(' + Object.keys(SCAC).join('|') + ')').exec(`${nome} ${flat.slice(0, 3000)}`.toUpperCase());\n  out.armador = sc ? SCAC[sc[1]] : (/maersk/i.test(t) ? 'Maersk' : '');\n  const ncm = /NCM\\s*:?\\s*((?:\\d{4,8}[\\s,;/.]*){1,40})/.exec(t || '');\n  out.ncm = ncm ? [...new Set((ncm[1].match(/\\d{4,8}/g) || []).map(c => c.slice(0, 4)))].sort() : [];\n  if (out.armador === 'Maersk') {\n    const nomeOk = v => /^[A-Za-z][A-Za-z0-9 ,.'/-]{2,}$/.test(v || '') ? v.slice(0, 60) : '';\n    out.navio = nomeOk(find(/Vessel(.+?)Voyage No\\./, flat));\n    out.viagem = find(/Voyage No\\.([A-Z0-9]{2,8})(?:Port of Loading|Place of)/, flat);\n    out.porto_embarque = nomeOk(find(/Port of Loading(.+?)Place of/, flat));\n    out.porto_descarga = nomeOk(find(/Port of Discharge(.+?)(?:Signed|Place of|Freight)/, flat));\n    out.embarque = find(/Shipped on Board Date \\( ?Local Time ?\\)(\\d{4}-\\d{2}-\\d{2})/, flat);\n    const tot = /B\\/L TOTAL SUMMARY-+(\\d+)CTN ([\\d.,]+)CBM ([\\d.,]+)KGS/.exec(flat);\n    if (tot) { out.caixas = +tot[1]; out.cbm = numUs(tot[2]); out.peso_bruto = numUs(tot[3]); }\n    const fr = /Basic Ocean Freight([\\d.,]+)Per ContainerUSD/.exec(flat), bk = /Fossil Fuel Fee([\\d.,]+)Per ContainerUSD/.exec(flat);\n    out.frete_usd_cntr = fr ? numUs(fr[1]) : null; out.bunker_usd_cntr = bk ? numUs(bk[1]) : null;\n  } else {\n    const re = /([A-Z]{4}\\d{7})\\s+\\d+\\s*x\\s*(\\w+)\\s+(\\d+)\\s+CARTONS?\\s+([\\d.,]+)\\s+[\\d.,]+\\s+([\\d.,]+)/g; let m, cx = 0, pb = 0, cb = 0, n = 0;\n    while ((m = re.exec(t || ''))) { n++; cx += +m[3]; pb += numUs(m[4]) || 0; cb += numUs(m[5]) || 0; }\n    if (n) { out.caixas = cx; out.peso_bruto = Math.round(pb * 1000) / 1000; out.cbm = Math.round(cb * 1000) / 1000; }\n  }\n  return out;\n}\nfunction lerFaturaZelus(t) {\n  if (!/IMPORTER OF RECORD/i.test(t || '') && !(t || '').includes('Zelus')) return null;\n  return {fatura: find(/Invoice Number\\s+(\\S+)/, t), fabricante: find(/Co Name\\s+(.+?),/, t).slice(0, 80), modal: find(/Mode of Transport:\\s*(\\w+)/, t),\n    origem: find(/Country of Origin:\\s*([A-Za-z ]+?)(?:\\s{2,}|\\n|VAT|$)/, t), peso_bruto: numUs(find(/Gross Weight:\\s*([\\d.,]+)/, t)),\n    peso_liquido: numUs(find(/Net Weight:\\s*([\\d.,]+)/, t)), caixas: numUs(find(/Cartons:\\s*([\\d.,]+)/, t))};\n}\nfunction lerProforma(rows) {\n  // rows: lista de linhas (arrays de celulas) da 1a aba\n  const want = {'quantity': 'quantidade', 'gross weight': 'peso_bruto', 'net weight': 'peso_liquido', 'total $': 'valor', 'factory name': 'fabricantes', 'hts code': 'ncm', 'tcci number': 'tcci', 'cntr. id': 'conteineres', 'flag alt. preco': 'alt_preco', 'flag. alt. qtd.': 'alt_qtd'};\n  let cols = null; const out = {linhas: 0, quantidade: 0, peso_bruto: 0, peso_liquido: 0, valor: 0, fabricantes: new Set(), ncm: new Set(), tcci: new Set(), conteineres: new Set(), alt_preco: 0, alt_qtd: 0};\n  for (const row of rows.slice(0, 3000)) {\n    if (!cols) { const labels = row.map(c => typeof c === 'string' ? norm(c).trim() : ''); if (labels.includes('po fisia') && labels.includes('quantity')) { cols = {}; labels.forEach((l, j) => { if (want[l]) cols[want[l]] = j; }); } continue; }\n    const q = row[cols.quantidade]; if (typeof q !== 'number') continue;\n    out.linhas++;\n    for (const k of ['quantidade', 'peso_bruto', 'peso_liquido', 'valor']) { const v = row[cols[k]]; if (typeof v === 'number') out[k] += v; }\n    for (const k of ['fabricantes', 'ncm', 'tcci', 'conteineres']) { const v = row[cols[k]]; if (v !== undefined && v !== null && v !== '') { const s = String(v).trim(); out[k].add(k === 'ncm' ? s.slice(0, 4) : s.slice(0, 80)); } }\n    for (const k of ['alt_preco', 'alt_qtd']) { const v = row[cols[k]]; if (v !== undefined && v !== null && v !== '' && v !== 0 && v !== '0' && !['nao', 'n', '-', 'ok'].includes(norm(v))) out[k]++; }\n  }\n  if (!cols) return {lida: false};\n  for (const k of ['fabricantes', 'ncm', 'tcci', 'conteineres']) out[k] = [...out[k]].sort();\n  for (const k of ['quantidade', 'peso_bruto', 'peso_liquido', 'valor']) out[k] = Math.round(out[k] * 1000) / 1000;\n  out.conteineres = out.conteineres.filter(c => cntrOk(c.toUpperCase()));\n  out.lida = true; return out;\n}\nfunction lerChecklist(text, nome) {\n  // Itens \"- Shipper - OK\" (conferido) ou \"- Shipper - \" (vazio); \"Numeracao/Identificacao BOL\" trazem o numero e nao contam\n  const oks = (text.match(/-\\s*OK\\b/gi) || []).length, an = find(/Nome Analista:[ \\t]*([^\\n]+)/, text);\n  let itens = 0;\n  for (const linha of String(text || '').split('\\n')) { const re = /-\\s*([^-\\n]+?)\\s*-\\s*(OK\\b)?/gi; let m; while ((m = re.exec(linha))) if (!m[1].toUpperCase().includes('BOL')) itens++; }\n  const bol = find(/BOL:[ \\t]*([A-Z0-9]{6,})/, String(text || '').toUpperCase());\n  return {id: find(/ID\\s*(\\d+)/, nome), revisado: find(/REVISADO\\s*(\\d{2}\\.\\d{2}\\.\\d{4})/, nome.toUpperCase()), itens_ok: oks, itens_total: itens,\n          identificado: !!bol, preenchido: oks >= 3, analista: an && an.length > 2 ? an.slice(0, 60) : ''};\n}\n// XLSX (descompactado pelo n8n): textos compartilhados + 1a aba -> linhas\nconst xmlDec = s => s.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '\"').replace(/&apos;/g, \"'\").replace(/&amp;/g, '&');\nfunction xlsxRows(sheetXml, sharedXml) {\n  const shared = []; const si = /<si>([\\s\\S]*?)<\\/si>/g; let m;\n  while ((m = si.exec(sharedXml || ''))) shared.push(xmlDec((m[1].match(/<t[^>]*>([\\s\\S]*?)<\\/t>/g) || []).map(x => x.replace(/<[^>]+>/g, '')).join('')));\n  const rows = []; const rr = /<row[^>]*>([\\s\\S]*?)<\\/row>/g;\n  while ((m = rr.exec(sheetXml || '')) && rows.length < 3200) {\n    const row = []; const cr = /<c r=\"([A-Z]+)\\d+\"([^>]*?)(?:\\/>|>([\\s\\S]*?)<\\/c>)/g; let c;\n    while ((c = cr.exec(m[1]))) {\n      let col = 0; for (const ch of c[1]) col = col * 26 + (ch.charCodeAt(0) - 64); col--;\n      const attrs = c[2] || '', inner = c[3] || ''; const v = /<v>([\\s\\S]*?)<\\/v>/.exec(inner);\n      let val = null;\n      if (/t=\"s\"/.test(attrs) && v) val = shared[+v[1]] ?? '';\n      else if (/t=\"inlineStr\"/.test(attrs)) val = xmlDec((inner.match(/<t[^>]*>([\\s\\S]*?)<\\/t>/) || [, ''])[1]);\n      else if (/t=\"(str|e)\"/.test(attrs) && v) val = xmlDec(v[1]);\n      else if (/t=\"b\"/.test(attrs) && v) val = v[1] === '1';\n      else if (v) val = Number(v[1]);\n      row[col] = val;\n    }\n    rows.push(row);\n  }\n  return rows;\n}\nfunction docxText(xml) { return (xml || '').split(/<\\/w:p>/).map(p => xmlDec((p.match(/<w:t[^>]*>([\\s\\S]*?)<\\/w:t>/g) || []).map(x => x.replace(/<[^>]+>/g, '')).join(''))).filter(Boolean).join('\\n'); }\nfunction numeroProcesso(name) {\n  let b = name.replace(/\\(.*?\\)/g, ' ').trim().split(/\\s+-\\s+|\\s{2,}/)[0];\n  b = b.trim().replace(/^(BL|BOL|HAWB|AWB|MAWB)\\s+/i, '');\n  return b.replace(/\\s+/g, '').toUpperCase().slice(0, 30);\n}\nfunction obsPasta(name) { return (name.match(/\\(([^)]{3,60})\\)/g) || []).map(x => x.slice(1, -1).trim()).filter(o => !/^\\s*(FISIA\\s*\\d+|\\d+)\\s*$/i.test(o)).join('; '); }\nfunction modalDe(nome, grupos, tipos) {\n  const n = norm(nome), g = norm(grupos.join(' '));\n  if (/^(bl|bol)\\b/.test(n) || g.includes('maritimo')) return 'Marítimo';\n  if (/^(hawb|awb|mawb)\\b/.test(n) || g.includes('aereo') || tipos.has('awb')) return 'Aéreo';\n  return tipos.has('bl') ? 'Marítimo' : '';\n}\n// SHA-1 (o id do processo e o mesmo do sistema: sha1 do caminho relativo em minusculas, 16 primeiros caracteres)\nfunction sha1(str) {\n  const b = unescape(encodeURIComponent(str)), w = [], l = b.length * 8;\n  for (let i = 0; i < b.length; i++) w[i >> 2] |= b.charCodeAt(i) << (24 - (i % 4) * 8);\n  w[l >> 5] |= 0x80 << (24 - l % 32); w[((l + 64 >> 9) << 4) + 15] = l;\n  let [h0, h1, h2, h3, h4] = [0x67452301, 0xEFCDAB89, 0x98BADCFE, 0x10325476, 0xC3D2E1F0];\n  const rol = (n, c) => (n << c) | (n >>> (32 - c));\n  for (let i = 0; i < w.length; i += 16) {\n    const x = []; for (let j = 0; j < 80; j++) x[j] = j < 16 ? (w[i + j] | 0) : rol(x[j - 3] ^ x[j - 8] ^ x[j - 14] ^ x[j - 16], 1);\n    let [a, bb, c, d, e] = [h0, h1, h2, h3, h4];\n    for (let j = 0; j < 80; j++) {\n      const f = j < 20 ? (bb & c) | (~bb & d) : j < 40 ? bb ^ c ^ d : j < 60 ? (bb & c) | (bb & d) | (c & d) : bb ^ c ^ d;\n      const k = j < 20 ? 0x5A827999 : j < 40 ? 0x6ED9EBA1 : j < 60 ? 0x8F1BBCDC : 0xCA62C1D6;\n      const t = (rol(a, 5) + f + e + k + x[j]) | 0; e = d; d = c; c = rol(bb, 30); bb = a; a = t;\n    }\n    h0 = (h0 + a) | 0; h1 = (h1 + bb) | 0; h2 = (h2 + c) | 0; h3 = (h3 + d) | 0; h4 = (h4 + e) | 0;\n  }\n  return [h0, h1, h2, h3, h4].map(h => (h >>> 0).toString(16).padStart(8, '0')).join('');\n}\nconst pidDe = rel => sha1(rel.toLowerCase()).slice(0, 16);\n\n// ===== Abre zip (faturas), xlsx (proforma) e docx (checklist) =====\nconst entrada = $input.all(), metas = $('Embarques: arquivos').all();\nconst out = [], extras = [];\n// Conteudo de um arquivo de dentro do zip (pelo ajudante do n8n; sem ele, pelo base64 do proprio item)\nconst ctx = this;\nasync function lerBinario(i, k) {\n  try { if (ctx && ctx.helpers && ctx.helpers.getBinaryDataBuffer) return (await ctx.helpers.getBinaryDataBuffer(i, k)).toString('utf8'); } catch (e) {}\n  const b = (entrada[i].binary || {})[k] || {};\n  return b.data ? Buffer.from(b.data, 'base64').toString('utf8') : '';\n}\nfor (let i = 0; i < entrada.length; i++) {\n  const meta = {...(metas[i] || {}).json}; delete meta._todos; delete meta._pdfs;\n  if (!meta.drive_id) continue;\n  const bin = entrada[i].binary || {};\n  const keys = Object.keys(bin);\n  if (!keys.length) { extras.push({drive_id: meta.drive_id, erro: 'não foi possível abrir o arquivo compactado'}); continue; }\n  const nameOf = k => String(bin[k].fileName || bin[k].fileExtension || k);\n  if (meta.tipo === 'tcci') {\n    const pdfKeys = keys.filter(k => /\\.pdf$/i.test(nameOf(k)));\n    extras.push({drive_id: meta.drive_id, pdfs: pdfKeys.length});\n    for (const k of pdfKeys) out.push({json: {...meta, interno: nameOf(k)}, binary: {data: bin[k]}});\n  } else if (meta.tipo === 'checklist') {\n    const k = keys.find(k => /document\\.xml$/i.test(nameOf(k)));\n    if (!k) { extras.push({drive_id: meta.drive_id, erro: 'formato não reconhecido'}); continue; }\n    const xml = await lerBinario(i, k);\n    extras.push({drive_id: meta.drive_id, dados: lerChecklist(docxText(xml), meta.nome)});\n  } else {\n    const ks = keys.find(k => /sharedStrings\\.xml$/i.test(nameOf(k)));\n    const sheets = keys.filter(k => /sheet\\d+\\.xml$/i.test(nameOf(k)) && !/_rels/i.test(nameOf(k)));\n    const k1 = sheets.find(k => /sheet1\\.xml$/i.test(nameOf(k))) || sheets[0];\n    if (!k1) { extras.push({drive_id: meta.drive_id, erro: 'formato não reconhecido'}); continue; }\n    const shared = ks ? await lerBinario(i, ks) : '';\n    const sheet = await lerBinario(i, k1);\n    extras.push({drive_id: meta.drive_id, dados: lerProforma(xlsxRows(sheet, shared))});\n  }\n}\nif (!out.length) out.push({json: {dummy: true}});\nout[0].json._extras = extras;\nreturn out;\n\n} catch (erro) {\n  const m = erro && erro.message ? erro.message : (typeof erro === 'string' ? erro : JSON.stringify(erro));\n  throw new Error('[Embarques: abrir compactados] ' + m + (erro && erro.stack ? ' | ' + String(erro.stack).split('\\n').slice(0, 4).join(' / ') : ''));\n}"
+      },
+      "name": "Embarques: abrir compactados",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2080,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "54683f3e-220e-5e70-9dfb-5aa2be3ed41e",
+              "leftValue": "={{ $json.dummy ? 'nao' : 'sim' }}",
+              "rightValue": "sim",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "Embarques: tem PDF no zip?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        0,
+        600
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "pdf",
+        "options": {}
+      },
+      "name": "Embarques: texto dos PDFs (zip)",
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [
+        260,
+        600
+      ],
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "try {\n\n// ===== PDFs soltos na pasta (BL, HAWB, faturas) =====\nconst pdfs = $('Embarques: arquivos').first().json._pdfs || [];\nreturn pdfs.length ? pdfs.map(f => ({json: {...f}})) : [{json: {dummy: true}}];\n\n} catch (erro) {\n  const m = erro && erro.message ? erro.message : (typeof erro === 'string' ? erro : JSON.stringify(erro));\n  throw new Error('[Embarques: PDFs soltos] ' + m + (erro && erro.stack ? ' | ' + String(erro.stack).split('\\n').slice(0, 4).join(' / ') : ''));\n}"
+      },
+      "name": "Embarques: PDFs soltos",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        520,
+        600
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "d1f3d4f3-8e9b-5b9c-804a-6097e44ab1c7",
+              "leftValue": "={{ $json.dummy ? 'nao' : 'sim' }}",
+              "rightValue": "sim",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "Embarques: tem PDF solto?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        780,
+        600
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ 'https://www.googleapis.com/drive/v3/files/' + $json.drive_id + '?alt=media&supportsAllDrives=true' }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 5,
+              "batchInterval": 300
+            }
+          },
+          "response": {
+            "response": {
+              "responseFormat": "file"
+            }
+          }
+        }
+      },
+      "name": "Embarques: baixar PDFs",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1040,
+        600
+      ],
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "operation": "pdf",
+        "options": {}
+      },
+      "name": "Embarques: texto dos PDFs",
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [
+        1300,
+        600
+      ],
+      "alwaysOutputData": true,
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "try {\n// ===== Leitura dos documentos de embarque (mesmas regras do embarques.py do NexxusDoc) =====\nconst OPS = ['INLINE', 'PROMO', 'AMOSTRAS', 'ZELUS'];\nconst PROC_RE = /^(BL|BOL|HAWB|AWB|MAWB)\\s*\\S|\\(FISIA\\s*\\d+\\)|^FISIA\\s*\\d+|^\\d{0,2}[A-Z]{2,5}-?\\d{6,}/i;\nconst SCAC = {MAEU: 'Maersk', CMDU: 'CMA CGM', SUDU: 'Hamburg Süd', HLCU: 'Hapag-Lloyd', ONEY: 'ONE', MSCU: 'MSC', MEDU: 'MSC', COSU: 'COSCO', EGLV: 'Evergreen', OOLU: 'OOCL', ZIMU: 'ZIM', HDMU: 'HMM', YMLU: 'Yang Ming'};\nconst norm = s => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');\nconst find = (re, t) => { const m = re.exec(t || ''); return m ? m[1].replace(/\\s+/g, ' ').trim() : ''; };\nfunction numEu(v) { v = String(v || '').trim().replace(/ /g, ''); if (!v) return null; if (v.includes(',') || /^\\d{1,3}(\\.\\d{3})+$/.test(v)) v = v.replace(/\\./g, '').replace(',', '.'); const n = Number(v); return Number.isFinite(n) ? n : null; }\nfunction numUs(v) { const n = Number(String(v || '').replace(/,/g, '')); return v && Number.isFinite(n) ? n : null; }\nconst ISO = {}; { let v = 10; for (const ch of 'ABCDEFGHIJKLMNOPQRSTUVWXYZ') { if (v % 11 === 0) v++; ISO[ch] = v++; } }\nfunction cntrOk(c) { if (!/^[A-Z]{4}\\d{7}$/.test(c || '')) return false; let s = 0; for (let i = 0; i < 10; i++) s += (/[A-Z]/.test(c[i]) ? ISO[c[i]] : +c[i]) * 2 ** i; return s % 11 % 10 === +c[10]; }\nfunction conteineres(t) { const out = new Set(); const re = /(?<![A-Z])([A-Z]{4}\\d{7})(?!\\d)/g; let m; while ((m = re.exec(t || ''))) if (cntrOk(m[1])) out.add(m[1]); return [...out].sort(); }\nconst INVOICE_NAME = /^[A-Z0-9-]{6,}_\\d{10}_\\d{5}/i;\nfunction tipoArquivo(name) {\n  const n = norm(name);\n  if (n.includes('checklist')) return 'checklist';\n  if (n.includes('tcci') || INVOICE_NAME.test(name)) return 'tcci';\n  if (/pro ?forma/.test(n)) return 'proforma';\n  if (/(^|[^a-z])(pl|pls)([^a-z]|$)|packing/.test(n)) return 'pl';\n  if (/(^|[^a-z])(hawb|awb|mawb)([^a-z]|$)/.test(n)) return 'awb';\n  if (/(^|[^a-z])(bl|bol|mbl|hbl)([^a-z]|$)|bill of lading/.test(n)) return 'bl';\n  if (/(^|[^a-z])(ci|invoice|invoices|fatura|commercial)([^a-z]|$)/.test(n)) return 'ci';\n  if (/(^|[^a-z])(nf|nfe|danfe)([^a-z]|$)|nota fiscal/.test(n)) return 'nf';\n  if (/(^|[^a-z])fci([^a-z]|$)/.test(n)) return 'fci';\n  return 'outro';\n}\nconst MESES_EN = {january: 1, february: 2, march: 3, april: 4, may: 5, june: 6, july: 7, august: 8, september: 9, october: 10, november: 11, december: 12};\n// Modelo com os rotulos em bloco e os valores depois (auditoria de 25/11/2026: o numero saia \"Invoice\")\nfunction cabecalhoEmBloco(t) {\n  const linhas = String(t || '').split('\\n').map(l => l.replace(/\\s+/g, ' ').trim());\n  let i = linhas.indexOf('Invoice Number:'); if (i < 0) return null;\n  const rot = [];\n  while (i < linhas.length && linhas[i].endsWith(':') && linhas[i].length < 40) { rot.push(linhas[i].slice(0, -1).trim()); i++; }\n  if (rot.length < 2) return null;\n  const vals = linhas.slice(i, i + rot.length + 6).filter(Boolean).slice(0, rot.length);\n  return vals.length === rot.length ? rot.map((r, k) => [r, vals[k]]) : null;\n}\nconst MES3 = {jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12};\n// Fatura manual da Nike (\"Commercial Invoice\" com \"Invoice No:\"); o pedido vem do nome do arquivo (validarFatura)\nfunction lerFaturaManual(t) {\n  if (!t || !t.includes('Commercial Invoice') || !/Invoice No:\\s*\\d/.test(t)) return null;\n  const it = /\\n([A-Z0-9]{4,8}-\\d{3})\\s+.+?\\s+(\\d+)\\s+([\\d.,]+)\\s+([\\d.,]+)\\s+([\\d.,]+)\\s+\\$/.exec(t);\n  const d = /Inv Date:\\s*(\\d{1,2})-([A-Za-z]{3})-(\\d{2,4})/.exec(t);\n  const mes = d && MES3[d[2].toLowerCase()];\n  const data = mes ? `${d[3].length === 2 ? '20' + d[3] : d[3]}-${String(mes).padStart(2, '0')}-${d[1].padStart(2, '0')}` : '';\n  return {fatura: find(/Invoice No:\\s*(\\d+)/, t), data, vendedor: 'NIKE (fatura manual)', incoterm: find(/Price Term:\\s*(\\S+)/, t), modal: '',\n    origem: find(/Port of Loading:\\s*(.+)/, t), doc_transporte: find(/BL No:\\s*(\\S+)/, t), po_cliente: '', po: '',\n    material: it ? it[1] : '', temporada: '', quantidade: it ? numUs(it[3]) : null,\n    valor: numUs(find(/Grand Total \\$\\s*\\n?.*?([\\d,]+\\.\\d{2})\\s*$/m, t)), peso_bruto: it ? numUs(it[5]) : null,\n    peso_liquido: it ? numUs(it[4]) : null, caixas: it ? numUs(it[2]) : null, fabricante: '', manual: true};\n}\n// O que o NOME do PDF diz: pedido e linha (\"..._4511085550_00020.pdf\"; manual \"7609566260_10_4511030311\") ou o numero\nfunction nomePdfFatura(nome) {\n  const base = String(nome || '').replace(/\\\\/g, '/').split('/').pop().split('›').pop().trim().replace(/\\.pdf$/i, '');\n  let m = /(?<!\\d)\\d{10}_(\\d{1,5})_(\\d{10})(?!\\d)/.exec(base); if (m) return {po: m[2], linha: m[1].replace(/^0+/, '')};\n  m = /_(\\d{10})_(\\d{5})(?!\\d)/.exec(base); if (m) return {po: m[1], linha: m[2].replace(/^0+/, '')};\n  m = /(?<!\\d)(45[2-9]\\d{7})(?!\\d)/.exec(base); return m ? {fatura: m[1]} : {};\n}\nconst numeroFaturaOk = v => /^\\d{8,12}$/.test(String(v || ''));\n// Trava da leitura (os PDFs nem sempre vem no mesmo layout): so vale numero de 8 a 12 digitos; pedido e numero\n// comparados com o nome do arquivo (diferenca vira alerta). Devolve [fatura ou null, motivo]\nfunction validarFatura(f, nome) {\n  if (!f) return [null, ''];\n  if (!numeroFaturaOk(f.fatura)) return [null, `número da fatura não reconhecido no PDF (lido: \"${String(f.fatura || '').slice(0, 20)}\")`];\n  const info = nomePdfFatura(nome), al = [];\n  if (info.po) { if (!f.po) f.po = info.po; else if (f.po !== info.po) al.push(`pedido no PDF (${f.po}) diferente do nome do arquivo (${info.po})`); }\n  if (info.fatura && info.fatura !== f.fatura) al.push(`número no PDF (${f.fatura}) diferente do nome do arquivo (${info.fatura})`);\n  if (!f.material) al.push('material não lido no PDF');\n  if (f.quantidade === null || f.quantidade === undefined || f.quantidade === 0) al.push('quantidade não lida no PDF');\n  if (f.manual) al.push('fatura manual (outro modelo de PDF)');\n  if (al.length) f.alerta = al.join('; ');\n  return [f, ''];\n}\nfunction lerFaturaNike(t) {\n  if (!t || !t.includes('COMMERCIAL INVOICE') || !t.includes('Invoice Number:')) return null;\n  const blk = cabecalhoEmBloco(t);\n  if (blk) t = blk.map(([k, v]) => k + ': ' + v).join('\\n') + '\\n' + t.replace(/Invoice Number:/g, 'Invoice Number (bloco):');\n  let fab = '';\n  const f = /Manufacturing Factory:\\s*\\n(.+?)\\n(.*?)\\n/.exec(t);\n  if (f) { fab = f[1].trim(); const l2 = f[2].trim(); if (l2 && l2 === l2.toUpperCase() && l2.length < 40 && !/\\d/.test(l2) && /[A-Z]/.test(l2)) fab += ' ' + l2; }\n  const d = /Invoice Date:\\s*([A-Za-z]+) (\\d{1,2}), (\\d{4})/.exec(t);\n  const data = d && MESES_EN[d[1].toLowerCase()] ? `${d[3]}-${String(MESES_EN[d[1].toLowerCase()]).padStart(2, '0')}-${d[2].padStart(2, '0')}` : '';\n  return {fatura: find(/Invoice Number:\\s*(\\S+)/, t), data, vendedor: t.trim().split('\\n')[0].trim().slice(0, 80),\n    incoterm: find(/Terms of Sale:\\s*(\\S+)/, t), modal: find(/Mode of Transportation:\\s*(.+)/, t),\n    origem: find(/Country of Origin:\\s*\\n?\\s*([A-Za-z][A-Za-z .,'-]+)/, t) || find(/From:\\s*(.+)/, t),\n    doc_transporte: find(/Transport Document #:\\s*(\\S+)/, t), po_cliente: find(/Customer PO number #:\\s*(\\S+)/, t),\n    po: find(/\\bPO#:\\s*(\\S+)/, t), material: find(/Material#:\\s*(\\S+)/, t), temporada: find(/Season Code & Year#:\\s*(\\S+)/, t),\n    quantidade: numEu(find(/Total Invoice\\s*\\n?\\s*Quantity:\\s*\\n?\\s*([\\d.,]+)/, t)), valor: numEu(find(/Total Amount:\\s*([\\d.,]+)/, t)),\n    peso_bruto: numEu(find(/Total Gross Weight:\\s*([\\d.,]+)/, t)), peso_liquido: numEu(find(/Total Net Weight:\\s*([\\d.,]+)/, t)),\n    caixas: numEu(find(/Total Number of\\s*\\n?\\s*Cartons:\\s*\\n?\\s*([\\d.,]+)/, t)), fabricante: fab};\n}\nfunction lerBl(t, nome) {\n  const flat = String(t || '').replace(/\\s*\\n\\s*/g, '');\n  const out = {conteineres: conteineres(t).length ? conteineres(t) : conteineres(flat)};\n  const sc = new RegExp('\\\\b(' + Object.keys(SCAC).join('|') + ')').exec(`${nome} ${flat.slice(0, 3000)}`.toUpperCase());\n  out.armador = sc ? SCAC[sc[1]] : (/maersk/i.test(t) ? 'Maersk' : '');\n  const ncm = /NCM\\s*:?\\s*((?:\\d{4,8}[\\s,;/.]*){1,40})/.exec(t || '');\n  out.ncm = ncm ? [...new Set((ncm[1].match(/\\d{4,8}/g) || []).map(c => c.slice(0, 4)))].sort() : [];\n  if (out.armador === 'Maersk') {\n    const nomeOk = v => /^[A-Za-z][A-Za-z0-9 ,.'/-]{2,}$/.test(v || '') ? v.slice(0, 60) : '';\n    out.navio = nomeOk(find(/Vessel(.+?)Voyage No\\./, flat));\n    out.viagem = find(/Voyage No\\.([A-Z0-9]{2,8})(?:Port of Loading|Place of)/, flat);\n    out.porto_embarque = nomeOk(find(/Port of Loading(.+?)Place of/, flat));\n    out.porto_descarga = nomeOk(find(/Port of Discharge(.+?)(?:Signed|Place of|Freight)/, flat));\n    out.embarque = find(/Shipped on Board Date \\( ?Local Time ?\\)(\\d{4}-\\d{2}-\\d{2})/, flat);\n    const tot = /B\\/L TOTAL SUMMARY-+(\\d+)CTN ([\\d.,]+)CBM ([\\d.,]+)KGS/.exec(flat);\n    if (tot) { out.caixas = +tot[1]; out.cbm = numUs(tot[2]); out.peso_bruto = numUs(tot[3]); }\n    const fr = /Basic Ocean Freight([\\d.,]+)Per ContainerUSD/.exec(flat), bk = /Fossil Fuel Fee([\\d.,]+)Per ContainerUSD/.exec(flat);\n    out.frete_usd_cntr = fr ? numUs(fr[1]) : null; out.bunker_usd_cntr = bk ? numUs(bk[1]) : null;\n  } else {\n    const re = /([A-Z]{4}\\d{7})\\s+\\d+\\s*x\\s*(\\w+)\\s+(\\d+)\\s+CARTONS?\\s+([\\d.,]+)\\s+[\\d.,]+\\s+([\\d.,]+)/g; let m, cx = 0, pb = 0, cb = 0, n = 0;\n    while ((m = re.exec(t || ''))) { n++; cx += +m[3]; pb += numUs(m[4]) || 0; cb += numUs(m[5]) || 0; }\n    if (n) { out.caixas = cx; out.peso_bruto = Math.round(pb * 1000) / 1000; out.cbm = Math.round(cb * 1000) / 1000; }\n  }\n  return out;\n}\nfunction lerFaturaZelus(t) {\n  if (!/IMPORTER OF RECORD/i.test(t || '') && !(t || '').includes('Zelus')) return null;\n  return {fatura: find(/Invoice Number\\s+(\\S+)/, t), fabricante: find(/Co Name\\s+(.+?),/, t).slice(0, 80), modal: find(/Mode of Transport:\\s*(\\w+)/, t),\n    origem: find(/Country of Origin:\\s*([A-Za-z ]+?)(?:\\s{2,}|\\n|VAT|$)/, t), peso_bruto: numUs(find(/Gross Weight:\\s*([\\d.,]+)/, t)),\n    peso_liquido: numUs(find(/Net Weight:\\s*([\\d.,]+)/, t)), caixas: numUs(find(/Cartons:\\s*([\\d.,]+)/, t))};\n}\nfunction lerProforma(rows) {\n  // rows: lista de linhas (arrays de celulas) da 1a aba\n  const want = {'quantity': 'quantidade', 'gross weight': 'peso_bruto', 'net weight': 'peso_liquido', 'total $': 'valor', 'factory name': 'fabricantes', 'hts code': 'ncm', 'tcci number': 'tcci', 'cntr. id': 'conteineres', 'flag alt. preco': 'alt_preco', 'flag. alt. qtd.': 'alt_qtd'};\n  let cols = null; const out = {linhas: 0, quantidade: 0, peso_bruto: 0, peso_liquido: 0, valor: 0, fabricantes: new Set(), ncm: new Set(), tcci: new Set(), conteineres: new Set(), alt_preco: 0, alt_qtd: 0};\n  for (const row of rows.slice(0, 3000)) {\n    if (!cols) { const labels = row.map(c => typeof c === 'string' ? norm(c).trim() : ''); if (labels.includes('po fisia') && labels.includes('quantity')) { cols = {}; labels.forEach((l, j) => { if (want[l]) cols[want[l]] = j; }); } continue; }\n    const q = row[cols.quantidade]; if (typeof q !== 'number') continue;\n    out.linhas++;\n    for (const k of ['quantidade', 'peso_bruto', 'peso_liquido', 'valor']) { const v = row[cols[k]]; if (typeof v === 'number') out[k] += v; }\n    for (const k of ['fabricantes', 'ncm', 'tcci', 'conteineres']) { const v = row[cols[k]]; if (v !== undefined && v !== null && v !== '') { const s = String(v).trim(); out[k].add(k === 'ncm' ? s.slice(0, 4) : s.slice(0, 80)); } }\n    for (const k of ['alt_preco', 'alt_qtd']) { const v = row[cols[k]]; if (v !== undefined && v !== null && v !== '' && v !== 0 && v !== '0' && !['nao', 'n', '-', 'ok'].includes(norm(v))) out[k]++; }\n  }\n  if (!cols) return {lida: false};\n  for (const k of ['fabricantes', 'ncm', 'tcci', 'conteineres']) out[k] = [...out[k]].sort();\n  for (const k of ['quantidade', 'peso_bruto', 'peso_liquido', 'valor']) out[k] = Math.round(out[k] * 1000) / 1000;\n  out.conteineres = out.conteineres.filter(c => cntrOk(c.toUpperCase()));\n  out.lida = true; return out;\n}\nfunction lerChecklist(text, nome) {\n  // Itens \"- Shipper - OK\" (conferido) ou \"- Shipper - \" (vazio); \"Numeracao/Identificacao BOL\" trazem o numero e nao contam\n  const oks = (text.match(/-\\s*OK\\b/gi) || []).length, an = find(/Nome Analista:[ \\t]*([^\\n]+)/, text);\n  let itens = 0;\n  for (const linha of String(text || '').split('\\n')) { const re = /-\\s*([^-\\n]+?)\\s*-\\s*(OK\\b)?/gi; let m; while ((m = re.exec(linha))) if (!m[1].toUpperCase().includes('BOL')) itens++; }\n  const bol = find(/BOL:[ \\t]*([A-Z0-9]{6,})/, String(text || '').toUpperCase());\n  return {id: find(/ID\\s*(\\d+)/, nome), revisado: find(/REVISADO\\s*(\\d{2}\\.\\d{2}\\.\\d{4})/, nome.toUpperCase()), itens_ok: oks, itens_total: itens,\n          identificado: !!bol, preenchido: oks >= 3, analista: an && an.length > 2 ? an.slice(0, 60) : ''};\n}\n// XLSX (descompactado pelo n8n): textos compartilhados + 1a aba -> linhas\nconst xmlDec = s => s.replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '\"').replace(/&apos;/g, \"'\").replace(/&amp;/g, '&');\nfunction xlsxRows(sheetXml, sharedXml) {\n  const shared = []; const si = /<si>([\\s\\S]*?)<\\/si>/g; let m;\n  while ((m = si.exec(sharedXml || ''))) shared.push(xmlDec((m[1].match(/<t[^>]*>([\\s\\S]*?)<\\/t>/g) || []).map(x => x.replace(/<[^>]+>/g, '')).join('')));\n  const rows = []; const rr = /<row[^>]*>([\\s\\S]*?)<\\/row>/g;\n  while ((m = rr.exec(sheetXml || '')) && rows.length < 3200) {\n    const row = []; const cr = /<c r=\"([A-Z]+)\\d+\"([^>]*?)(?:\\/>|>([\\s\\S]*?)<\\/c>)/g; let c;\n    while ((c = cr.exec(m[1]))) {\n      let col = 0; for (const ch of c[1]) col = col * 26 + (ch.charCodeAt(0) - 64); col--;\n      const attrs = c[2] || '', inner = c[3] || ''; const v = /<v>([\\s\\S]*?)<\\/v>/.exec(inner);\n      let val = null;\n      if (/t=\"s\"/.test(attrs) && v) val = shared[+v[1]] ?? '';\n      else if (/t=\"inlineStr\"/.test(attrs)) val = xmlDec((inner.match(/<t[^>]*>([\\s\\S]*?)<\\/t>/) || [, ''])[1]);\n      else if (/t=\"(str|e)\"/.test(attrs) && v) val = xmlDec(v[1]);\n      else if (/t=\"b\"/.test(attrs) && v) val = v[1] === '1';\n      else if (v) val = Number(v[1]);\n      row[col] = val;\n    }\n    rows.push(row);\n  }\n  return rows;\n}\nfunction docxText(xml) { return (xml || '').split(/<\\/w:p>/).map(p => xmlDec((p.match(/<w:t[^>]*>([\\s\\S]*?)<\\/w:t>/g) || []).map(x => x.replace(/<[^>]+>/g, '')).join(''))).filter(Boolean).join('\\n'); }\nfunction numeroProcesso(name) {\n  let b = name.replace(/\\(.*?\\)/g, ' ').trim().split(/\\s+-\\s+|\\s{2,}/)[0];\n  b = b.trim().replace(/^(BL|BOL|HAWB|AWB|MAWB)\\s+/i, '');\n  return b.replace(/\\s+/g, '').toUpperCase().slice(0, 30);\n}\nfunction obsPasta(name) { return (name.match(/\\(([^)]{3,60})\\)/g) || []).map(x => x.slice(1, -1).trim()).filter(o => !/^\\s*(FISIA\\s*\\d+|\\d+)\\s*$/i.test(o)).join('; '); }\nfunction modalDe(nome, grupos, tipos) {\n  const n = norm(nome), g = norm(grupos.join(' '));\n  if (/^(bl|bol)\\b/.test(n) || g.includes('maritimo')) return 'Marítimo';\n  if (/^(hawb|awb|mawb)\\b/.test(n) || g.includes('aereo') || tipos.has('awb')) return 'Aéreo';\n  return tipos.has('bl') ? 'Marítimo' : '';\n}\n// SHA-1 (o id do processo e o mesmo do sistema: sha1 do caminho relativo em minusculas, 16 primeiros caracteres)\nfunction sha1(str) {\n  const b = unescape(encodeURIComponent(str)), w = [], l = b.length * 8;\n  for (let i = 0; i < b.length; i++) w[i >> 2] |= b.charCodeAt(i) << (24 - (i % 4) * 8);\n  w[l >> 5] |= 0x80 << (24 - l % 32); w[((l + 64 >> 9) << 4) + 15] = l;\n  let [h0, h1, h2, h3, h4] = [0x67452301, 0xEFCDAB89, 0x98BADCFE, 0x10325476, 0xC3D2E1F0];\n  const rol = (n, c) => (n << c) | (n >>> (32 - c));\n  for (let i = 0; i < w.length; i += 16) {\n    const x = []; for (let j = 0; j < 80; j++) x[j] = j < 16 ? (w[i + j] | 0) : rol(x[j - 3] ^ x[j - 8] ^ x[j - 14] ^ x[j - 16], 1);\n    let [a, bb, c, d, e] = [h0, h1, h2, h3, h4];\n    for (let j = 0; j < 80; j++) {\n      const f = j < 20 ? (bb & c) | (~bb & d) : j < 40 ? bb ^ c ^ d : j < 60 ? (bb & c) | (bb & d) | (c & d) : bb ^ c ^ d;\n      const k = j < 20 ? 0x5A827999 : j < 40 ? 0x6ED9EBA1 : j < 60 ? 0x8F1BBCDC : 0xCA62C1D6;\n      const t = (rol(a, 5) + f + e + k + x[j]) | 0; e = d; d = c; c = rol(bb, 30); bb = a; a = t;\n    }\n    h0 = (h0 + a) | 0; h1 = (h1 + bb) | 0; h2 = (h2 + c) | 0; h3 = (h3 + d) | 0; h4 = (h4 + e) | 0;\n  }\n  return [h0, h1, h2, h3, h4].map(h => (h >>> 0).toString(16).padStart(8, '0')).join('');\n}\nconst pidDe = rel => sha1(rel.toLowerCase()).slice(0, 16);\n\nconst PROCESSOS_ID = 'CONFIGURE_ID';\n// Responsavel (24/11/2026): o Drive compartilhado nao guarda o dono; lastModifyingUser e quem criou enquanto a pasta nao\n// foi alterada (modifiedTime = createdTime: certo = 1). Criador ja conhecido nao e trocado por quem renomeou depois.\nfunction quemDe(f, antigo) {\n  const nome = ((f.lastModifyingUser || {}).displayName || '').trim();\n  const certo = !!f.createdTime && !!f.modifiedTime && Math.abs(Date.parse(f.modifiedTime) - Date.parse(f.createdTime)) < 120e3;\n  if (antigo && antigo[4] === 1 && !certo) return [antigo[3], 1];\n  return nome ? [nome, certo ? 1 : 0] : (antigo && antigo[3] ? [antigo[3], antigo[4] || 0] : ['', 0]);\n}\nfunction arvorePastas(estado, listagem, completa) {\n  const m = {}, antigas = estado.pastas || {};\n  if (!completa) for (const [id, v] of Object.entries(antigas)) m[id] = {id, name: v[0], parents: [v[1]], createdTime: v[2] || '', quem: v[3] || '', certo: v[4] || 0};\n  for (const f of listagem) { const [quem, certo] = quemDe(f, antigas[f.id]); m[f.id] = {id: f.id, name: f.name, parents: [(f.parents || [])[0] || ''], createdTime: f.createdTime || '', quem, certo}; }\n  const ok = {};  // fica so o que esta dentro de Processos\n  const dentro = id => {\n    const vistos = []; let cur = id, n = 0, r = false;\n    for (;;) {\n      if (cur === PROCESSOS_ID) { r = true; break; }\n      if (ok[cur] !== undefined) { r = ok[cur]; break; }\n      const f = m[cur]; if (!f || n++ > 15) break;\n      vistos.push(cur); cur = f.parents[0];\n    }\n    for (const v of vistos) ok[v] = r;\n    return r;\n  };\n  const out = {};\n  for (const id of Object.keys(m)) if (dentro(id)) out[id] = m[id];\n  return out;\n}\nfunction pastasCompactas(arv) {\n  const o = {};\n  for (const f of Object.values(arv)) o[f.id] = [f.name, f.parents[0], (f.createdTime || '').slice(0, 19), f.quem || '', f.certo || 0];\n  return o;\n}\nconst hojeSP = () => new Date(Date.now() - 3 * 3600e3).toISOString().slice(0, 10);\n\n// ===== Monta cada processo no formato do NexxusDoc e grava no arquivo do n8n =====\nconst estado = JSON.parse(JSON.stringify($('Embarques: baixar estado').first().json || {}));\nconst procs = $('Embarques: processos alterados').all();\nconst c1 = procs[0].json;\n// Nos que podem nao ter rodado (sem processo, sem zip ou sem PDF nesta hora): lidos com seguranca\nconst seguro = n => { try { return $(n).all(); } catch (e) { return []; } };\nconst todos = ((seguro('Embarques: arquivos')[0] || {}).json || {})._todos || [];\nconst dados = {}, erros = {};\nconst CAMPOS = ['fatura', 'data', 'origem', 'doc_transporte', 'po', 'po_cliente', 'material', 'temporada', 'quantidade', 'valor', 'peso_bruto', 'peso_liquido', 'caixas', 'fabricante', 'alerta', 'manual'];\nconst enxuta = f => Object.fromEntries(CAMPOS.map(k => [k, f[k] === undefined ? null : f[k]]));\n// Faturas dentro dos zips\nconst zMeta = seguro('Embarques: abrir compactados'), zTxt = seguro('Embarques: texto dos PDFs (zip)');\nfor (const e of (((zMeta[0] || {}).json || {})._extras || [])) { if (e.erro) erros[e.drive_id] = e.erro; else if (e.dados) dados[e.drive_id] = e.dados; else if (e.pdfs !== undefined) dados[e.drive_id] = {faturas: [], pdfs: e.pdfs, nao_lidos: []}; }\nzMeta.forEach((m, i) => {\n  if (m.json.dummy || !m.json.drive_id) return;\n  // trava da leitura (auditoria de 25/11/2026): so vale fatura com numero valido; o PDF que nao vira fatura nunca fica calado\n  const t = String(((zTxt[i] || {}).json || {}).text || ''), nome = m.json.interno || '';\n  const [f, mot] = validarFatura(lerFaturaNike(t) || lerFaturaManual(t), nome);\n  const d = (dados[m.json.drive_id] = dados[m.json.drive_id] || {faturas: [], nao_lidos: []});\n  if (f) d.faturas.push(enxuta(f));\n  else (d.nao_lidos = d.nao_lidos || []).push([nome, mot || (!t.trim() ? 'PDF vazio ou sem texto' : t.trim().length < 60 ? 'PDF sem texto (imagem)' : 'modelo de PDF não reconhecido')]);\n});\n// PDFs soltos\nconst pMeta = seguro('Embarques: PDFs soltos'), pTxt = seguro('Embarques: texto dos PDFs');\npMeta.forEach((m, i) => {\n  const meta = m.json; if (meta.dummy) return;\n  const r = (pTxt[i] || {}).json || {}, t = r.text || '';\n  if (r.error) { erros[meta.drive_id] = 'não foi possível ler (PDF)'; return; }\n  if (t.trim().length < 60) { erros[meta.drive_id] = 'sem texto (imagem escaneada)'; return; }\n  if (meta.tipo === 'tcci' || meta.tipo === 'ci') {\n    const [f, mot] = validarFatura(lerFaturaNike(t) || lerFaturaManual(t), meta.nome || '');\n    if (f) { dados[meta.drive_id] = {faturas: [enxuta(f)]}; return; }\n    if (mot) { erros[meta.drive_id] = mot; return; }\n    const z = lerFaturaZelus(t); if (z) { dados[meta.drive_id] = {zelus: z}; return; }\n    erros[meta.drive_id] = 'formato não reconhecido';\n  } else if (meta.tipo === 'bl') dados[meta.drive_id] = lerBl(t, meta.nome);\n  else dados[meta.drive_id] = {conteineres: conteineres(t)};\n});\nconst agoraIso = new Date().toISOString().slice(0, 19) + '+00:00';\nestado.processos = estado.processos || {};\nlet gravados = 0;\nfor (const p of procs) {\n  if (p.json.vazio) continue;\n  const arquivos = todos.filter(f => f.pid === p.json.pid).sort((a, b) => a.rel.toLowerCase().localeCompare(b.rel.toLowerCase()))\n    .map(f => ({rel: f.rel, nome: f.nome, tipo: f.tipo, tam: f.tam, mod: (f.mod || '').slice(0, 19) + '+00:00', drive_id: f.drive_id,\n                dados: dados[f.drive_id] ?? null, erro: erros[f.drive_id] || ''}));\n  const tipos = new Set(arquivos.map(f => f.tipo));\n  estado.processos[p.json.pid] = {v: 6, id: p.json.pid, op: p.json.op, nome: p.json.nome, grupos: p.json.grupos, rel: p.json.rel,\n    numero: numeroProcesso(p.json.nome), wfadim: find(/(WFADIM\\d+)/, p.json.nome.toUpperCase()),\n    ref_fisia: find(/(FISIA\\s*\\d+)/, p.json.nome.toUpperCase()).replace(/\\s/g, ''), obs: obsPasta(p.json.nome),\n    modal: modalDe(p.json.nome, p.json.grupos, tipos), criada: p.json.criada ? p.json.criada.slice(0, 19) + '+00:00' : '',\n    pasta_drive: p.json.folderId, arquivos, lido_em: agoraIso, origem: 'n8n'};\n  gravados++;\n}\nconst modo = $('Embarques: modo das pastas').first().json;\nconst listagem = $('Embarques: pastas do drive').all().flatMap(it => it.json.files || []);\nestado.pastas = pastasCompactas(arvorePastas(estado, listagem, modo.completa));\nif (modo.completa) { estado.pastas_completa_em = hojeSP(); estado.pastas_quem = 1; }\nestado.ultima_execucao = c1._agora;\nestado.pendentes = c1._pendentes || [];\nestado.ultima_rodada = {em: agoraIso, processos: gravados, arquivos_alterados: c1._alterados || 0, pendentes: estado.pendentes.length,\n  pastas: modo.completa ? 'listagem completa' : 'só novas ou alteradas', pastas_lidas: listagem.length, pastas_guardadas: Object.keys(estado.pastas).length};\nreturn [{json: {id: $('Embarques: escolher estado').first().json.id, conteudo: JSON.stringify(estado)}}];\n\n} catch (erro) {\n  const m = erro && erro.message ? erro.message : (typeof erro === 'string' ? erro : JSON.stringify(erro));\n  throw new Error('[Embarques: montar processos] ' + m + (erro && erro.stack ? ' | ' + String(erro.stack).split('\\n').slice(0, 4).join(' / ') : ''));\n}"
+      },
+      "name": "Embarques: montar processos",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1560,
+        600
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ 'https://www.googleapis.com/upload/drive/v3/files/' + $json.id + '?uploadType=media&supportsAllDrives=true' }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ $json.conteudo }}",
+        "options": {}
+      },
+      "name": "Embarques: gravar no Drive",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1820,
+        600
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://www.googleapis.com/drive/v3/files",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "q",
+              "value": "name = 'nexxusdoc_pgl_relatorios.json' and 'CONFIGURE_ID' in parents and trashed = false"
+            },
+            {
+              "name": "corpora",
+              "value": "drive"
+            },
+            {
+              "name": "driveId",
+              "value": "0AFFPxJzHkValUk9PVA"
+            },
+            {
+              "name": "includeItemsFromAllDrives",
+              "value": "true"
+            },
+            {
+              "name": "supportsAllDrives",
+              "value": "true"
+            },
+            {
+              "name": "pageSize",
+              "value": "1000"
+            },
+            {
+              "name": "fields",
+              "value": "files(id,name,modifiedTime)"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "name": "PGL: achar estado",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        260,
+        1060
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "try {\nconst f = $input.first().json.files || [];\nif (!f.length) throw new Error('Arquivo nexxusdoc_pgl_relatorios.json nao encontrado em Sua Area > Nexxus > NexxusDoc.');\nreturn [{ json: { id: f[0].id } }];\n} catch (erro) {\n  const m = erro && erro.message ? erro.message : (typeof erro === 'string' ? erro : JSON.stringify(erro));\n  throw new Error('[PGL: escolher estado] ' + m + (erro && erro.stack ? ' | ' + String(erro.stack).split('\\n').slice(0, 4).join(' / ') : ''));\n}"
+      },
+      "name": "PGL: escolher estado",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        520,
+        1060
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ 'https://www.googleapis.com/drive/v3/files/' + $json.id + '?alt=media&supportsAllDrives=true' }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "name": "PGL: baixar estado",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        780,
+        1060
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "try {\n\n// Um item por relatorio: a busca no Gmail do e-mail mais recente de cada um\nconst DE = 'from:admin@example.com subject:\"Follow Up\" newer_than:7d ';\nreturn [\n  {json: {tipo: 'fisia', q: DE + 'subject:FISIA -subject:Zelus'}},\n  {json: {tipo: 'zelus', q: DE + 'subject:Zelus'}},\n  {json: {tipo: 'sbf', q: DE + 'subject:SBF -subject:FISIA'}},\n];\n\n} catch (erro) {\n  const m = erro && erro.message ? erro.message : (typeof erro === 'string' ? erro : JSON.stringify(erro));\n  throw new Error('[PGL: buscas] ' + m + (erro && erro.stack ? ' | ' + String(erro.stack).split('\\n').slice(0, 4).join(' / ') : ''));\n}"
+      },
+      "name": "PGL: buscas",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1040,
+        1060
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://gmail.googleapis.com/gmail/v1/users/me/messages",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "gmailOAuth2",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "q",
+              "value": "={{ $json.q }}"
+            },
+            {
+              "name": "maxResults",
+              "value": "1"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "name": "PGL: procurar e-mails",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1300,
+        1060
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "try {\n\n// So UM relatorio por execucao (o que esta ha mais tempo sem atualizar): as linhas de planilhas diferentes nao se misturam\nconst est = $('PGL: baixar estado').first().json || {};\nconst rels = est.relatorios || {};\nconst buscas = $('PGL: buscas').all(), resp = $input.all();\nconst novos = [];\nbuscas.forEach((b, i) => {\n  const m = ((((resp[i] || {}).json) || {}).messages || [])[0];\n  if (!m) return;\n  const ant = rels[b.json.tipo] || {};\n  if (m.id !== ant.msg) novos.push({tipo: b.json.tipo, msg: m.id, desde: ant.recebido_em || ''});\n});\nnovos.sort((a, b) => a.desde.localeCompare(b.desde));\nreturn novos.length ? [{json: {tipo: novos[0].tipo, msg: novos[0].msg, fila: novos.length}}] : [{json: {dummy: true}}];\n\n} catch (erro) {\n  const m = erro && erro.message ? erro.message : (typeof erro === 'string' ? erro : JSON.stringify(erro));\n  throw new Error('[PGL: novos] ' + m + (erro && erro.stack ? ' | ' + String(erro.stack).split('\\n').slice(0, 4).join(' / ') : ''));\n}"
+      },
+      "name": "PGL: novos",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1560,
+        1060
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "8a81b142-c37f-54f2-b0a4-1298c5881def",
+              "leftValue": "={{ $json.dummy ? 'nao' : 'sim' }}",
+              "rightValue": "sim",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "PGL: tem relatório novo?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        0,
+        1360
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "messageId": "={{ $json.msg }}",
+        "simple": false,
+        "options": {
+          "dataPropertyAttachmentsPrefixName": "attachment_",
+          "downloadAttachments": true
+        }
+      },
+      "name": "PGL: baixar e-mail",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        260,
+        1360
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "try {\n\n// A planilha anexa (o e-mail tambem traz a imagem do cabecalho)\nconst pedido = $('PGL: novos').first().json;\nconst it = $input.first(), bin = it.binary || {}, j = it.json || {};\nconst k = Object.keys(bin).find(k => /\\.xlsx?$/i.test(String(bin[k].fileName || '')));\nif (!k) throw new Error('E-mail do relatório da PGL sem a planilha anexa (' + pedido.msg + ')');\nconst d = j.date ? new Date(j.date) : new Date();\nreturn [{json: {tipo: pedido.tipo || pglTipoSimples(j.subject), msg: pedido.msg, recebido_em: (isNaN(d) ? new Date() : d).toISOString(),\n                arquivo: String(bin[k].fileName || '')}, binary: {data: {...bin[k]}}}];\nfunction pglTipoSimples(s) { const a = String(s || '').toUpperCase(); return a.includes('ZELUS') ? 'zelus' : a.includes('FISIA') ? 'fisia' : 'sbf'; }\n\n} catch (erro) {\n  const m = erro && erro.message ? erro.message : (typeof erro === 'string' ? erro : JSON.stringify(erro));\n  throw new Error('[PGL: anexo] ' + m + (erro && erro.stack ? ' | ' + String(erro.stack).split('\\n').slice(0, 4).join(' / ') : ''));\n}"
+      },
+      "name": "PGL: anexo",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        520,
+        1360
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "xlsx",
+        "options": {
+          "includeEmptyCells": true,
+          "rawData": true
+        }
+      },
+      "name": "PGL: ler planilha",
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [
+        780,
+        1360
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "try {\n// ===== FUP da PGL: mesma regra do embarques.py (fup_registro / fup_data) =====\nconst FUP_CAMPOS = {'MODAL': 'modal', 'PROCESSO': 'wfadim', 'AGENTE CARGA': 'agente', 'REF CLIENTE': 'ref',\n  'CONHECIMENTO': 'conhecimento', 'DANFE': 'danfe', 'PLANTA': 'planta', 'INICIATIVA PROMO AMOSTRA': 'iniciativa',\n  'COLECAO': 'colecao', 'TOTAL': 'qtd', 'VOLUME': 'volume', 'MARCA NUMERO': 'conteiner',\n  'EMBARQUE NA ORIGEM': 'embarque', 'NAVIO': 'navio', 'PREVISAO_CHEGADA': 'prev_chegada',\n  'CHEGADA MERCADORIA': 'chegada', 'ARMAZEM DESCARGA': 'armazem', 'ARMAZEM DESCARGA TMS': 'cd',\n  'PRESENCA CARGA': 'presenca', 'REGISTRO DI': 'registro_di', 'NR_DI': 'di', 'CANAL': 'canal',\n  'TRANSPORTADORA': 'transportadora', 'DESEMBARACO': 'desembaraco', 'INSPECAO DE MADEIRA': 'insp_madeira',\n  'ENTREGA DOC TRANSP': 'entrega_doc', 'PREVISAO ENTR MERC_FAB': 'prev_entrega', 'ENTREGA DA MERC': 'entrega',\n  'STATUS': 'status', 'OBSERVACOES': 'obs', 'DT ICMS PAGO': 'icms_pago', 'VALOR CIF R$': 'cif',\n  'RECINTO_DESEMBARACO': 'recinto', 'TERMINAL_ATRACACAO': 'terminal'};\nconst FUP_DATAS = new Set(['embarque', 'prev_chegada', 'chegada', 'presenca', 'registro_di', 'desembaraco', 'insp_madeira',\n  'entrega_doc', 'prev_entrega', 'entrega', 'icms_pago']);\nconst p2 = n => String(n).padStart(2, '0');\nfunction fupChave(v) { return String(v == null ? '' : v).toUpperCase().replace(/[^A-Z0-9]/g, ''); }\nfunction fupData(v) {\n  if (v === null || v === undefined || v === '') return '';\n  if (v instanceof Date) return isNaN(v) ? '' : v.toISOString().slice(0, 10);\n  if (typeof v === 'number') {\n    if (v > 20000 && v < 80000) return new Date(Date.UTC(1899, 11, 30) + Math.floor(v) * 864e5).toISOString().slice(0, 10);\n    return '';\n  }\n  const t = String(v).trim();\n  let m = t.match(/^(\\d{4})-(\\d{2})-(\\d{2})/);\n  if (m) return m[1] + '-' + m[2] + '-' + m[3];\n  m = t.match(/^(\\d{1,2})\\/(\\d{1,2})\\/(\\d{2,4})\\b/);\n  if (m) {\n    let d = +m[1], mth = +m[2], y = +m[3];\n    if (y < 100) { const x = d; d = mth; mth = x; y += 2000; }  // 'm/d/aa': planilha virou texto no padrao do Excel em ingles\n    return mth >= 1 && mth <= 12 && d >= 1 && d <= 31 ? y + '-' + p2(mth) + '-' + p2(d) : '';\n  }\n  return '';\n}\nfunction fupRegistro(row, fonte, visto) {\n  const lin = {};\n  for (const [k, v] of Object.entries(row || {})) lin[String(k).trim().toUpperCase()] = v;\n  const rec = {};\n  for (const [col, key] of Object.entries(FUP_CAMPOS)) {\n    let v = lin[col];\n    if (FUP_DATAS.has(key)) v = fupData(v);\n    else if (typeof v === 'string') v = v.replace(/\\s+/g, ' ').trim();\n    if (v !== null && v !== undefined && v !== '') rec[key] = v;\n  }\n  const chave = fupChave(rec.conhecimento) || fupChave(rec.ref) || fupChave(rec.wfadim);\n  if (!chave) return null;\n  if (typeof rec.qtd === 'string' && /^\\d+$/.test(rec.qtd)) rec.qtd = Number(rec.qtd);\n  if (typeof rec.cif === 'string') { const n = Number(rec.cif.replace(/,/g, '')); if (isNaN(n)) delete rec.cif; else rec.cif = n; }\n  rec.fonte = fonte; rec.visto = visto;\n  return [chave, rec];\n}\n// ===== Planilha inteira do relatorio (pgl_relatorios.planilha) =====\nconst PGL_RELATORIOS = {\n  fisia: {titulo: 'Follow Up · Fisia', assunto: 'Relatório de Follow Up - FISIA'},\n  zelus: {titulo: 'Follow Up · Fisia / Zelus', assunto: 'Relatório de Follow Up - Fisia / Zelus'},\n  sbf: {titulo: 'Follow Up · SBF (Centauro)', assunto: 'Relatório de Follow Up - SBF'},\n};\nconst DATA_COL = /^(DT |DATA|EMBARQUE NA ORIGEM|PREVISAO|CHEGADA|PRESENCA|REGISTRO DI|DESEMBARACO|INSPECAO|ENTREGA DA|ENTREGA DOC|NECESSIDADE|DATA_)/i;\nfunction pglTexto(v) {\n  if (v === undefined || v === null) return null;\n  if (typeof v === 'string') { const t = v.trim(); return t === '' ? null : t; }\n  return v;\n}\n// Itens do 'Extract From File' (um objeto por linha, chaves = 1a linha da planilha) -> matriz com a 1a linha de volta\nfunction pglMatriz(objs) {\n  const chaves = [];\n  for (const o of objs) for (const k of Object.keys(o || {})) if (!chaves.includes(k)) chaves.push(k);\n  return [chaves.map(k => /^__EMPTY(_\\d+)?$/.test(k) ? '' : k), ...objs.map(o => chaves.map(k => (o || {})[k]))];\n}\nfunction pglPlanilha(matriz) {\n  let ini = -1;\n  for (let i = 0; i < Math.min(15, matriz.length); i++) {\n    const s = new Set(matriz[i].map(c => String(c == null ? '' : c).trim().toUpperCase()));\n    if (s.has('MODAL') && s.has('PROCESSO')) { ini = i; break; }\n  }\n  if (ini < 0) throw new Error('cabeçalho do FUP não encontrado (sem as colunas MODAL e PROCESSO)');\n  const cab = matriz[ini].map(c => String(c == null ? '' : c).trim());\n  while (cab.length && !cab[cab.length - 1]) cab.pop();\n  const datas = cab.map(c => DATA_COL.test(c));\n  const linhas = [];\n  for (const r of matriz.slice(ini + 1)) {\n    const lin = cab.map((_, j) => { const v = r[j]; if (datas[j] && v !== null && v !== undefined && v !== '') return fupData(v) || pglTexto(v); return pglTexto(v); });\n    if (lin.some(v => v !== null && v !== '')) linhas.push(lin);\n  }\n  return {colunas: cab, linhas};\n}\nfunction pglRegistros(colunas, linhas, fonte, visto) {\n  const out = {};\n  for (const lin of linhas) { const row = {}; colunas.forEach((c, j) => { row[c] = lin[j]; }); const par = fupRegistro(row, fonte, visto); if (par) out[par[0]] = par[1]; }\n  return out;\n}\nfunction pglTipo(assunto) {\n  const a = String(assunto || '').toUpperCase();\n  return a.includes('ZELUS') ? 'zelus' : a.includes('FISIA') ? 'fisia' : a.includes('SBF') ? 'sbf' : '';\n}\n\n// ===== Planilha inteira + historico por processo, gravados no arquivo da pasta do sistema =====\nconst est = JSON.parse(JSON.stringify($('PGL: baixar estado').first().json || {}));\nconst meta = $('PGL: anexo').first().json;\nconst objs = $input.all().map(it => ({...(it.json || {})}));\nconst {colunas, linhas} = pglPlanilha(pglMatriz(objs));\nif (!linhas.length) throw new Error('Planilha do relatório da PGL sem linhas (' + meta.arquivo + ')');\nest.relatorios = est.relatorios || {}; est.processos = est.processos || {};\nconst info = PGL_RELATORIOS[meta.tipo] || {titulo: meta.tipo, assunto: ''};\nest.relatorios[meta.tipo] = {titulo: info.titulo, assunto: info.assunto, msg: meta.msg, recebido_em: meta.recebido_em,\n                             arquivo: meta.arquivo, colunas, linhas};\nif (meta.tipo === 'fisia' || meta.tipo === 'zelus') Object.assign(est.processos, pglRegistros(colunas, linhas, meta.tipo, meta.recebido_em));\nest.versao = 1;\nest.atualizado_em = new Date().toISOString();\nest.ultima_rodada = {em: est.atualizado_em, relatorio: meta.tipo, linhas: linhas.length, colunas: colunas.length};\nreturn [{json: {id: $('PGL: escolher estado').first().json.id, conteudo: JSON.stringify(est)}}];\n\n} catch (erro) {\n  const m = erro && erro.message ? erro.message : (typeof erro === 'string' ? erro : JSON.stringify(erro));\n  throw new Error('[PGL: montar] ' + m + (erro && erro.stack ? ' | ' + String(erro.stack).split('\\n').slice(0, 4).join(' / ') : ''));\n}"
+      },
+      "name": "PGL: montar",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1040,
+        1360
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ 'https://www.googleapis.com/upload/drive/v3/files/' + $json.id + '?uploadType=media&supportsAllDrives=true' }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ $json.conteudo }}",
+        "options": {}
+      },
+      "name": "PGL: gravar no Drive",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1300,
+        1360
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 7-20 * * 1-5"
+            }
+          ]
+        }
+      },
+      "name": "PGL: a cada 1 hora",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        1060
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "try {\n\nreturn $input.all().map(it => {\n  const j = it.json && it.json.error ? {erro_download: String((it.json.error && it.json.error.message) || it.json.error)} : {...(it.json || {})};\n  const b = (it.binary || {}).data;\n  if (!b) return {json: j};\n  const nome = String(b.fileName || 'arquivo').replace(/\\.(docx|xlsx|xlsm|zip)$/i, '') + '.zip';\n  return {json: j, binary: {data: {...b, fileName: nome, fileExtension: 'zip', mimeType: 'application/zip'}}};\n});\n\n} catch (erro) {\n  const m = erro && erro.message ? erro.message : (typeof erro === 'string' ? erro : JSON.stringify(erro));\n  throw new Error('[Embarques: preparar compactados] ' + m + (erro && erro.stack ? ' | ' + String(erro.stack).split('\\n').slice(0, 4).join(' / ') : ''));\n}"
+      },
+      "name": "Embarques: preparar compactados",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1560,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Embarques: de hora em hora": {
+      "main": [
+        [
+          {
+            "node": "Embarques: achar estado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Embarques: achar estado": {
+      "main": [
+        [
+          {
+            "node": "Embarques: escolher estado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Embarques: escolher estado": {
+      "main": [
+        [
+          {
+            "node": "Embarques: baixar estado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Embarques: baixar estado": {
+      "main": [
+        [
+          {
+            "node": "Embarques: modo das pastas",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Embarques: modo das pastas": {
+      "main": [
+        [
+          {
+            "node": "Embarques: pastas do drive",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Embarques: pastas do drive": {
+      "main": [
+        [
+          {
+            "node": "Embarques: arquivos alterados",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Embarques: arquivos alterados": {
+      "main": [
+        [
+          {
+            "node": "Embarques: processos alterados",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Embarques: processos alterados": {
+      "main": [
+        [
+          {
+            "node": "Embarques: tem processo?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Embarques: tem processo?": {
+      "main": [
+        [
+          {
+            "node": "Embarques: listar pasta",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Embarques: montar processos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Embarques: listar pasta": {
+      "main": [
+        [
+          {
+            "node": "Embarques: subpastas",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Embarques: subpastas": {
+      "main": [
+        [
+          {
+            "node": "Embarques: listar subpastas",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Embarques: listar subpastas": {
+      "main": [
+        [
+          {
+            "node": "Embarques: arquivos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Embarques: arquivos": {
+      "main": [
+        [
+          {
+            "node": "Embarques: tem compactado?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Embarques: baixar compactados": {
+      "main": [
+        [
+          {
+            "node": "Embarques: preparar compactados",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Embarques: descompactar": {
+      "main": [
+        [
+          {
+            "node": "Embarques: abrir compactados",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Embarques: abrir compactados": {
+      "main": [
+        [
+          {
+            "node": "Embarques: tem PDF no zip?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Embarques: texto dos PDFs (zip)": {
+      "main": [
+        [
+          {
+            "node": "Embarques: PDFs soltos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Embarques: PDFs soltos": {
+      "main": [
+        [
+          {
+            "node": "Embarques: tem PDF solto?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Embarques: baixar PDFs": {
+      "main": [
+        [
+          {
+            "node": "Embarques: texto dos PDFs",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Embarques: texto dos PDFs": {
+      "main": [
+        [
+          {
+            "node": "Embarques: montar processos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Embarques: montar processos": {
+      "main": [
+        [
+          {
+            "node": "Embarques: gravar no Drive",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Embarques: tem compactado?": {
+      "main": [
+        [
+          {
+            "node": "Embarques: baixar compactados",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Embarques: PDFs soltos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Embarques: tem PDF no zip?": {
+      "main": [
+        [
+          {
+            "node": "Embarques: texto dos PDFs (zip)",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Embarques: PDFs soltos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Embarques: tem PDF solto?": {
+      "main": [
+        [
+          {
+            "node": "Embarques: baixar PDFs",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Embarques: montar processos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PGL: achar estado": {
+      "main": [
+        [
+          {
+            "node": "PGL: escolher estado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PGL: escolher estado": {
+      "main": [
+        [
+          {
+            "node": "PGL: baixar estado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PGL: baixar estado": {
+      "main": [
+        [
+          {
+            "node": "PGL: buscas",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PGL: buscas": {
+      "main": [
+        [
+          {
+            "node": "PGL: procurar e-mails",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PGL: procurar e-mails": {
+      "main": [
+        [
+          {
+            "node": "PGL: novos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PGL: novos": {
+      "main": [
+        [
+          {
+            "node": "PGL: tem relatório novo?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PGL: tem relatório novo?": {
+      "main": [
+        [
+          {
+            "node": "PGL: baixar e-mail",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PGL: baixar e-mail": {
+      "main": [
+        [
+          {
+            "node": "PGL: anexo",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PGL: anexo": {
+      "main": [
+        [
+          {
+            "node": "PGL: ler planilha",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PGL: ler planilha": {
+      "main": [
+        [
+          {
+            "node": "PGL: montar",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PGL: montar": {
+      "main": [
+        [
+          {
+            "node": "PGL: gravar no Drive",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "PGL: a cada 1 hora": {
+      "main": [
+        [
+          {
+            "node": "PGL: achar estado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Embarques: preparar compactados": {
+      "main": [
+        [
+          {
+            "node": "Embarques: descompactar",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  }
+}

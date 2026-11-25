@@ -1,0 +1,413 @@
+{
+  "name": "NexxusDoc - OTR Nike",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "30 10 * * 1-5"
+            },
+            {
+              "field": "cronExpression",
+              "expression": "0 12,15,16 * * 1-5"
+            }
+          ]
+        }
+      },
+      "name": "OTR: 10h, 12h e 15h",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://www.googleapis.com/drive/v3/files",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "q",
+              "value": "name = 'nexxusdoc_otr_n8n.json' and 'CONFIGURE_ID' in parents and trashed = false"
+            },
+            {
+              "name": "corpora",
+              "value": "drive"
+            },
+            {
+              "name": "driveId",
+              "value": "0AFFPxJzHkValUk9PVA"
+            },
+            {
+              "name": "includeItemsFromAllDrives",
+              "value": "true"
+            },
+            {
+              "name": "supportsAllDrives",
+              "value": "true"
+            },
+            {
+              "name": "pageSize",
+              "value": "1000"
+            },
+            {
+              "name": "fields",
+              "value": "files(id,name,modifiedTime)"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "name": "OTR: achar estado",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        260,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "try {\n\nconst f = $input.first().json.files || [];\nif (!f.length) throw new Error('Arquivo nexxusdoc_otr_n8n.json nao encontrado em Sua Area > Nexxus > NexxusDoc.');\nreturn [{ json: { id: f[0].id } }];\n\n} catch (erro) {\n  const m = erro && erro.message ? erro.message : (typeof erro === 'string' ? erro : JSON.stringify(erro));\n  throw new Error('[OTR: escolher estado] ' + m + (erro && erro.stack ? ' | ' + String(erro.stack).split('\\n').slice(0, 4).join(' / ') : ''));\n}"
+      },
+      "name": "OTR: escolher estado",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        520,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ 'https://www.googleapis.com/drive/v3/files/' + $json.id + '?alt=media&supportsAllDrives=true' }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "name": "OTR: baixar estado",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        780,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://www.googleapis.com/drive/v3/files",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "q",
+              "value": "name contains 'fisia_otr_1998_' and trashed = false and mimeType != 'application/vnd.google-apps.folder'"
+            },
+            {
+              "name": "corpora",
+              "value": "drive"
+            },
+            {
+              "name": "driveId",
+              "value": "0AFFPxJzHkValUk9PVA"
+            },
+            {
+              "name": "includeItemsFromAllDrives",
+              "value": "true"
+            },
+            {
+              "name": "supportsAllDrives",
+              "value": "true"
+            },
+            {
+              "name": "pageSize",
+              "value": "1000"
+            },
+            {
+              "name": "fields",
+              "value": "files(id,name,modifiedTime,size,parents)"
+            },
+            {
+              "name": "orderBy",
+              "value": "modifiedTime desc"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "name": "OTR: procurar arquivos",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1040,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "try {\n\nconst est = $('OTR: baixar estado').first().json || {};\nconst id = $('OTR: escolher estado').first().json.id;\nconst agora = new Date().toISOString().replace(/\\.\\d+Z$/, 'Z');\nconst fs = ($input.first().json.files || []).filter(f => /^fisia_otr_1998_\\d{14}\\.xlsx$/i.test(f.name || ''));\nfs.sort((a, b) => b.name.localeCompare(a.name));\nconst f = fs[0];\nif (!f || f.name === est.arquivo) {\n  // nada novo: so registra que conferiu a pasta (o sistema usa isso para dizer se o OTR esta em dia)\n  const atual = JSON.parse(JSON.stringify(est));\n  atual.ultima_execucao = agora;\n  atual.mais_recente_pasta = f ? f.name : (est.arquivo || '');\n  return [{ json: { novo: 'nao', id: id, conteudo: JSON.stringify(atual) } }];\n}\nreturn [{ json: { novo: 'sim', id: id, drive_id: f.id, arquivo: f.name } }];\n\n} catch (erro) {\n  const m = erro && erro.message ? erro.message : (typeof erro === 'string' ? erro : JSON.stringify(erro));\n  throw new Error('[OTR: novo?] ' + m + (erro && erro.stack ? ' | ' + String(erro.stack).split('\\n').slice(0, 4).join(' / ') : ''));\n}"
+      },
+      "name": "OTR: novo?",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1300,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "bb88762b-488b-5c5d-9406-8948102315ce",
+              "leftValue": "={{ $json.novo }}",
+              "rightValue": "sim",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "OTR: tem arquivo novo?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        0,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ 'https://www.googleapis.com/drive/v3/files/' + $json.drive_id + '?alt=media&supportsAllDrives=true' }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file",
+              "outputPropertyName": "data"
+            }
+          },
+          "timeout": 120000
+        }
+      },
+      "name": "OTR: baixar planilha",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        260,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "xlsx",
+        "binaryPropertyName": "data",
+        "options": {
+          "rawData": true
+        }
+      },
+      "name": "OTR: ler planilha",
+      "type": "n8n-nodes-base.extractFromFile",
+      "typeVersion": 1,
+      "position": [
+        520,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "try {\n\nconst info = $('OTR: tem arquivo novo?').first().json;\nconst antes = $('OTR: baixar estado').first().json || {};\nconst txt = v => { if (v === null || v === undefined) return ''; let s = String(v).trim(); if (/^\\d+\\.0$/.test(s)) s = s.slice(0, -2); return s; };\nconst num = v => { if (v === null || v === undefined || v === '') return null; const n = Number(String(v).replace(',', '.')); return isNaN(n) ? null : Math.round(n * 1000) / 1000; };\nconst chave = v => { const s = String(v || '').toUpperCase().replace(/[^A-Z0-9]/g, ''); const m = s.match(/^(?:[A-Z]{4}|BL|HAWB|AWB)(\\d{6,}[A-Z]?)$/); return m ? m[1] : s; };\nconst hist = JSON.parse(JSON.stringify(antes.hist || {}));\nconst antesN = Object.keys(hist).length;\nconst m = /_(\\d{14})\\.xlsx$/i.exec(info.arquivo || '');\nif (!m) throw new Error('Nome do OTR fora do padrao: ' + info.arquivo);\nconst visto = m[1];\nlet n = 0;\nfor (const it of $input.all()) {\n  const r = it.json || {};\n  const bol = txt(r.BOL_MAWB), po = txt(r.PURCHASE_ORDER_ID);\n  if (!bol || !po) continue;\n  n++;\n  const ln = txt(r.PO_LINE_NUMBER).replace(/^0+/, '');\n  const modo = txt(r.MODE_OF_TRANSPORT_CODE1);\n  const hawb = modo !== 'VL' && modo !== '' ? txt(r.CONTR_HAWB_PRONBR) : '';\n  const k = po + '|' + ln;\n  if (!hist[k] || visto >= String(hist[k][6])) {\n    hist[k] = [chave(bol), hawb ? chave(hawb) : '', txt(r.TCCI_BILLING_NUMBER), txt(r.MATERIAL), num(r.TOTAL_SHIPPED_QUANTITY), num(r.GROSS_WEIGHT1), visto];\n  }\n}\nif (n < 1000) throw new Error('OTR com poucas linhas (' + n + '): arquivo incompleto; o historico anterior foi mantido.');\nif (Object.keys(hist).length < antesN) throw new Error('O historico do OTR diminuiu: nada foi gravado.');\nconst agora = new Date().toISOString().replace(/\\.\\d+Z$/, 'Z');\nconst novo = { versao: 2, arquivo: info.arquivo, drive_id: info.drive_id, lido_em: agora, ultima_execucao: agora, linhas: n,\n               mais_recente_pasta: info.arquivo, historico_desde: antes.historico_desde || info.arquivo,\n               arquivos_no_historico: (antes.arquivos_no_historico || 0) + 1, pedidos_linhas: Object.keys(hist).length, hist: hist };\nreturn [{ json: { id: info.id, conteudo: JSON.stringify(novo) } }];\n\n} catch (erro) {\n  const m = erro && erro.message ? erro.message : (typeof erro === 'string' ? erro : JSON.stringify(erro));\n  throw new Error('[OTR: montar] ' + m + (erro && erro.stack ? ' | ' + String(erro.stack).split('\\n').slice(0, 4).join(' / ') : ''));\n}"
+      },
+      "name": "OTR: montar",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        780,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ 'https://www.googleapis.com/upload/drive/v3/files/' + $json.id + '?uploadType=media&supportsAllDrives=true' }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "options": {},
+        "method": "PATCH",
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ $json.conteudo }}"
+      },
+      "name": "OTR: gravar no Drive",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1040,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "OTR: 10h, 12h e 15h": {
+      "main": [
+        [
+          {
+            "node": "OTR: achar estado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OTR: achar estado": {
+      "main": [
+        [
+          {
+            "node": "OTR: escolher estado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OTR: escolher estado": {
+      "main": [
+        [
+          {
+            "node": "OTR: baixar estado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OTR: baixar estado": {
+      "main": [
+        [
+          {
+            "node": "OTR: procurar arquivos",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OTR: procurar arquivos": {
+      "main": [
+        [
+          {
+            "node": "OTR: novo?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OTR: novo?": {
+      "main": [
+        [
+          {
+            "node": "OTR: tem arquivo novo?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OTR: baixar planilha": {
+      "main": [
+        [
+          {
+            "node": "OTR: ler planilha",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OTR: ler planilha": {
+      "main": [
+        [
+          {
+            "node": "OTR: montar",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OTR: montar": {
+      "main": [
+        [
+          {
+            "node": "OTR: gravar no Drive",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OTR: tem arquivo novo?": {
+      "main": [
+        [
+          {
+            "node": "OTR: baixar planilha",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "OTR: gravar no Drive",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "timezone": "America/Sao_Paulo",
+    "executionTimeout": 1800
+  }
+}

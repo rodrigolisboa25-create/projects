@@ -1,0 +1,116 @@
+/* Planilha proforma (página Embarques): ambiente claro, grade no estilo de planilha */
+.pf-wrap{display:flex;flex-direction:column;gap:12px;color:#16251c}
+.pf-empty{padding:34px;text-align:center;color:#5d7166;border:1px dashed #b9d6a4;border-radius:12px;background:#fff}
+.pf-empty.sm{padding:18px;font-size:13px}
+.pf-top{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(0,1fr);gap:12px}
+.pf-picker,.pf-base,.pf-card{background:#fff;border:1.5px solid #2f6b3a;border-radius:12px;padding:12px 14px;position:relative}
+.pf-picker label{display:block;font-size:11px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:#1d5a2c;margin-bottom:6px}
+.pf-search{position:relative}
+.pf-search svg{position:absolute;left:11px;top:50%;transform:translateY(-50%);width:16px;height:16px;fill:none;stroke:#6f8577;stroke-width:2;stroke-linecap:round}
+.pf-search input{width:100%;padding:9px 12px 9px 34px;background:#f7faf4;border:1px solid #c9dbbd;border-radius:9px;font-size:13.5px;color:#16251c}
+.pf-search.sm{width:240px}.pf-search.sm input{padding:6px 10px 6px 32px;font-size:12.5px}
+.pf-sug{list-style:none;margin:6px 0 0;padding:4px;position:absolute;left:14px;right:14px;z-index:30;background:#fff;border:1px solid #b9d6a4;border-radius:10px;box-shadow:0 12px 28px #1a2e2133;max-height:340px;overflow:auto}
+.pf-sug li{display:grid;grid-template-columns:auto auto 1fr auto;gap:4px 10px;align-items:center;padding:7px 10px;border-radius:7px;cursor:pointer;font-size:13px}
+.pf-sug li:hover{background:#eef6e6}
+.pf-sug small{color:#5d7166;font-size:11.5px}
+.pf-sug em{font-style:normal;font-size:11px;font-weight:700;color:#1f7a47;background:#e5f4ea;border-radius:6px;padding:1px 7px}
+.pf-base{display:flex;flex-direction:column;gap:4px;font-size:12.5px;background:linear-gradient(145deg,#f7fafd,#e3ecf6);border-color:#27476b}
+.pf-base b{font-size:12px;letter-spacing:.04em;text-transform:uppercase;color:#14263a}
+.pf-base small{color:#9b6a0c;font-weight:700}
+.pf-base.warn{background:linear-gradient(145deg,#fffaf0,#fbeed2);border-color:#9b6a0c}
+.pf-base .pf-btn{align-self:flex-start;margin-top:4px}
+.pf-card header{display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-bottom:10px}
+.pf-card h3{margin:0;font-size:15px;color:#1d5a2c}
+.pf-card header span{font-size:12px;color:#111}
+.pf-mount p{margin:0 0 10px;font-size:13px;color:#2f4a37;max-width:900px}
+.pf-acts{display:flex;gap:8px}
+.pf-alert{padding:10px 14px;border-radius:10px;background:#fdecea;border:1px solid #e0a59a;color:#8a2f22;font-size:13px}
+.pf-list{max-height:420px;overflow:auto;border:1px solid #d7e4cf;border-radius:9px}
+.pf-list table{width:100%;border-collapse:collapse}
+.pf-list th{position:sticky;top:0;background:#c9e7a9;color:#0b140f;font-size:11px;text-transform:uppercase;letter-spacing:.05em;text-align:left;padding:7px 9px;border-right:1px solid #b2d58f}
+.pf-list td{padding:6px 9px;border-top:1px solid #e3ebdd;border-right:1px solid #e3ebdd;font-size:12.5px;color:#16251c;background:#fff}
+.pf-list tr{cursor:pointer}.pf-list tr:hover td{background:#eef6e6}
+.pf-list .n{text-align:right;font-variant-numeric:tabular-nums}
+.pf-pend{color:#a8432f;font-weight:800}.pf-okt{color:#1f7a47;font-weight:800}
+
+.pf-btn{display:inline-flex;align-items:center;gap:6px;background:#fff;border:1px solid #2f6b3a;color:#1d5a2c;border-radius:8px;padding:7px 12px;font-weight:700;font-size:12.5px;cursor:pointer;white-space:nowrap}
+.pf-btn svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.pf-btn:hover:not(:disabled){background:#eef7e4}
+.pf-btn:disabled{opacity:.45;cursor:default}
+.pf-btn.primary{background:linear-gradient(180deg,#3d7a4a,#2f6b3a);color:#fff;border-color:#2f6b3a}
+.pf-btn.primary:hover:not(:disabled){filter:brightness(1.08);background:linear-gradient(180deg,#3d7a4a,#2f6b3a)}
+.pf-btn.danger{border-color:#b9533f;color:#a8432f}.pf-btn.danger:hover{background:#fdecea}
+.pf-btn.icon{padding:7px 9px}.pf-btn.sm{padding:4px 10px;font-size:12px}
+.pf-spin{display:inline-block;width:12px;height:12px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:pf-rot .8s linear infinite;vertical-align:-2px;margin-right:6px}
+@keyframes pf-rot{to{transform:rotate(360deg)}}
+
+/* Cabeçalho da proforma */
+.pf-head{display:flex;align-items:center;gap:14px;background:linear-gradient(120deg,#fff 0%,#eef7e4 70%);border:1.5px solid #2f6b3a;border-radius:12px;padding:10px 14px}
+.pf-back{width:34px;height:34px;border-radius:9px;border:1px solid #2f6b3a;background:#fff;color:#1d5a2c;font-size:22px;line-height:1;cursor:pointer;flex:none}
+.pf-title small{font-size:11px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:#2f6b3a}
+.pf-title h2{margin:2px 0 0;font-size:20px;color:#123a20;white-space:nowrap}
+.pf-cab{display:flex;gap:10px;margin-left:auto;flex-wrap:wrap}
+.pf-cab label{display:flex;flex-direction:column;gap:3px}
+.pf-cab span{font-size:10.5px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:#4f6457}
+.pf-cab input,.pf-cab select{width:150px;padding:6px 8px;border:1px solid #c9dbbd;border-radius:7px;background:#fff;font-size:12.5px;color:#16251c}
+.pf-cab select{width:130px}
+
+.pf-kpis{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:10px}
+.pf-kpis>div,.pf-pendk{background:linear-gradient(145deg,#f7fafd,#dfe9f4);border:1.5px solid #27476b;border-radius:11px;padding:8px 12px;text-align:left}
+.pf-kpis small{display:block;font-size:11px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:#14263a}
+.pf-kpis b{display:block;font-size:19px;color:#14263a;margin-top:2px;font-variant-numeric:tabular-nums}
+.pf-kpis em{display:block;font-style:normal;font-size:11.5px;margin-top:1px;color:#5d7166}
+.pf-kpis em.ok::before,.pf-kpis em.bad::before{content:"";display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px;vertical-align:0}
+.pf-kpis em.ok::before{background:#2E8B57}.pf-kpis em.bad::before{background:#C9962E}
+.pf-pendk{cursor:pointer;font:inherit}
+.pf-pendk.bad{background:linear-gradient(145deg,#fff6f4,#fbe1dc);border-color:#a8432f}.pf-pendk.bad b{color:#a8432f}
+.pf-pendk.ok b{color:#1f7a47}
+.pf-pendk.on{box-shadow:0 0 0 3px #a8432f55}
+.pf-avisos{display:flex;flex-direction:column;gap:3px;font-size:12px;color:#7a4b00;background:#fff8e6;border:1px solid #ecd39a;border-radius:9px;padding:7px 12px}
+.pf-bar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:#fff;border:1px solid #cfdfc3;border-radius:10px;padding:7px 10px}
+.pf-sep{width:1px;height:24px;background:#d7e4cf}
+.pf-fill{flex:1}
+.pf-save{font-size:12px;color:#1f7a47;display:inline-flex;align-items:center;gap:5px;font-weight:700}
+.pf-save svg{width:14px;height:14px;fill:none;stroke:currentColor;stroke-width:2.4;stroke-linecap:round}
+.pf-save.pendente,.pf-save.salvando{color:#9b6a0c}.pf-save.erro{color:#a8432f}
+
+/* Grade */
+.pf-grid{overflow:auto;max-height:max(420px,calc(100vh - 330px));border:1.5px solid #2f6b3a;border-radius:10px;background:#fff;outline:none;position:relative}
+.pf-grid:focus-visible{box-shadow:0 0 0 3px #8fb82a55}
+.pf-grid table{border-collapse:separate;border-spacing:0;table-layout:fixed;width:max-content;min-width:100%;font-size:12.5px}
+.pf-grid th,.pf-grid td{border-right:1px solid #dfe7da;border-bottom:1px solid #dfe7da;padding:0 7px;height:27px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:#16251c;user-select:none}
+.pf-grid thead th{position:sticky;top:0;z-index:3;background:#c9e7a9;color:#0b140f;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.03em;height:32px;text-align:left;border-right-color:#b2d58f;cursor:pointer}
+.pf-grid thead th.n{text-align:right}.pf-grid thead th.calc{background:#dbe9cf}
+.pf-hp{font-style:normal;margin-left:6px;background:#a8432f;color:#fff;border-radius:8px;padding:0 5px;font-size:10px}
+.pf-grid .rn{position:sticky;left:0;z-index:2;background:#f1f5ee;color:#5d7166;text-align:center;font-size:11px;font-weight:700;cursor:pointer;border-right:1px solid #c9dbbd}
+.pf-grid thead .rn{z-index:4;background:#b7dc92}
+.pf-grid td.rn.on{background:#cfe6bb;color:#123a20}
+.pf-c{position:relative;background:#fff;cursor:cell}
+.pf-c.n{text-align:right;font-variant-numeric:tabular-nums}
+.pf-c.calc{background:#f5f8f2;color:#2f4a37;font-weight:700}
+.pf-c.man{background:#fff7dc}
+.pf-c.falta{background:#fdeae6;box-shadow:inset 0 0 0 1px #e9a497}
+.pf-c.sel{background:#dcebd2}
+.pf-c.man.sel{background:#efe7c5}.pf-c.falta.sel{background:#f3d3cc}
+.pf-c.act{box-shadow:inset 0 0 0 2px #1f6f43;z-index:1}
+.pf-o{position:absolute;left:2px;top:2px;width:5px;height:5px;border-radius:50%}
+.pf-legend .pf-o{position:static;display:inline-block;width:8px;height:8px;margin-right:5px}
+.pf-c.editing{padding:0;box-shadow:inset 0 0 0 2px #1f6f43;overflow:visible}
+.pf-in{width:100%;height:100%;border:0;outline:none;padding:0 7px;font:inherit;background:#fff;color:#16251c}
+.pf-in.n{text-align:right}
+.pf-none{padding:18px!important;color:#5d7166;text-align:center;height:auto!important}
+.pf-grid tfoot td{position:sticky;bottom:0;z-index:2;background:#eef3ea;font-weight:800;border-top:2px solid #2f6b3a;height:30px;color:#123a20}
+.pf-grid tfoot td.rn{z-index:3;background:#dfe9d5}
+.pf-legend{display:flex;flex-wrap:wrap;gap:6px 16px;font-size:11.5px;color:#4f6457;align-items:center}
+.pf-sw{display:inline-block;width:12px;height:12px;border-radius:3px;margin-right:5px;vertical-align:-2px}
+.pf-sw.man{background:#fff7dc;border:1px solid #e3cf8e}.pf-sw.falta{background:#fdeae6;border:1px solid #e9a497}
+.pf-kb{margin-left:auto;color:#6f8577}
+
+/* Menu do botão direito */
+.pf-menu{position:fixed;z-index:1200;background:#fff;border:1px solid #b9d6a4;border-radius:10px;box-shadow:0 14px 34px #1a2e2140;padding:5px;min-width:220px;display:flex;flex-direction:column}
+.pf-menu button{display:flex;justify-content:space-between;gap:20px;text-align:left;background:none;border:0;padding:7px 10px;border-radius:7px;font-size:13px;color:#16251c;cursor:pointer}
+.pf-menu button:hover{background:#eef6e6}
+.pf-menu button.danger{color:#a8432f}.pf-menu button.danger:hover{background:#fdecea}
+.pf-menu kbd{font-family:inherit;font-size:11px;color:#6f8577}
+.pf-menu hr{border:0;border-top:1px solid #e3ebdd;margin:4px 0}
+@media (max-width:1500px){.pf-kpis{grid-template-columns:repeat(4,minmax(0,1fr))}.pf-top{grid-template-columns:1fr}}

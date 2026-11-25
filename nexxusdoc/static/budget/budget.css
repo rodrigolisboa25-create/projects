@@ -89,6 +89,15 @@
 .bg-sec>header{display:flex;justify-content:space-between;align-items:baseline;gap:12px;padding:13px 16px;border-bottom:1px solid var(--line);background:var(--bg-card2)}
 .bg-sec>header h3{margin:0;font-size:14px;color:var(--ink-strong)}
 .bg-sec>header span{color:var(--muted);font-size:12px}
+/* Premissas: tópicos recolhíveis (fechados por padrão) */
+.bg-fold>header{align-items:center;padding:0 16px 0 6px}
+.bg-fold:not(.open)>header{border-bottom:0}
+.bg-fold-btn{display:flex;align-items:center;gap:8px;background:none;border:0;padding:13px 10px;color:inherit;cursor:pointer;text-align:left;flex:none}
+.bg-fold-btn svg{width:16px;height:16px;fill:none;stroke:var(--muted);stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round;transition:transform .2s}
+.bg-fold.open .bg-fold-btn svg{transform:rotate(90deg)}
+.bg-fold-btn:hover h3{color:#fff}
+.bg-fold-btn:focus-visible{outline:2px solid var(--bg-lime,#AFD037);outline-offset:-2px;border-radius:8px}
+.bg-fold>header span{text-align:right}
 .bg-fields{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:12px;padding:14px 16px}
 .bg-field label{display:block;font-size:11.5px;font-weight:700;color:#c3d1cb;margin-bottom:5px}
 .bg-field label small{color:var(--muted);font-weight:500}
@@ -212,3 +221,62 @@
 .bg-mask-note{display:flex;gap:10px;align-items:flex-start;margin:0 0 14px;padding:11px 14px;border-radius:12px;border:1px solid #f4b74055;
   background:#f4b7400f;color:#e9dcc0;font-size:13px;line-height:1.45}
 .bg-mask-note svg{width:18px;height:18px;flex:none;margin-top:1px;fill:none;stroke:#f4b740;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+/* ---- Painel interativo e animado (13/11/2026, pedido do usuario; animacao no modelo do Estoque Contabil) ---- */
+#page-budget{--bg-gold:#E2B33C;--bg-ease:cubic-bezier(.22,1,.36,1)}
+.bg-chart svg .hit.sel{cursor:pointer}
+.bg-chart svg .dim{opacity:.28;transition:opacity .35s}
+.bg-chart svg .mk.big{filter:drop-shadow(0 0 6px #3E86E0aa)}
+.bg-chart svg .gold{fill:none;stroke:var(--bg-gold);stroke-width:2.4;stroke-linejoin:round;stroke-linecap:round;filter:drop-shadow(0 0 4px #e2b33c55)}
+.bg-chart svg .gold-p{fill:var(--bg-gold);stroke:var(--bg-card);stroke-width:2}
+.bg-chart svg .gold-l{fill:#f3d27a;font-weight:700;font-size:11px}
+.bg-chart svg .gold-t{fill:#f3d27a;font-size:10.5px;font-weight:700;letter-spacing:.6px;text-transform:uppercase}
+.bg-legend i.gold{width:16px;height:0;border-top:2.5px solid var(--bg-gold);border-radius:0;vertical-align:3px}
+.bg-nd{color:var(--muted);font-size:12.5px;padding:22px 6px;margin:0}
+/* barra do filtro do painel */
+.bg-selbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0 0 12px;padding:9px 12px;border-radius:10px;background:#22351f;border:1px solid #6f9a3b;color:#e7f3dc;font-size:12.5px}
+.bg-selbar svg{width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2}
+.bg-selbar.idle{background:transparent;border:1px dashed #3c4b50;color:var(--muted)}
+.bg-selchip{display:inline-flex;align-items:center;gap:7px;border:1px solid #afd037;background:#afd0371c;color:#fff;border-radius:20px;padding:3px 6px 3px 11px;font-weight:700;font-size:12px;cursor:pointer}
+.bg-selchip b{display:grid;place-items:center;width:18px;height:18px;border-radius:50%;background:#afd03740;font-size:13px;line-height:1}
+.bg-selchip:hover b{background:#afd037;color:#15321e}
+.bg-selclear{margin-left:auto;border:0;background:none;color:#cfe68a;font-weight:700;font-size:12px;cursor:pointer;padding:3px 6px;border-radius:6px}
+.bg-selclear:hover{background:#ffffff12}
+.bg-kpis.sel .bg-kpi.main{border-color:#afd037}
+.bg-kpi.on{box-shadow:inset 0 0 0 1.5px #afd037}
+/* animacoes: pausadas ate o grafico aparecer na tela (.in) */
+.bg-chart.rv .gy{transform-box:fill-box;transform-origin:center bottom;animation:bg-grow-y 1.15s var(--bg-ease) calc(var(--i,0)*70ms) backwards paused}
+.bg-chart.rv .gx{transform-box:fill-box;transform-origin:left center;animation:bg-grow-x 1.15s var(--bg-ease) calc(var(--i,0)*75ms) backwards paused}
+.bg-chart.rv .gxr{transform-box:fill-box;transform-origin:right center;animation:bg-grow-x 1.15s var(--bg-ease) calc(var(--i,0)*75ms) backwards paused}
+.bg-chart.rv .dr{stroke-dasharray:1;animation:bg-draw 1.6s cubic-bezier(.65,0,.35,1) .35s backwards paused}
+.bg-chart.rv .gold.dr{animation-delay:1.05s;animation-duration:1.7s}
+.bg-chart.rv .pp{transform-box:fill-box;transform-origin:center;animation:bg-pop .55s var(--bg-ease) calc(.6s + var(--i,0)*85ms) backwards paused}
+.bg-chart.rv .gold-p.pp{animation-delay:calc(1.15s + var(--i,0)*120ms)}
+.bg-chart.rv .fd{animation:bg-fade .6s ease calc(.55s + var(--i,0)*60ms) backwards paused}
+.bg-chart.rv .gold-l.fd{animation-delay:calc(1.3s + var(--i,0)*90ms)}
+.bg-chart.rv.in *{animation-play-state:running}
+.bg-chart.rv.quick .gy,.bg-chart.rv.quick .gx,.bg-chart.rv.quick .gxr{animation-duration:.55s;animation-delay:calc(var(--i,0)*18ms)}
+.bg-chart.rv.quick .dr,.bg-chart.rv.quick .gold.dr{animation-duration:.6s;animation-delay:.1s}
+.bg-chart.rv.quick .pp,.bg-chart.rv.quick .gold-p.pp{animation-duration:.35s;animation-delay:calc(.2s + var(--i,0)*15ms)}
+.bg-chart.rv.quick .fd,.bg-chart.rv.quick .gold-l.fd{animation-duration:.35s;animation-delay:.25s}
+.bg-kpis.rv .bg-kpi{animation:bg-rise .9s var(--bg-ease) calc(var(--i,0)*90ms) backwards paused}
+.bg-kpis.rv.quick .bg-kpi{animation:bg-flash .45s ease backwards paused}
+.bg-kpis.rv.in .bg-kpi{animation-play-state:running}
+@keyframes bg-grow-y{from{transform:scaleY(0)}to{transform:scaleY(1)}}
+@keyframes bg-grow-x{from{transform:scaleX(0)}to{transform:scaleX(1)}}
+@keyframes bg-draw{from{stroke-dashoffset:1}to{stroke-dashoffset:0}}
+@keyframes bg-pop{from{transform:scale(0);opacity:0}to{transform:scale(1);opacity:1}}
+@keyframes bg-fade{from{opacity:0}to{opacity:1}}
+@keyframes bg-rise{from{opacity:0;transform:translateY(16px) scale(.98)}to{opacity:1;transform:none}}
+@keyframes bg-flash{from{opacity:.55}to{opacity:1}}
+@media (prefers-reduced-motion:reduce){.bg-chart.rv *,.bg-kpis.rv .bg-kpi{animation:none!important}}
+
+/* Apresentacao Final */
+.bg-final{display:grid;gap:12px}
+.bg-final-bar{display:flex;align-items:center;justify-content:space-between;gap:16px}
+.bg-final-bar p{margin:0;color:var(--muted,#a9b8ae);font-size:14px}
+.bg-final-bar>div{display:flex;gap:10px;align-items:center}
+.bg-final-bar a,.bg-final-bar button{display:inline-flex;align-items:center;gap:8px;text-decoration:none;white-space:nowrap}
+.bg-final-bar svg{width:17px;height:17px;flex:none;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.bg-final-frame{width:min(100%,calc((100vh - 365px)*16/9));min-width:760px;aspect-ratio:16/9;margin:0 auto;border-radius:10px;overflow:hidden;border:1px solid rgba(238,243,211,.22);background:#0b1a12}
+.bg-final-frame iframe{display:block;width:100%;height:100%;border:0}
+.bg-trow input:disabled{opacity:.62;cursor:not-allowed}

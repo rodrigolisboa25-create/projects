@@ -982,5 +982,5 @@ document.addEventListener('input', e => {
 document.addEventListener('keydown', e => {
   if (e.target.id === 'qc-ask-q' && e.key === 'Enter' && !e.shiftKey && !S.ws.asking) { e.preventDefault(); ask(false); }
 });
-window.nexusQuery = {open, reset: () => { S.data = null; S.lib = null; S.pr.data = null; S.cat.data = null; }, view: setView, _estado: () => S};
+window.nexusQuery = {open, preload: async () => { if (!S.data) S.data = await api('/api/query-console'); }, reset: () => { S.data = null; S.lib = null; S.pr.data = null; S.cat.data = null; }, view: setView, _estado: () => S};
 })();

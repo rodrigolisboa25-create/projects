@@ -1,120 +1,468 @@
 {
-  "observacao": "O que muda em cada publicação, mostrado ao clicar em Atualizar (até 6 itens no total, sem títulos). Ao publicar algo novo, acrescente uma entrada com o próximo id, com itens de uma linha, para o usuário.",
-  "versoes": [
-    {
-      "id": 1,
-      "data": "2026-11-11",
-      "titulo": "Auditoria, histórico das consultas e novidades da versão",
-      "itens": [
-        "Auditoria: aba Matriz de risco e calendário no Ciclo do ano.",
-        "Auditoria: links diretos para as pastas do Drive e orientações de IPE.",
-        "Auditoria: e-mail automático quando surgir solicitação nova.",
-        "Consultas gerais: conversa guardada dos últimos 3 dias."
-      ]
-    },
-    {
-      "id": 2,
-      "data": "2026-11-11",
-      "titulo": "Tela do Atualizar mais resumida",
-      "itens": [
-        "Atualizar: quadro mais resumido, com o código da versão nova."
-      ]
-    },
-    {
-      "id": 3,
-      "data": "2026-11-11",
-      "titulo": "Matriz de risco automática",
-      "itens": [
-        "Auditoria: matriz de risco calculada pelo sistema, com o motivo de cada ponto.",
-        "Auditoria: tabelas mais altas e página ajustada para notebook."
-      ]
-    },
-    {
-      "id": 4,
-      "data": "2026-11-11",
-      "titulo": "Atualização automática",
-      "itens": [
-        "O NexxusDoc se atualiza sozinho, sem botão, sem perder o que está sendo feito."
-      ]
-    },
-    {
-      "id": 5,
-      "data": "2026-11-12",
-      "titulo": "Uma aba só",
-      "itens": [
-        "O NexxusDoc funciona em uma aba só: ao abrir outra, a anterior é desativada.",
-        "Clique na notificação leva à aba já aberta, sem abrir outra.",
-        "Backup diário não trava mais quando arquivos são apagados de propósito."
-      ]
-    },
-    {
-      "id": 6,
-      "data": "2026-11-12",
-      "titulo": "Query Console ampliada",
-      "itens": [
-        "Query Console: pergunte em português e o NexxusDoc monta a consulta.",
-        "Query Console: catálogo do BigQuery, processos × tabelas e Minhas consultas.",
-        "Chat Nexxus: responde sobre as tabelas do BigQuery da área.",
-        "Versão e data da última atualização abaixo do nome, no topo."
-      ]
-    },
-    {
-      "id": 7,
-      "data": "2026-11-13",
-      "titulo": "Query Console mais organizada",
-      "itens": [
-        "Catálogo do BigQuery agrupado por projeto, com todas as colunas de cada tabela.",
-        "Processos × tabelas agrupados pela fase do processo.",
-        "Minhas consultas com seções que se recolhem.",
-        "Perguntar: consulta nova limpa o editor."
-      ]
-    },
-    {
-      "id": 8,
-      "data": "2026-11-13",
-      "titulo": "Catálogo atualizado toda semana",
-      "itens": [
-        "Catálogo do BigQuery conferido toda segunda-feira, com as tabelas novas marcadas.",
-        "Perguntar: barra de progresso e consulta (SQL) organizada em linhas.",
-        "Resultado com muitas colunas rola só na tabela.",
-        "A consulta continua ao trocar de aba ou de página, e um aviso chega quando fica pronta."
-      ]
-    },
-    {
-      "id": 9,
-      "data": "2026-11-13",
-      "titulo": "Aviso de tabela sem dados",
-      "itens": [
-        "Query Console: aviso antes da consulta quando a tabela está vazia ou sem atualização.",
-        "Catálogo do BigQuery: tabelas vazias e paradas marcadas.",
-        "Nova consulta pronta: pedidos Nike da Fisia no formato da OTR."
-      ]
-    },
-    {
-      "id": 10,
-      "data": "2026-11-13",
-      "titulo": "Sino com os avisos do Windows",
-      "itens": [
-        "Os avisos que chegam no Windows também ficam no sino por 14 dias.",
-        "Query Console: círculo girando no lugar do resultado enquanto a consulta executa."
-      ]
-    },
-    {
-      "id": 11,
-      "data": "2026-11-13",
-      "titulo": "Levantamento das reuniões para todos",
-      "itens": [
-        "Automação: nova visão Levantamento das reuniões, com as oportunidades de automação e os principais pontos."
-      ]
-    },
-    {
-      "id": 12,
-      "data": "2026-11-13",
-      "titulo": "Consultas da equipe",
-      "itens": [
-        "Query Console: nova seção Consultas da equipe, com todas as consultas compartilhadas.",
-        "Compartilhar uma consulta salva não dá mais erro."
-      ]
-    }
-  ]
+ "observacao": "O que muda em cada publicação, mostrado ao clicar em Atualizar (até 6 itens no total, sem títulos). Ao publicar algo novo, acrescente uma entrada com o próximo id, com itens de uma linha, para o usuário.",
+ "versoes": [
+  {
+   "id": 1,
+   "data": "2026-11-11",
+   "titulo": "Auditoria, histórico das consultas e novidades da versão",
+   "itens": [
+    "Auditoria: aba Matriz de risco e calendário no Ciclo do ano.",
+    "Auditoria: links diretos para as pastas do Drive e orientações de IPE.",
+    "Auditoria: e-mail automático quando surgir solicitação nova.",
+    "Consultas gerais: conversa guardada dos últimos 3 dias."
+   ]
+  },
+  {
+   "id": 2,
+   "data": "2026-11-11",
+   "titulo": "Tela do Atualizar mais resumida",
+   "itens": [
+    "Atualizar: quadro mais resumido, com o código da versão nova."
+   ]
+  },
+  {
+   "id": 3,
+   "data": "2026-11-11",
+   "titulo": "Matriz de risco automática",
+   "itens": [
+    "Auditoria: matriz de risco calculada pelo sistema, com o motivo de cada ponto.",
+    "Auditoria: tabelas mais altas e página ajustada para notebook."
+   ]
+  },
+  {
+   "id": 4,
+   "data": "2026-11-11",
+   "titulo": "Atualização automática",
+   "itens": [
+    "O NexxusDoc se atualiza sozinho, sem botão, sem perder o que está sendo feito."
+   ]
+  },
+  {
+   "id": 5,
+   "data": "2026-11-12",
+   "titulo": "Uma aba só",
+   "itens": [
+    "O NexxusDoc funciona em uma aba só: ao abrir outra, a anterior é desativada.",
+    "Clique na notificação leva à aba já aberta, sem abrir outra.",
+    "Backup diário não trava mais quando arquivos são apagados de propósito."
+   ]
+  },
+  {
+   "id": 6,
+   "data": "2026-11-12",
+   "titulo": "Query Console ampliada",
+   "itens": [
+    "Query Console: pergunte em português e o NexxusDoc monta a consulta.",
+    "Query Console: catálogo do BigQuery, processos × tabelas e Minhas consultas.",
+    "Chat Nexxus: responde sobre as tabelas do BigQuery da área.",
+    "Versão e data da última atualização abaixo do nome, no topo."
+   ]
+  },
+  {
+   "id": 7,
+   "data": "2026-11-13",
+   "titulo": "Query Console mais organizada",
+   "itens": [
+    "Catálogo do BigQuery agrupado por projeto, com todas as colunas de cada tabela.",
+    "Processos × tabelas agrupados pela fase do processo.",
+    "Minhas consultas com seções que se recolhem.",
+    "Perguntar: consulta nova limpa o editor."
+   ]
+  },
+  {
+   "id": 8,
+   "data": "2026-11-13",
+   "titulo": "Catálogo atualizado toda semana",
+   "itens": [
+    "Catálogo do BigQuery conferido toda segunda-feira, com as tabelas novas marcadas.",
+    "Perguntar: barra de progresso e consulta (SQL) organizada em linhas.",
+    "Resultado com muitas colunas rola só na tabela.",
+    "A consulta continua ao trocar de aba ou de página, e um aviso chega quando fica pronta."
+   ]
+  },
+  {
+   "id": 9,
+   "data": "2026-11-13",
+   "titulo": "Aviso de tabela sem dados",
+   "itens": [
+    "Query Console: aviso antes da consulta quando a tabela está vazia ou sem atualização.",
+    "Catálogo do BigQuery: tabelas vazias e paradas marcadas.",
+    "Nova consulta pronta: pedidos Nike da Fisia no formato da OTR."
+   ]
+  },
+  {
+   "id": 10,
+   "data": "2026-11-13",
+   "titulo": "Sino com os avisos do Windows",
+   "itens": [
+    "Os avisos que chegam no Windows também ficam no sino por 14 dias.",
+    "Query Console: círculo girando no lugar do resultado enquanto a consulta executa."
+   ]
+  },
+  {
+   "id": 11,
+   "data": "2026-11-13",
+   "titulo": "Levantamento das reuniões para todos",
+   "itens": [
+    "Automação: nova visão Levantamento das reuniões, com as oportunidades de automação e os principais pontos."
+   ]
+  },
+  {
+   "id": 12,
+   "data": "2026-11-13",
+   "titulo": "Consultas da equipe",
+   "itens": [
+    "Query Console: nova seção Consultas da equipe, com todas as consultas compartilhadas.",
+    "Compartilhar uma consulta salva não dá mais erro."
+   ]
+  },
+  {
+   "id": 13,
+   "data": "2026-11-13",
+   "titulo": "Conexão com o agente mais estável",
+   "itens": [
+    "Quando a conexão com o agente oscila, o NexxusDoc tenta de novo sozinho, sem precisar clicar outra vez."
+   ]
+  },
+  {
+   "id": 14,
+   "data": "2026-11-13",
+   "titulo": "Painel do Budget interativo",
+   "itens": [
+    "Clique num gráfico do Painel do Budget para filtrar a página por mês ou rubrica.",
+    "Linha dourada com a variação de um mês para o outro no custo mensal.",
+    "Gráficos e cards animados ao abrir (desligue em Configurações › Meu perfil)."
+   ]
+  },
+  {
+   "id": 15,
+   "data": "2026-11-18",
+   "titulo": "Resultados da Fisia no Budget",
+   "itens": [
+    "Nova aba Resultados: Budget, Forecast e Actual do fechamento, com a Bridge e a conferência das bases.",
+    "Apresentação executiva para baixar em PowerPoint, Google Slides ou HTML.",
+    "Base usada nos resultados para baixar em Excel."
+   ]
+  },
+  {
+   "id": 16,
+   "data": "2026-11-18",
+   "titulo": "Página MBR no Budget",
+   "itens": [
+    "A aba Resultados agora se chama MBR.",
+    "Gráficos e cards animados na página e na apresentação, inclusive no arquivo HTML baixado."
+   ]
+  },
+  {
+   "id": 17,
+   "data": "2026-11-18",
+   "titulo": "Animação no Budget",
+   "itens": [
+    "Painel e MBR animam os gráficos e cards toda vez que você entra na página.",
+    "A apresentação do MBR agora termina com um slide de Fim."
+   ]
+  },
+  {
+   "id": 18,
+   "data": "2026-11-18",
+   "titulo": "Página Resultados e valores do MBR pelo Excel",
+   "itens": [
+    "A página Budget agora se chama Resultados.",
+    "Baixe a base do MBR, altere as células amarelas da aba Editar valores e envie de volta: a página e a apresentação se atualizam.",
+    "A apresentação do MBR agora mostra o slide de Fim."
+   ]
+  },
+  {
+   "id": 19,
+   "data": "2026-11-18",
+   "titulo": "Base do MBR sem proteção",
+   "itens": [
+    "A base do MBR em Excel agora abre normal, sem proteção e sem senha."
+   ]
+  },
+  {
+   "id": 20,
+   "data": "2026-11-18",
+   "titulo": "Apresentação Final do orçamento",
+   "itens": [
+    "Nova aba Apresentação Final em Resultados: Orçamento 2027 x Forecast 2026, por processo e por cenário de frete, com animações e download."
+   ]
+  },
+  {
+   "id": 21,
+   "data": "2026-11-18",
+   "titulo": "Forecast único em Resultados",
+   "itens": [
+    "Painel, Comparativo e Apresentação Final agora usam o mesmo Forecast 2026: o 10+2 da Ferramenta de Controle mais recente.",
+    "A Apresentação Final também pode ser baixada em PowerPoint."
+   ]
+  },
+  {
+   "id": 22,
+   "data": "2026-11-18",
+   "titulo": "Ajuste na Apresentação Final",
+   "itens": [
+    "A legenda do slide de impacto por processo voltou a mostrar as cores e o espaço entre os nomes."
+   ]
+  },
+  {
+   "id": 23,
+   "data": "2026-11-18",
+   "titulo": "Cenários mais claros na Apresentação Final",
+   "itens": [
+    "Os slides de cenários agora trazem legenda organizada e a tarifa por contêiner embaixo de cada cenário."
+   ]
+  },
+  {
+   "id": 24,
+   "data": "2026-11-19",
+   "titulo": "Busca nos documentos e Fluxo As Is dos manuais",
+   "itens": [
+    "A busca (Ctrl+K) procura no texto dos documentos e o clique abre o próprio documento.",
+    "Manuais oficiais, enviados e localizados têm Fluxo As Is, com tempos estimados quando o documento não traz.",
+    "O agente aponta melhoria e automação só onde o documento mostra necessidade real."
+   ]
+  },
+  {
+   "id": 25,
+   "data": "2026-11-19",
+   "titulo": "Resultados abre a versão mais nova",
+   "itens": [
+    "Quando sai uma versão nova do orçamento, a página Resultados já abre nela (a anterior fica no Histórico de versões)."
+   ]
+  },
+  {
+   "id": 26,
+   "data": "2026-11-19",
+   "titulo": "Armazenagem em 6,5% do orçamento",
+   "itens": [
+    "Nova premissa: armazenagem como % do orçamento total, repartida nos meses.",
+    "O Orçamento 2027 passou a ter a armazenagem em 6,5% do total (R$ 3,03 MM)."
+   ]
+  },
+  {
+   "id": 27,
+   "data": "2026-11-19",
+   "titulo": "Premissas mais enxutas",
+   "itens": [
+    "Em Resultados › Premissas, os tópicos abrem recolhidos; clique no nome para expandir."
+   ]
+  },
+  {
+   "id": 28,
+   "data": "2026-11-19",
+   "titulo": "Documentos oficiais no Mapa de automação",
+   "itens": [
+    "As melhorias de automação do Fluxo As Is dos documentos oficiais aparecem no Mapa de automação, com a origem indicada."
+   ]
+  },
+  {
+   "id": 29,
+   "data": "2026-11-19",
+   "titulo": "Nova página Embarques",
+   "itens": [
+    "Cada pasta de Sua Area › Processos com os documentos e o que foi lido deles (faturas, BL, proforma, checklist).",
+    "Pré-conferência do Checklist ID 677 e relatórios por mês, operação, armador, origem e fabricante.",
+    "Na Automação, o resumo executivo e o Fluxo As Is também aparecem nas linhas de documentos oficiais e de POPs."
+   ]
+  },
+  {
+   "id": 30,
+   "data": "2026-11-19",
+   "titulo": "Planilha da Apresentação Final",
+   "itens": [
+    "Em Resultados › Apresentação Final, \"Baixar planilha\" traz em Excel todos os números dos slides."
+   ]
+  },
+  {
+   "id": 31,
+   "data": "2026-11-23",
+   "titulo": "Embarques revisada",
+   "itens": [
+    "Embarques: tabela mais compacta, filtros organizados e botão Limpar filtros.",
+    "Embarques: processos por mês em mapa de calor e países com bandeira.",
+    "Embarques: ficha com faturas × proforma × BL lado a lado.",
+    "Embarques: AWB, BL e faturas reconhecidos também pelo número e pela pasta de faturas."
+   ]
+  },
+  {
+   "id": 32,
+   "data": "2026-11-23",
+   "titulo": "Planilha proforma",
+   "itens": [
+    "Embarques: aba Planilha proforma, montada pelo sistema a partir das TCCIs e da base da Ferramenta de Análise.",
+    "Planilha editável como no Excel (copiar e colar, desfazer, inserir e excluir linhas) e Excel no modelo da proforma.",
+    "Embarques: clique num quadrado do mapa de calor abre os processos daquele mês; escolha Processos, Unidades ou Valor."
+   ]
+  },
+  {
+   "id": 33,
+   "data": "2026-11-23",
+   "titulo": "Relatórios da PGL e entrega no CD",
+   "itens": [
+    "PGL: nova aba Relatórios da PGL com o FUP que chega por e-mail (Fisia, Zelus e SBF): números, gráficos e a planilha completa.",
+    "Embarques: coluna Andamento PGL com a data de entrega no CD e linha do tempo na ficha.",
+    "Embarques: responsável pela pasta (quem criou) na lista, nos filtros e no Excel."
+   ]
+  },
+  {
+   "id": 34,
+   "data": "2026-11-23",
+   "titulo": "Embarques: BOL completo e checklist",
+   "itens": [
+    "Embarques: número completo do BL (ex.: MAEU280813701) na lista, na ficha, na busca e no Excel.",
+    "Checklist e proforma salvos na pasta passam a ser lidos nos processos novos (antes ficavam como sem checklist)."
+   ]
+  },
+  {
+   "id": 35,
+   "data": "2026-11-23",
+   "titulo": "Novo nome: NexxusDoc",
+   "itens": [
+    "O sistema passa a se chamar só NexxusDoc (aba do navegador, Visão geral e atalho), sem \"Normas e Procedimentos\"."
+   ]
+  },
+  {
+   "id": 36,
+   "data": "2026-11-23",
+   "titulo": "Checklist documental mais preciso",
+   "itens": [
+    "Embarques: o checklist mostra quantos itens têm OK (ex.: 11 de 17) e diferencia preenchido, em parte, só com a identificação do BOL e em branco."
+   ]
+  },
+  {
+   "id": 37,
+   "data": "2026-11-23",
+   "titulo": "Embarques: situação mais clara",
+   "itens": [
+    "Situação nova: Conferido, Divergência, Checklist pendente e Em montagem (com o que ainda falta na pasta).",
+    "Pré-conferência só dos processos de 2025 em diante; os anteriores aparecem como Antes de 2025."
+   ]
+  },
+  {
+   "id": 38,
+   "data": "2026-11-24",
+   "titulo": "Página nova: Custos por processo",
+   "itens": [
+    "Custo de cada importação pelas MIROs da PGL: frete, II e Siscomex, porto, armazenagem, transporte e desembaraço.",
+    "Relatórios por mês, por unidade (marítimo e aéreo) e por operação; ligação com Embarques e o FUP.",
+    "Montar layout: o sistema gera a MIRO no formato da PGL, com o mesmo rateio.",
+    "Acesso só para o administrador e os owners."
+   ]
+  },
+  {
+   "id": 39,
+   "data": "2026-11-24",
+   "titulo": "Páginas sem espera",
+   "itens": [
+    "Todas as páginas carregam na tela de entrada: Embarques, Custos, Resultados, Query Console e Relatórios da PGL abrem na hora."
+   ]
+  },
+  {
+   "id": 40,
+   "data": "2026-11-24",
+   "titulo": "Custos: montar layout mais fácil",
+   "itens": [
+    "Montar layout abre com os processos aguardando MIRO, para escolher com um clique."
+   ]
+  },
+  {
+   "id": 41,
+   "data": "2026-11-24",
+   "titulo": "Custos: MIROs em lote",
+   "itens": [
+    "Montar layout com vários processos de uma vez: valores numa grade e um arquivo só.",
+    "Botão Cancelar montagem; quem fica de fora aparece com o motivo.",
+    "Exportar Excel mostra que está gerando e quando terminou."
+   ]
+  },
+  {
+   "id": 42,
+   "data": "2026-11-24",
+   "titulo": "Custos: campos visíveis",
+   "itens": [
+    "Na montagem da MIRO, datas, Atribuição e valores agora aparecem; os valores aceitam 1.234,56, R$ 1.500 ou 1.500."
+   ]
+  },
+  {
+   "id": 43,
+   "data": "2026-11-24",
+   "titulo": "Auditoria retirada e busca por WFADIM",
+   "itens": [
+    "A página Auditoria saiu do sistema.",
+    "Embarques: a busca por WFADIM acha também os processos cuja pasta não tem o número no nome (vem do FUP da PGL)."
+   ]
+  },
+  {
+   "id": 44,
+   "data": "2026-11-24",
+   "titulo": "Validação do frete internacional",
+   "itens": [
+    "Nova aba Frete internacional em Custos: as faturas da Asia Shipping e da DMS chegam do e-mail e são conferidas com o BID.",
+    "Cada cobrança aparece ao lado do valor do BID; o ok e a devolução ficam registrados no sistema, sem enviar e-mail.",
+    "A página Custos agora é aberta a todos.",
+    "Os manuais do Backoffice (frete, armazenagem, MIROs e conciliações) entraram na consulta do agente."
+   ]
+  },
+  {
+   "id": 45,
+   "data": "2026-11-24",
+   "titulo": "Frete internacional: parâmetros e ajustes",
+   "itens": [
+    "Botão Parâmetros: IOF, tolerâncias, mínimo de W/M, peso do LCL e qual BID usar, por agente.",
+    "Quem pode alterar os parâmetros é definido em Configurações › Acessos.",
+    "Novo gráfico LCL × FCL, com quantidade e valor.",
+    "Procurar o e-mail no meu Gmail abre a busca da fatura na sua caixa."
+   ]
+  },
+  {
+   "id": 46,
+   "data": "2026-11-24",
+   "titulo": "Frete internacional: ajustes",
+   "itens": [
+    "Procurar o e-mail no meu Gmail corrigido: abre direto a busca da fatura.",
+    "Botões Parâmetros e Exportar Excel com borda.",
+    "Os e-mails do sistema passam a sair com o remetente Nexxus."
+   ]
+  },
+  {
+   "id": 47,
+   "data": "2026-11-24",
+   "titulo": "Chat Nexxus encontra definições",
+   "itens": [
+    "Perguntas curtas como \"o que é AFRMM?\" agora acham o termo no glossário de qualquer manual ou POP."
+   ]
+  },
+  {
+   "id": 48,
+   "data": "2026-11-25",
+   "titulo": "Frete internacional sempre em dia",
+   "itens": [
+    "A tabela de faturas se atualiza sozinha: as aprovações por e-mail aparecem sem precisar reabrir a aba."
+   ]
+  },
+  {
+   "id": 49,
+   "data": "2026-11-25",
+   "titulo": "Visão geral com o globo dos embarques",
+   "itens": [
+    "Novo globo 3D na Visão geral: países de origem dos embarques até o Brasil, com filtros de período, unidade, operação e modal.",
+    "Clique num país ou no Brasil para ver contêineres, tipo de embarque (FCL, LCL, aéreo) e as próximas chegadas com a linha do tempo.",
+    "Passe o mouse nos cards para ver a análise por mês, trimestre, semestre e ano, inclusive CO₂ estimado e valor por kg.",
+    "O botão de Dúvidas no topo ficou só com o ícone de interrogação."
+   ]
+  },
+  {
+   "id": 50,
+   "data": "2026-11-25",
+   "titulo": "Faturas conferidas com o OTR Nike",
+   "itens": [
+    "Embarques confere o número de cada fatura da pasta com o OTR Nike do BL, com o histórico de todos os OTRs desde janeiro.",
+    "Na ficha, o quadro PDF × OTR mostra cada fatura lado a lado e o motivo de cada divergência.",
+    "PDF que o sistema não consegue ler aparece como \"Conferir PDF\", nunca como conferido.",
+    "Botões de Excel mostram o andamento ao gerar; os cards de Embarques ficaram em 2 linhas de 4.",
+    "No globo da Visão geral entraram os cards Contêineres e Units, e a legenda ficou numa linha só."
+   ]
+  }
+ ]
 }

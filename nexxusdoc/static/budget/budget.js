@@ -2,7 +2,7 @@
    (recalculo na hora pelo servidor), alertas e download no MODELO. Graficos em SVG proprio. */
 (() => {
 'use strict';
-const S = {home: null, cur: null, data: null, tab: 'painel', draft: null, sim: null, simTimer: 0, filter: 'todos',
+const S = {seq: 0, home: null, cur: null, data: null, tab: 'painel', draft: null, sim: null, simTimer: 0, filter: 'todos',
            open: new Set(['bunker', 'afrmm', 'despachante', 'sistemas', 'rodoviario']), cache: {}, cmp: {a: '', b: ''}, busy: false,
            view: (() => { try { return localStorage.getItem('nexus.budget.vista') || 'orcamento'; } catch { return 'orcamento'; } })()};
 const root = () => document.getElementById('page-budget');
@@ -37,13 +37,20 @@ async function loadHome(keepCur) {
   S.home = await api('/api/budget');
   const ids = S.home.versoes.map(v => v.id);
   let want = keepCur && ids.includes(S.cur) ? S.cur : null;
-  if (!want) { try { want = localStorage.getItem('nexus.budget.versao'); } catch {} }
+  // A versão escolhida fica guardada, mas versão NOVA criada depois da escolha abre no lugar dela (19/11/2026: a página
+  // continuava na versão antiga depois de criada a de armazenagem 6,5%, e o Resumo mostrava os valores de antes).
+  if (!want) {
+    let when = '';
+    try { want = localStorage.getItem('nexus.budget.versao'); when = localStorage.getItem('nexus.budget.versao.em') || ''; } catch {}
+    const newest = S.home.versoes[0];
+    if (newest && want !== newest.id && String(newest.criado_em || '') > when) want = newest.id;
+  }
   if (!ids.includes(want)) want = ids[0] || null;
   if (want) await loadVersion(want, false); else { S.cur = null; S.data = null; }
 }
 async function loadVersion(id, draw = true) {
-  S.cur = id; S.sim = null; S.draft = null;
-  try { localStorage.setItem('nexus.budget.versao', id); } catch {}
+  S.cur = id; S.sim = null; S.draft = null; S.sel = {m: null, ks: null, l: ''};
+  try { localStorage.setItem('nexus.budget.versao', id); localStorage.setItem('nexus.budget.versao.em', new Date().toISOString()); } catch {}
   S.data = S.cache[id] || await api(`/api/budget/versoes/${id}`);
   S.cache[id] = S.data;
   S.draft = JSON.parse(JSON.stringify(S.data.params));
@@ -51,32 +58,38 @@ async function loadVersion(id, draw = true) {
 }
 const allowed = () => typeof state !== 'undefined' && ['master', 'owner'].includes(state.user?.role);
 function lockedHtml() {
-  return `<div class="bg-hero"><div><div class="eyebrow">ORÇAMENTO INBOUND · FISIA · LOGÍSTICA INTERNACIONAL</div><h1>Budget</h1>
+  return `<div class="bg-hero"><div><div class="eyebrow">ORÇAMENTO INBOUND · FISIA · LOGÍSTICA INTERNACIONAL</div><h1>Resultados</h1>
     <p>Orçamento Inbound montado a partir da planilha, com cenários, alertas e o modelo oficial em Excel.</p></div></div>
     <div class="bg-empty bg-locked"><div><h2>${svgI('<rect x="5" y="11" width="14" height="9.5" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>')}Acesso restrito aos números</h2>
-      <p>Os valores do orçamento, as premissas e as versões ficam disponíveis só para o administrador master e os owners das áreas. Se você precisa consultar ou ajustar o Budget, peça ao owner da sua área.</p></div>
+      <p>Os valores do orçamento, as premissas e as versões ficam disponíveis só para o administrador master e os owners das áreas. Se você precisa consultar ou ajustar o orçamento, peça ao owner da sua área.</p></div>
       <div class="bg-locked-list"><div>${IC.chart}<span><b>Painel</b>custo total, H1 e H2, composição e comparação com o ano anterior</span></div>
         <div>${IC.sliders}<span><b>Premissas</b>câmbio, tarifas, volumes e reajustes, com recálculo na hora</span></div>
         <div>${IC.down}<span><b>Excel</b>planilha MODELO com gráficos e filtro Orçamento, Budget e Forecast</span></div></div></div>`;
 }
 // Sem acesso aos numeros: mesma pagina (painel, resumo mensal e comparativo) com os valores mascarados. O servidor manda
 // so uma estrutura com numeros sorteados (/api/budget/mascarado); edicao, versoes, upload e Excel ficam fora.
-async function openMasked(r) {
+async function openMasked(r, seq) {
   if (!S.mask) {
-    r.innerHTML = '<div class="bg-loading">Carregando o Budget…</div>';
+    r.innerHTML = '<div class="bg-loading">Carregando os resultados…</div>';
     try { const m = await api('/api/budget/mascarado'); S.home = m.home; S.data = m.dados; S.cur = 'mascarado'; S.mask = true; S.tab = 'painel'; }
-    catch { r.innerHTML = lockedHtml(); return; }
+    catch { if (seq === S.seq) r.innerHTML = lockedHtml(); return; }
+    if (seq !== S.seq) return;
   }
   render();
 }
 async function open() {
   const r = root(); if (!r) return;
+  // Animacao de entrada: toda vez que a pessoa entra na pagina (pedido de 18/11/2026), se nao desligou em Configuracoes > Meu perfil.
+  // seq: so a ultima abertura desenha (dois cliques seguidos no icone nao cancelam a animacao).
+  const seq = ++S.seq;
+  S.intro = window.nexusAnim ? window.nexusAnim.takeIntro('budget') : !reduceMotion(); S.sel = {m: null, ks: null, l: ''};
   r.classList.toggle('bg-masked', !allowed());
-  if (!allowed()) { await openMasked(r); return; }
+  if (!allowed()) { await openMasked(r, seq); return; }
   if (S.mask) { S.mask = false; S.home = null; S.data = null; S.cache = {}; S.tab = 'painel'; }
   if (!S.home) {
-    r.innerHTML = '<div class="bg-loading">Carregando o Budget…</div>';
-    try { await loadHome(); } catch (e) { r.innerHTML = `<div class="notice error"><div class="grow">${E(e.message)}</div></div>`; return; }
+    r.innerHTML = '<div class="bg-loading">Carregando os resultados…</div>';
+    try { await loadHome(); } catch (e) { if (seq === S.seq) r.innerHTML = `<div class="notice error"><div class="grow">${E(e.message)}</div></div>`; return; }
+    if (seq !== S.seq) return;
   }
   render();
 }
@@ -88,150 +101,333 @@ function render() {
   const v = S.data.versao, ano = S.data.params.ano;
   const opts = S.home.versoes.map(x => `<option value="${x.id}"${x.id === S.cur ? ' selected' : ''}>${E(x.ciclo)} · ${E(x.nome)} · ${new Date(x.criado_em).toLocaleDateString('pt-BR')}</option>`).join('');
   const al = S.data.alertas || [], altas = al.filter(a => a.sev === 'Alta').length;
+  const alt = {resultados: ['MBR', 'Budget, Forecast e Actual de cada fechamento, direto das bases enviadas.'], final: ['Apresentação Final', `Orçamento ${ano} comparado ao Forecast ${ano - 1}, por processo e por cenário de frete.`]}[S.tab];
   r.innerHTML = `
   <div class="bg-hero">
     <div><div class="eyebrow">ORÇAMENTO INBOUND · FISIA · LOGÍSTICA INTERNACIONAL</div>
-      <h1>Budget ${E(ano)}</h1>
-      <p>${S.mask ? 'Painel, resumo mensal e comparativo com o ano anterior, com os números mascarados.'
+      <h1>${alt ? alt[0] : `Resultados ${E(ano)}`}</h1>
+      <p>${alt ? alt[1] : S.mask ? 'Painel, resumo mensal e comparativo com o ano anterior, com os números mascarados.'
         : `<b>${E(v.nome)}</b> · ${E(v.ciclo)} · ${originLabel(v)} por ${E(v.criado_por_nome || v.criado_por)} em ${new Date(v.criado_em).toLocaleString('pt-BR')}`}</p></div>
-    ${S.mask ? `<div class="bg-actions"><span class="bg-mask-badge">${svgI('<rect x="5" y="11" width="14" height="9.5" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>')}Números ocultos</span></div>` : `<div class="bg-actions">
+    ${alt ? '' : S.mask ? `<div class="bg-actions"><span class="bg-mask-badge">${svgI('<rect x="5" y="11" width="14" height="9.5" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>')}Números ocultos</span></div>` : `<div class="bg-actions">
       <select id="bg-version" aria-label="Versão do orçamento">${opts}</select>
       <a class="secondary" href="/api/budget/versoes/${S.cur}/excel" download title="Baixar a planilha MODELO com as premissas desta versão (abre e recalcula no Excel)">${IC.down}Baixar Excel</a>
       <button class="primary" type="button" id="bg-upload">${IC.up}Enviar planilha</button>
     </div>`}
   </div>
-  ${S.mask ? `<div class="bg-mask-note">${IC.info}<span>Os valores do orçamento ficam disponíveis só para o administrador master e os owners das áreas. Aqui você vê como o Budget é organizado, com os números mascarados. Se precisar consultar os valores, peça ao owner da sua área.</span></div>` : ''}
-  <div id="bg-kpis">${kpisHtml()}</div>
+  ${S.mask ? `<div class="bg-mask-note">${IC.info}<span>Os valores do orçamento ficam disponíveis só para o administrador master e os owners das áreas. Aqui você vê como o orçamento é organizado, com os números mascarados. Se precisar consultar os valores, peça ao owner da sua área.</span></div>` : ''}
+  ${alt ? '' : `<div id="bg-kpis">${kpisHtml()}</div>`}
   <nav class="bg-tabs" role="tablist">
     ${tab('painel', IC.chart, 'Painel')}${tab('mensal', IC.table, 'Resumo mensal')}${tab('comparativo', IC.scale, `Comparativo ${ano - 1}`)}
     ${S.mask ? '' : `${tab('premissas', IC.sliders, 'Premissas')}${tab('alertas', IC.alert, `Alertas <span class="bg-count${altas ? '' : ' zero'}">${al.length}</span>`)}
-    ${tab('historico', IC.hist, 'Histórico de versões')}`}
+    ${tab('historico', IC.hist, 'Histórico de versões')}${tab('resultados', IC.file, 'MBR')}${tab('final', svgI('<rect x="3" y="4" width="18" height="12" rx="1.5"/><path d="M12 16v4M8 20h8M10 8l4 2-4 2z"/>'), 'Apresentação Final')}`}
   </nav>
   <div id="bg-body"></div>`;
   if (!S.mask) {
-    r.querySelector('#bg-version').onchange = e => loadVersion(e.target.value);
-    r.querySelector('#bg-upload').onclick = () => uploadModal();
+    if (!alt) r.querySelector('#bg-version').onchange = e => loadVersion(e.target.value);
+    if (!alt) r.querySelector('#bg-upload').onclick = () => uploadModal();
   }
-  r.querySelectorAll('[data-bgtab]').forEach(b => b.onclick = () => { S.tab = b.dataset.bgtab; render(); });
+  r.querySelectorAll('[data-bgtab]').forEach(b => b.onclick = () => { S.tab = b.dataset.bgtab; S.sel = {m: null, ks: null, l: ''}; S.intro = animOn(); render(); });
+  const intro = S.intro;
   body();
+  // cards: animam ao entrar no Painel (S.intro)
+  if (intro && S.tab === 'painel') revealKpis(false);
+  S.intro = false;
 }
 const tab = (k, ic, label) => `<button type="button" role="tab" data-bgtab="${k}" class="${S.tab === k ? 'on' : ''}">${ic}${label}</button>`;
 function originLabel(v) {
   return {upload: v.formato === 'modelo' ? 'Planilha MODELO enviada' : v.formato === 'generico' ? 'Planilha fora do modelo enviada' : 'Planilha FISIA enviada',
           edicao: 'Premissas ajustadas no sistema', modelo: 'Modelo aprovado carregado'}[v.origem] || 'Versão';
 }
+/* ---------------- Painel interativo (13/11/2026, pedido do usuario) ----------------
+   Clique numa barra, ponto ou rubrica filtra o Painel inteiro (cards e graficos): por MES (custo mensal e custo por
+   unit) e/ou por RUBRICA (composicao, variacao e comparacao). Clicar de novo no mesmo item, ou em "Limpar", desfaz.
+   Os valores do recorte vem do mes a mes de cada rubrica que o calculo ja devolve (orcamento, Budget e Forecast). */
+S.sel = {m: null, ks: null, l: ''};
+S.kpiLast = {};
+const LINE_KEYS = k => k === 'rodoviario' ? ['rod_santos', 'rod_adicionais'] : [k];
+const sum = a => a.reduce((s, x) => s + (x || 0), 0);
+const MONTHS = [...Array(12).keys()];
+const reduceMotion = () => window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+// preferencia da pessoa (Configuracoes › Meu perfil › Animar graficos e cards); desligada = nada anima, nem no clique
+const animOn = () => window.nexusAnim ? window.nexusAnim.enabled() : !reduceMotion();
+function seriesIndex(rows, extra) {
+  const idx = {};
+  (rows || []).forEach(x => { if (x && x.k && Array.isArray(x.v)) idx[x.k] = x.v; });
+  (extra || []).forEach(x => { if (x && x.k && Array.isArray(x.v) && !(x.k in idx)) idx[x.k] = x.v; });
+  return idx;
+}
+function seriesOf(idx, ks) {
+  const out = Array(12).fill(0);
+  ks.flatMap(LINE_KEYS).forEach(k => (idx[k] || []).forEach((v, i) => { out[i] += v || 0; }));
+  return out;
+}
+function scope(r) {
+  const orc = seriesIndex(r.linhas, r.rubricas), painel = S.tab === 'painel';
+  const cen = c => { const x = (r.cenarios || {})[c] || {}; return {idx: seriesIndex(x.linhas), ok: x.mensal_completo !== false && Array.isArray(x.linhas),
+    total: x.total || Array(12).fill(0), units: x.units || Array(12).fill(0)}; };
+  const b = cen('budget'), f = cen('forecast'), ks = painel ? S.sel.ks : null, m = painel ? S.sel.m : null;
+  return {orc, b, f, ks, m, cost: ks ? seriesOf(orc, ks) : r.mensal.total, sb: ks ? seriesOf(b.idx, ks) : b.total,
+          sf: ks ? seriesOf(f.idx, ks) : f.total, months: m == null ? MONTHS : [m], active: painel && (ks != null || m != null)};
+}
+const selLabel = r => [S.sel.l, S.sel.m != null ? r.mensal.rotulos[S.sel.m] : ''].filter(Boolean).join(' · ');
+const FMT = {mi: v => mi(v), sigmi: v => sig(v, x => mi(x)), unit: v => `R$ ${nf(v, 2)}`, int: v => nf(Math.round(v))};
+const cnt = (key, v, fmt) => `<strong data-cnt="${key}" data-v="${Number.isFinite(v) ? v : 0}" data-fmt="${fmt}">${FMT[fmt](v)}</strong>`;
 function kpisHtml() {
-  const k = res().kpi, ano = S.data.params.ano, simTag = S.sim ? ' <span class="bg-chip edicao">simulação</span>' : '';
-  const d = (v, f, inv) => `<span class="bg-delta ${v > 0 ? 'up' : v < 0 ? 'down' : ''}">${v > 0 ? '▲' : v < 0 ? '▼' : ''} ${f}</span>`;
-  return `<div class="bg-kpis">
-    <div class="bg-kpi main"><small>Custo total ${ano}${simTag}</small><strong>${mi(k.total)}</strong>${d(k.var_forecast_pct, `${spct(k.var_forecast_pct)} vs Forecast ${ano - 1}`)}</div>
-    <div class="bg-kpi"><small>1º semestre (H1)</small><strong>${mi(k.h1)}</strong><span>${pct(k.pct_h1, 0)} do ano · jan–jun</span><div class="bg-split"><i style="width:${(k.pct_h1 * 100).toFixed(1)}%"></i></div></div>
-    <div class="bg-kpi"><small>2º semestre (H2)</small><strong>${mi(k.h2)}</strong><span>${pct(1 - k.pct_h1, 0)} do ano · jul–dez</span></div>
-    <div class="bg-kpi"><small>vs Forecast ${ano - 1}</small><strong>${sig(k.var_forecast, x => mi(x))}</strong><span>Fcst ${String(ano - 1).slice(2)}: ${mi(k.forecast_anterior)}</span></div>
-    <div class="bg-kpi"><small>Custo por unit</small><strong>R$ ${nf(k.custo_unit, 2)}</strong>${d(k.var_cpu_forecast_pct, `${spct(k.var_cpu_forecast_pct)} vs Fcst ${String(ano - 1).slice(2)}`)}</div>
-    <div class="bg-kpi"><small>Contêineres</small><strong>${nf(k.conteineres)}</strong><span>${nf(k.units / 1e6, 1)} mi units · R$ ${nf(k.custo_cntr)} por contêiner</span></div>
+  const r = res(), k = r.kpi, ano = S.data.params.ano, sc = scope(r), simTag = S.sim ? ' <span class="bg-chip edicao">simulação</span>' : '';
+  const d = (v, f) => `<span class="bg-delta ${v > 0 ? 'up' : v < 0 ? 'down' : ''}">${v > 0 ? '▲' : v < 0 ? '▼' : ''} ${f}</span>`;
+  const yy = String(ano - 1).slice(2);
+  if (!sc.active) return `<div class="bg-kpis">
+    <div class="bg-kpi main" style="--i:0"><small>Custo total ${ano}${simTag}</small>${cnt('total', k.total, 'mi')}${d(k.var_forecast_pct, `${spct(k.var_forecast_pct)} vs Forecast ${ano - 1}`)}</div>
+    <div class="bg-kpi" style="--i:1"><small>1º semestre (H1)</small>${cnt('h1', k.h1, 'mi')}<span>${pct(k.pct_h1, 0)} do ano · jan–jun</span><div class="bg-split"><i style="width:${(k.pct_h1 * 100).toFixed(1)}%"></i></div></div>
+    <div class="bg-kpi" style="--i:2"><small>2º semestre (H2)</small>${cnt('h2', k.h2, 'mi')}<span>${pct(1 - k.pct_h1, 0)} do ano · jul–dez</span></div>
+    <div class="bg-kpi" style="--i:3"><small>vs Forecast ${ano - 1}</small>${cnt('var', k.var_forecast, 'sigmi')}<span>Fcst ${yy}${fcTag()}: ${mi(k.forecast_anterior)}</span></div>
+    <div class="bg-kpi" style="--i:4"><small>Custo por unit</small>${cnt('cpu', k.custo_unit, 'unit')}${d(k.var_cpu_forecast_pct, `${spct(k.var_cpu_forecast_pct)} vs Fcst ${yy}`)}</div>
+    <div class="bg-kpi" style="--i:5"><small>Contêineres</small>${cnt('cntr', k.conteineres, 'int')}<span>${nf(k.units / 1e6, 1)} mi units · R$ ${nf(k.custo_cntr)} por contêiner</span></div>
+  </div>`;
+  // Recorte: os seis cards passam a mostrar so o que foi selecionado
+  const lab = selLabel(r), ms = sc.months, tot = sum(ms.map(i => sc.cost[i]));
+  const fcOk = sc.f.ok || !sc.ks, fc = fcOk ? sum(ms.map(i => sc.sf[i])) : null;
+  const h1 = sum(sc.cost.slice(0, 6)), h2 = sum(sc.cost.slice(6)), hy = (h1 + h2) || 1, mOn = sc.m;
+  const units = sum(ms.map(i => r.mensal.units[i])), cntr = sum(ms.map(i => r.mensal.conteineres[i]));
+  const fu = sum(ms.map(i => sc.f.units[i])), cpu = units ? tot / units : 0, fcpu = fc != null && fu ? fc / fu : null;
+  const vf = fc != null && fc ? tot / fc - 1 : null;
+  return `<div class="bg-kpis sel">
+    <div class="bg-kpi main" style="--i:0"><small>Custo · ${E(lab)}${simTag}</small>${cnt('total', tot, 'mi')}${vf != null ? d(vf, `${spct(vf)} vs Forecast ${ano - 1}`) : '<span>Forecast mês a mês indisponível</span>'}</div>
+    <div class="bg-kpi${mOn != null && mOn < 6 ? ' on' : ''}" style="--i:1"><small>1º semestre (H1)${S.sel.l ? ' · seleção' : ''}</small>${cnt('h1', h1, 'mi')}<span>${pct(h1 / hy, 0)} da seleção · jan–jun</span><div class="bg-split"><i style="width:${(h1 / hy * 100).toFixed(1)}%"></i></div></div>
+    <div class="bg-kpi${mOn != null && mOn >= 6 ? ' on' : ''}" style="--i:2"><small>2º semestre (H2)${S.sel.l ? ' · seleção' : ''}</small>${cnt('h2', h2, 'mi')}<span>${pct(h2 / hy, 0)} da seleção · jul–dez</span></div>
+    <div class="bg-kpi" style="--i:3"><small>vs Forecast ${ano - 1}</small>${fc != null ? cnt('var', tot - fc, 'sigmi') : '<strong>–</strong>'}<span>${fc != null ? `Fcst ${yy}${fcTag()}: ${mi(fc)}` : 'Forecast mês a mês indisponível'}</span></div>
+    <div class="bg-kpi" style="--i:4"><small>Custo por unit</small>${cnt('cpu', cpu, 'unit')}${fcpu ? d(cpu / fcpu - 1, `${spct(cpu / fcpu - 1)} vs Fcst ${yy}`) : '<span>&nbsp;</span>'}</div>
+    <div class="bg-kpi" style="--i:5"><small>Contêineres${mOn != null ? ` · ${r.mensal.rotulos[mOn]}` : ''}</small>${cnt('cntr', cntr, 'int')}<span>${nf(units / 1e6, 1)} mi units · R$ ${nf(cntr ? tot / cntr : 0)} por contêiner</span></div>
   </div>`;
 }
+/* numeros dos cards sobem contando (como no Estoque Contabil: 900 ms, desaceleracao no fim); no recorte, partem do
+   valor anterior do mesmo card */
+function countUp(box, quick) {
+  if (!box || S.mask || !animOn()) return;
+  box.querySelectorAll('[data-cnt]').forEach(el => {
+    const key = el.dataset.cnt, to = Number(el.dataset.v), fmt = FMT[el.dataset.fmt], from = quick ? (S.kpiLast[key] ?? 0) : 0;
+    S.kpiLast[key] = to;
+    if (!fmt || from === to) return;
+    const t0 = performance.now(), dur = quick ? 520 : 1100, final = el.textContent;
+    const step = now => { const p = Math.min(1, (now - t0) / dur), e = 1 - Math.pow(1 - p, 3);
+      el.textContent = p < 1 ? fmt(from + (to - from) * e) : final; if (p < 1) requestAnimationFrame(step); };
+    el.textContent = fmt(from); requestAnimationFrame(step);
+  });
+}
+function revealKpis(quick) {
+  const box = document.getElementById('bg-kpis'); if (!box || !animOn()) return;
+  const grid = box.querySelector('.bg-kpis'); if (!grid) return;
+  grid.classList.add('rv'); if (quick) grid.classList.add('quick');
+  requestAnimationFrame(() => grid.classList.add('in'));
+  countUp(grid, quick);
+}
+// Apresentacao Final: slides no layout do MBR da Logistica Internacional (static/apresentacao/final.html)
+const FINAL_REV = '3';
+function finalHtml() {
+  return `<section class="bg-final"><div class="bg-final-bar"><p>Use as setas do teclado ou clique no slide para avançar.</p><div>
+    <button class="secondary" type="button" id="bg-final-full">${svgI('<path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/>')}Tela cheia</button>
+    <a class="secondary" href="/api/budget/final/apresentacao.html" download>${IC.down}Baixar HTML</a>
+    <a class="primary" href="/api/budget/final/apresentacao.pptx" download>${IC.down}Baixar PowerPoint</a>
+    <a class="secondary" href="/api/budget/final/planilha.xlsx" download>${IC.down}Baixar planilha</a></div></div>
+    <div class="bg-final-frame"><iframe id="bg-final-if" title="Apresentação Final" allow="fullscreen" src="/static/apresentacao/final.html?c=${FINAL_REV}"></iframe></div></section>`;
+}
+function bindFinal() {
+  const f = document.getElementById('bg-final-if');
+  document.getElementById('bg-final-full').onclick = () => { f.requestFullscreen?.(); f.focus(); };
+  f.onload = () => f.focus();
+}
+/* Forecast do ano anterior vem do 10+2 da Ferramenta de Controle enviada na aba MBR (mesmo numero da Apresentacao Final) */
+const fcTag = () => S.data?.forecast_base ? ` (${S.data.forecast_base.base})` : '';
 function body() {
   const b = document.getElementById('bg-body');
+  if (S.tab === 'resultados') { b.innerHTML = '<div id="bg-res"></div>'; window.nexusBudgetRes.mount(b.firstChild); return; }
+  if (S.tab === 'final') { b.innerHTML = finalHtml(); bindFinal(); return; }
   b.innerHTML = {painel: painelHtml, mensal: mensalHtml, comparativo: compHtml, premissas: premHtml, alertas: alertHtml, historico: histHtml}[S.tab]();
   ({premissas: bindPrem, mensal: bindMensal, alertas: bindAlert, historico: bindHist})[S.tab]?.();
+  if (S.tab === 'painel') { bindPainel(); if (S.intro) revealCharts(false); }
 }
 
-/* ---------------- graficos ---------------- */
+/* ---------------- graficos ----------------
+   Animacao (13/11/2026, modelo do Estoque Contabil): cada grafico ja vem com as animacoes pausadas e elas comecam
+   quando ele aparece na tela (IntersectionObserver): barras crescem (gy/gx, em sequencia por --i), linhas se desenham
+   (dr), pontos surgem (pp) e rotulos aparecem (fd). No recorte (clique), a troca e rapida (quick). */
 function niceStep(v) { if (v <= 0) return 1; const p = Math.pow(10, Math.floor(Math.log10(v))); const n = v / p; return (n <= 1 ? 1 : n <= 2 ? 2 : n <= 2.5 ? 2.5 : n <= 5 ? 5 : 10) * p; }
 function niceMax(v, n = 4) { const st = niceStep(v / n); return Math.ceil(v / st) * st; }
 function ticks(max, n = 4) { const st = niceStep(max / n), out = []; for (let v = 0; v <= max + st / 2; v += st) out.push(v); return out; }
 const tickTxt = (v, st) => nf(v, st % 1 ? (st % 0.5 ? 2 : 1) : 0);
 const tipAttr = html => ` data-bgtip="${E(html)}"`;
-function chartMonthly(r) {
-  const W = 1000, H = 270, L = 54, B = 30, T = 26, vals = r.mensal.total, max = niceMax(Math.max(...vals) * 1.1);
+const selAttr = (kind, val, l) => ` data-bgsel="${kind}" data-bgv="${E(val)}" data-bgl="${E(l || '')}"`;
+const hitsKs = ks => !S.sel.ks || !ks ? true : ks.flatMap(LINE_KEYS).some(k => S.sel.ks.flatMap(LINE_KEYS).includes(k));
+const dimCls = on => on ? '' : ' dim';
+const momTxt = v => v == null ? '' : `${v > 0 ? '+' : v < 0 ? '-' : ''}${nf(Math.abs(v) * 100, 0)}%`;
+function chartMonthly(r, sc) {
+  // faixa de cima: variacao mes a mes (%), linha dourada; faixa de baixo: custo do mes (barras)
+  const W = 1000, H = 306, L = 54, B = 30, PT = 20, PB = 76, T = 104, vals = sc.cost, max = niceMax(Math.max(...vals, 1) * 1.1);
   const pw = (W - L - 10) / 12, bw = pw * 0.62, y = v => H - B - (v / max) * (H - B - T), tk = ticks(max), st = (tk[1] || max) / 1e6;
-  let g = '';
+  const mom = vals.map((v, i) => i && vals[i - 1] ? v / vals[i - 1] - 1 : null), mv = mom.filter(v => v != null);
+  const lim = Math.max(0.05, ...mv.map(Math.abs)) * 1.15, py = v => PT + 12 + (1 - (v + lim) / (2 * lim)) * (PB - PT - 22);
+  const cx = i => L + i * pw + pw / 2;
+  let g = `<text x="${L - 8}" y="${py(0) + 4}" text-anchor="end" class="mut">0%</text>
+    <line x1="${L}" x2="${W - 10}" y1="${py(0)}" y2="${py(0)}" stroke="#d6b04a55" stroke-dasharray="3 5"/>`;
   tk.forEach(v => { const yy = y(v); g += `<line x1="${L}" x2="${W - 10}" y1="${yy}" y2="${yy}" stroke="var(--bg-grid)"/><text x="${L - 8}" y="${yy + 4}" text-anchor="end" class="mut">${tickTxt(v / 1e6, st)} mi</text>`; });
   vals.forEach((v, i) => {
-    const x = L + i * pw + (pw - bw) / 2, yy = y(v), h = H - B - yy, col = i < 6 ? 'var(--bg-h1)' : 'var(--bg-h2)';
-    const tip = `<b>${r.mensal.rotulos[i]} · ${i < 6 ? 'H1' : 'H2'}</b><br>Custo ${auto(v)}<br>${nf(r.mensal.conteineres[i])} contêineres · ${nf(r.mensal.units[i] / 1e6, 2)} mi units<small>Custo por unit R$ ${nf(r.mensal.custo_unit[i], 2)}</small>`;
-    g += `<path class="mk" d="M${x},${H - B} V${yy + 4} Q${x},${yy} ${x + 4},${yy} H${x + bw - 4} Q${x + bw},${yy} ${x + bw},${yy + 4} V${H - B} Z" fill="${col}"/>`;
-    g += `<text x="${x + bw / 2}" y="${yy - 7}" text-anchor="middle" class="lbl">${nf(v / 1e6, 1)} mi</text>`;
-    g += `<text x="${x + bw / 2}" y="${H - 10}" text-anchor="middle">${r.mensal.rotulos[i].split('/')[0]}</text>`;
-    g += `<rect class="hit" x="${L + i * pw}" y="${T - 10}" width="${pw}" height="${H - B - T + 10}"${tipAttr(tip)}/>`;
+    const x = L + i * pw + (pw - bw) / 2, yy = y(v), col = i < 6 ? 'var(--bg-h1)' : 'var(--bg-h2)', on = sc.m == null || sc.m === i;
+    g += `<path class="mk gy${dimCls(on)}" style="--i:${i}" d="M${x},${H - B} V${yy + 4} Q${x},${yy} ${x + 4},${yy} H${x + bw - 4} Q${x + bw},${yy} ${x + bw},${yy + 4} V${H - B} Z" fill="${col}"/>`;
+    g += `<text x="${x + bw / 2}" y="${yy - 7}" text-anchor="middle" class="lbl fd${dimCls(on)}" style="--i:${i}">${nf(v / 1e6, 1)} mi</text>`;
+    g += `<text x="${x + bw / 2}" y="${H - 10}" text-anchor="middle"${sc.m === i ? ' class="lbl"' : ''}>${r.mensal.rotulos[i].split('/')[0]}</text>`;
   });
-  return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Custo mensal">${g}<line x1="${L}" x2="${W - 10}" y1="${H - B}" y2="${H - B}" stroke="#4a5a5e"/></svg>`;
+  // linha dourada da variacao (de fevereiro em diante), desenhada depois das barras
+  const pts = mom.map((v, i) => v == null ? null : [cx(i), py(v)]).filter(Boolean);
+  if (pts.length > 1) g += `<path class="gold dr" pathLength="1" d="${pts.map((p, j) => `${j ? 'L' : 'M'}${p[0]},${p[1]}`).join(' ')}"/>`;
+  mom.forEach((v, i) => {
+    if (v == null) return;
+    const up = v >= 0, on = sc.m == null || sc.m === i;
+    g += `<circle class="gold-p pp${dimCls(on)}" style="--i:${i}" cx="${cx(i)}" cy="${py(v)}" r="4"/>`;
+    g += `<text class="gold-l fd${dimCls(on)}" style="--i:${i + 6}" x="${cx(i)}" y="${py(v) + (up ? -9 : 17)}" text-anchor="middle">${momTxt(v)}</text>`;
+  });
+  vals.forEach((v, i) => {
+    const tip = `<b>${r.mensal.rotulos[i]} · ${i < 6 ? 'H1' : 'H2'}${S.sel.l ? ` · ${E(S.sel.l)}` : ''}</b><br>Custo ${auto(v)}${mom[i] != null ? `<br>vs mês anterior: ${momTxt(mom[i])}` : '<br>Primeiro mês: sem variação'}<br>${nf(r.mensal.conteineres[i])} contêineres · ${nf(r.mensal.units[i] / 1e6, 2)} mi units<small>Clique para filtrar o painel por este mês</small>`;
+    g += `<rect class="hit sel" x="${L + i * pw}" y="${PT - 8}" width="${pw}" height="${H - B - PT + 8}"${tipAttr(tip)}${selAttr('m', i, r.mensal.rotulos[i])}/>`;
+  });
+  return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Custo mensal e variação mês a mês">${g}<line x1="${L}" x2="${W - 10}" y1="${H - B}" y2="${H - B}" stroke="#4a5a5e"/></svg>`;
 }
-function chartComposition(r) {
-  const it = r.graficos.composicao.itens, W = 560, rh = 27, H = it.length * rh + 8, LW = 250, max = Math.max(...it.map(i => i.v)) * 1.32;
+function chartComposition(r, sc) {
+  const base = r.graficos.composicao.itens, mt = sc.m == null ? null : r.mensal.total[sc.m] || 1;
+  const it = base.map(d => { if (sc.m == null) return d; const v = seriesOf(sc.orc, [d.k])[sc.m]; return {...d, v, pct: v / mt, usd: null}; });
+  const W = 560, rh = 27, H = it.length * rh + 8, LW = 250, max = Math.max(...it.map(i => i.v), 1) * 1.32;
   let g = '';
   it.forEach((d, i) => {
-    const yy = 4 + i * rh, w = Math.max(2, (d.v / max) * (W - LW - 8)), lab = d.usd ? `${auto(d.v)} (US$ ${nf(d.usd / 1e3, 0)} mil)` : auto(d.v);
-    g += `<text x="${LW - 10}" y="${yy + 16}" text-anchor="end">${E(d.l)} <tspan class="mut">(${nf(d.pct * 100, d.pct < 0.01 ? 1 : 0)}%)</tspan></text>`;
-    g += `<rect class="mk" x="${LW}" y="${yy + 4}" width="${w}" height="${rh - 9}" rx="4" fill="var(--bg-bar)"/>`;
-    g += `<text x="${LW + w + 7}" y="${yy + 16}" class="lbl">${lab}</text>`;
-    g += `<rect class="hit" x="0" y="${yy}" width="${W}" height="${rh}"${tipAttr(`<b>${E(d.l)}</b><br>${auto(d.v)} no ano · ${pct(d.pct)} do total`)}/>`;
+    const yy = 4 + i * rh, w = Math.max(2, (d.v / max) * (W - LW - 8)), lab = d.usd ? `${auto(d.v)} (US$ ${nf(d.usd / 1e3, 0)} mil)` : auto(d.v), on = hitsKs([d.k]);
+    g += `<text x="${LW - 10}" y="${yy + 16}" text-anchor="end" class="${on && S.sel.ks ? 'lbl' : ''}${dimCls(on)}">${E(d.l)} <tspan class="mut">(${nf(d.pct * 100, d.pct < 0.01 ? 1 : 0)}%)</tspan></text>`;
+    g += `<rect class="mk gx${dimCls(on)}" style="--i:${i}" x="${LW}" y="${yy + 4}" width="${w}" height="${rh - 9}" rx="4" fill="var(--bg-bar)"/>`;
+    g += `<text x="${LW + w + 7}" y="${yy + 16}" class="lbl fd${dimCls(on)}" style="--i:${i}">${lab}</text>`;
+    g += `<rect class="hit sel" x="0" y="${yy}" width="${W}" height="${rh}"${tipAttr(`<b>${E(d.l)}</b><br>${auto(d.v)} ${sc.m == null ? 'no ano' : `em ${r.mensal.rotulos[sc.m]}`} · ${pct(d.pct)} do total<small>Clique para filtrar o painel por esta rubrica</small>`)}${selAttr('ks', d.k, d.l)}/>`;
   });
   return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Composição do custo">${g}</svg>`;
 }
-function chartVariation(r) {
-  const it = r.graficos.variacao.itens, W = 560, rh = 34, H = it.length * rh + 10, LW = 230, ext = Math.max(...it.map(i => Math.abs(i.v))) * 1.45 || 1;
+function variationItems(r, sc) {
+  if (sc.m == null) return r.graficos.variacao.itens;
+  if (!sc.f.ok) return null;
+  const all = (r.comparativo || []).map(c => ({l: c.l, ks: [c.k], v: seriesOf(sc.orc, [c.k])[sc.m] - seriesOf(sc.f.idx, [c.k])[sc.m]}))
+    .sort((a, b) => Math.abs(b.v) - Math.abs(a.v));
+  const top = all.slice(0, 7), rest = all.slice(7).filter(x => x.v);
+  if (rest.length) top.push({l: `Demais (${rest.length} rubricas)`, ks: rest.flatMap(x => x.ks), v: sum(rest.map(x => x.v))});
+  return top.sort((a, b) => b.v - a.v);
+}
+function chartVariation(r, sc) {
+  const it = variationItems(r, sc);
+  if (!it) return '<p class="bg-nd">O Forecast do ano anterior mês a mês não está disponível nesta versão (o anual foi alterado em Premissas).</p>';
+  const W = 560, rh = 34, H = it.length * rh + 10, LW = 230;
   const pos = Math.max(0, ...it.map(i => i.v)), neg = Math.max(0, ...it.map(i => -i.v)), span = W - LW - 10, lab = 92;
-  const sc = (span - (neg ? lab : 8) - (pos ? lab : 8)) / ((pos + neg) || 1), z = LW + (neg ? lab : 8) + neg * sc;
+  const sc2 = (span - (neg ? lab : 8) - (pos ? lab : 8)) / ((pos + neg) || 1), z = LW + (neg ? lab : 8) + neg * sc2;
   let g = `<line x1="${z}" x2="${z}" y1="0" y2="${H}" stroke="#4a5a5e"/>`;
   it.forEach((d, i) => {
-    const yy = 5 + i * rh, w = Math.abs(d.v) * sc, x = d.v >= 0 ? z : z - w, col = d.v >= 0 ? 'var(--bg-up)' : 'var(--bg-down)';
-    const lab = sig(d.v, v => v >= 999500 ? mi(v) : `R$ ${nf(v / 1e3, 0)} mil`);
-    g += `<text x="${LW - 10}" y="${yy + 19}" text-anchor="end">${E(d.l)}</text>`;
-    g += `<rect class="mk" x="${x}" y="${yy + 6}" width="${Math.max(2, w)}" height="${rh - 12}" rx="4" fill="${col}"/>`;
-    g += `<text x="${d.v >= 0 ? x + w + 6 : x - 6}" y="${yy + 19}" text-anchor="${d.v >= 0 ? 'start' : 'end'}" class="lbl">${lab}</text>`;
-    g += `<rect class="hit" x="0" y="${yy}" width="${W}" height="${rh}"${tipAttr(`<b>${E(d.l)}</b><br>${lab} vs Forecast anterior`)}/>`;
+    const yy = 5 + i * rh, w = Math.abs(d.v) * sc2, x = d.v >= 0 ? z : z - w, col = d.v >= 0 ? 'var(--bg-up)' : 'var(--bg-down)', on = hitsKs(d.ks);
+    const lb = sig(d.v, v => v >= 999500 ? mi(v) : `R$ ${nf(v / 1e3, 0)} mil`);
+    g += `<text x="${LW - 10}" y="${yy + 19}" text-anchor="end" class="${on && S.sel.ks ? 'lbl' : ''}${dimCls(on)}">${E(d.l)}</text>`;
+    g += `<rect class="mk ${d.v >= 0 ? 'gx' : 'gxr'}${dimCls(on)}" style="--i:${i}" x="${x}" y="${yy + 6}" width="${Math.max(2, w)}" height="${rh - 12}" rx="4" fill="${col}"/>`;
+    g += `<text x="${d.v >= 0 ? x + w + 6 : x - 6}" y="${yy + 19}" text-anchor="${d.v >= 0 ? 'start' : 'end'}" class="lbl fd${dimCls(on)}" style="--i:${i}">${lb}</text>`;
+    g += `<rect class="hit sel" x="0" y="${yy}" width="${W}" height="${rh}"${tipAttr(`<b>${E(d.l)}</b><br>${lb} vs Forecast anterior${sc.m != null ? ` (${r.mensal.rotulos[sc.m]})` : ''}<small>Clique para filtrar o painel por esta rubrica</small>`)}${selAttr('ks', (d.ks || []).join(','), d.l)}/>`;
   });
   return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Variação por rubrica">${g}</svg>`;
 }
-function chartCompare(r) {
-  const it = r.graficos.comparacao.itens, W = 560, H = 290, L = 36, B = 28, T = 22, max = niceMax(Math.max(...it.flatMap(i => [i.atual, i.budget, i.forecast])) / 1e6 * 1.1);
+function chartCompare(r, sc) {
+  const it = r.graficos.comparacao.itens.map(d => sc.m == null ? d : {...d,
+    atual: seriesOf(sc.orc, d.ks || [])[sc.m], budget: sc.b.ok ? seriesOf(sc.b.idx, d.ks || [])[sc.m] : 0, forecast: sc.f.ok ? seriesOf(sc.f.idx, d.ks || [])[sc.m] : 0});
+  const W = 560, H = 290, L = 36, B = 28, T = 22, max = niceMax(Math.max(...it.flatMap(i => [i.atual, i.budget, i.forecast]), 1) / 1e6 * 1.1);
   const pw = (W - L - 6) / it.length, bw = pw * 0.22, y = v => H - B - (v / max) * (H - B - T), tk = ticks(max), st = tk[1] || max;
   let g = '';
   tk.forEach(v => { const yy = y(v); g += `<line x1="${L}" x2="${W - 6}" y1="${yy}" y2="${yy}" stroke="var(--bg-grid)"/><text x="${L - 6}" y="${yy + 4}" text-anchor="end" class="mut">${tickTxt(v, st)}</text>`; });
   it.forEach((d, i) => {
-    const x0 = L + i * pw + pw * 0.14;
+    const x0 = L + i * pw + pw * 0.14, on = hitsKs(d.ks);
     [['atual', 'var(--bg-c27)'], ['budget', 'var(--bg-cb)'], ['forecast', 'var(--bg-cf)']].forEach(([k, c], j) => {
       const v = d[k] / 1e6, x = x0 + j * (bw + 3), yy = y(v);
-      g += `<path class="mk" d="M${x},${H - B} V${yy + 3} Q${x},${yy} ${x + 3},${yy} H${x + bw - 3} Q${x + bw},${yy} ${x + bw},${yy + 3} V${H - B} Z" fill="${c}"/>`;
-      if (k === 'atual') g += `<text x="${x + bw / 2}" y="${yy - 6}" text-anchor="middle" class="lbl">${nf(v, 1)}</text>`;
+      g += `<path class="mk gy${dimCls(on)}" style="--i:${i * 3 + j}" d="M${x},${H - B} V${yy + 3} Q${x},${yy} ${x + 3},${yy} H${x + bw - 3} Q${x + bw},${yy} ${x + bw},${yy + 3} V${H - B} Z" fill="${c}"/>`;
+      if (k === 'atual') g += `<text x="${x + bw / 2}" y="${yy - 6}" text-anchor="middle" class="lbl fd${dimCls(on)}" style="--i:${i}">${nf(v, sc.m == null ? 1 : 2)}</text>`;
     });
-    g += `<text x="${x0 + bw * 1.5 + 3}" y="${H - 9}" text-anchor="middle">${E(d.l)}</text>`;
-    g += `<rect class="hit" x="${L + i * pw}" y="${T}" width="${pw}" height="${H - B - T}"${tipAttr(`<b>${E(d.l)}</b><br>Orçamento ${mi(d.atual)}<br>Budget anterior ${mi(d.budget)}<br>Forecast anterior ${mi(d.forecast)}`)}/>`;
+    g += `<text x="${x0 + bw * 1.5 + 3}" y="${H - 9}" text-anchor="middle" class="${on && S.sel.ks ? 'lbl' : ''}${dimCls(on)}">${E(d.l)}</text>`;
+    g += `<rect class="hit sel" x="${L + i * pw}" y="${T}" width="${pw}" height="${H - B - T}"${tipAttr(`<b>${E(d.l)}${sc.m != null ? ` · ${r.mensal.rotulos[sc.m]}` : ''}</b><br>Orçamento ${mi(d.atual)}<br>Budget anterior ${mi(d.budget)}<br>Forecast anterior ${mi(d.forecast)}<small>Clique para filtrar o painel por esta rubrica</small>`)}${selAttr('ks', (d.ks || []).join(','), d.l)}/>`;
   });
   return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Comparação com o ano anterior">${g}<line x1="${L}" x2="${W - 6}" y1="${H - B}" y2="${H - B}" stroke="#4a5a5e"/></svg>`;
 }
-function chartUnit(r) {
-  const v = r.mensal.custo_unit, ref = r.graficos.custo_unit.ref, W = 560, H = 290, L = 44, B = 28, T = 24;
-  let lo = Math.min(...v, ref), hi = Math.max(...v, ref); const st0 = niceStep(((hi - lo) * 1.4 || 0.4) / 4); lo = Math.floor((lo - st0 * 0.4) / st0) * st0; hi = Math.ceil((hi + st0 * 0.4) / st0) * st0;
-  const pw = (W - L - 16) / 11, x = i => L + 8 + i * pw, y = val => H - B - (val - lo) / (hi - lo) * (H - B - T);
+function unitRef(r, sc) {
+  if (!sc.ks) return {ref: r.graficos.custo_unit.ref, rot: r.graficos.custo_unit.ref_rotulo};
+  const u = sum(sc.b.units), ref = sc.b.ok && u ? sum(sc.sb) / u : null;
+  return {ref, rot: ref != null ? `Média Budget ${r.ano - 1} da seleção (R$ ${nf(ref, 2)})` : 'Budget anterior mês a mês indisponível'};
+}
+function chartUnit(r, sc) {
+  const v = sc.ks ? sc.cost.map((c, i) => r.mensal.units[i] ? c / r.mensal.units[i] : 0) : r.mensal.custo_unit, {ref} = unitRef(r, sc);
+  const W = 560, H = 290, L = 44, B = 28, T = 24, dec = Math.max(...v) < 0.1 ? 3 : 2;
+  let lo = Math.min(...v, ref ?? Infinity), hi = Math.max(...v, ref ?? -Infinity); const st0 = niceStep(((hi - lo) * 1.4 || Math.max(hi, 0.01) * 0.4) / 4); lo = Math.max(0, Math.floor((lo - st0 * 0.4) / st0) * st0); hi = Math.ceil((hi + st0 * 0.4) / st0) * st0 || st0;
+  const pw = (W - L - 16) / 11, x = i => L + 8 + i * pw, y = val => H - B - (val - lo) / ((hi - lo) || 1) * (H - B - T);
   let g = '';
-  for (let val = lo; val <= hi + st0 / 2; val += st0) { const yy = y(val); g += `<line x1="${L}" x2="${W - 6}" y1="${yy}" y2="${yy}" stroke="var(--bg-grid)"/><text x="${L - 6}" y="${yy + 4}" text-anchor="end" class="mut">${nf(val, 2)}</text>`; }
-  g += `<line x1="${L}" x2="${W - 6}" y1="${y(ref)}" y2="${y(ref)}" stroke="#8C9DA4" stroke-width="1.5" stroke-dasharray="6 5"/>`;
-  g += `<path d="${v.map((val, i) => `${i ? 'L' : 'M'}${x(i)},${y(val)}`).join(' ')}" fill="none" stroke="var(--bg-bar)" stroke-width="2.5" stroke-linejoin="round"/>`;
+  for (let val = lo; val <= hi + st0 / 2; val += st0) { const yy = y(val); g += `<line x1="${L}" x2="${W - 6}" y1="${yy}" y2="${yy}" stroke="var(--bg-grid)"/><text x="${L - 6}" y="${yy + 4}" text-anchor="end" class="mut">${nf(val, dec)}</text>`; }
+  if (ref != null) g += `<line class="fd" style="--i:0" x1="${L}" x2="${W - 6}" y1="${y(ref)}" y2="${y(ref)}" stroke="#8C9DA4" stroke-width="1.5" stroke-dasharray="6 5"/>`;
+  g += `<path class="dr" pathLength="1" d="${v.map((val, i) => `${i ? 'L' : 'M'}${x(i)},${y(val)}`).join(' ')}" fill="none" stroke="var(--bg-bar)" stroke-width="2.5" stroke-linejoin="round"/>`;
   v.forEach((val, i) => {
-    g += `<circle class="mk" cx="${x(i)}" cy="${y(val)}" r="4.5" fill="var(--bg-bar)" stroke="var(--bg-card)" stroke-width="2"/>`;
-    const up = i === 0 ? val >= v[1] : val >= v[i - 1];   // sobe = rotulo acima; desce = abaixo (todos os pontos com rotulo)
-    g += `<text x="${x(i)}" y="${y(val) + (up ? -11 : 19)}" text-anchor="middle" class="lbl">${nf(val, 2)}</text>`;
-    g += `<text x="${x(i)}" y="${H - 9}" text-anchor="middle">${r.mensal.rotulos[i].split('/')[0]}</text>`;
-    g += `<rect class="hit" x="${x(i) - pw / 2}" y="${T}" width="${pw}" height="${H - B - T}"${tipAttr(`<b>${r.mensal.rotulos[i]}</b><br>Custo por unit R$ ${nf(val, 2)}<small>Referência ${E(r.graficos.custo_unit.ref_rotulo)}</small>`)}/>`;
+    const on = sc.m == null || sc.m === i;
+    g += `<circle class="mk pp${dimCls(on)}${sc.m === i ? ' big' : ''}" style="--i:${i}" cx="${x(i)}" cy="${y(val)}" r="${sc.m === i ? 6.5 : 4.5}" fill="var(--bg-bar)" stroke="var(--bg-card)" stroke-width="2"/>`;
+    const up = i === 0 ? val >= v[1] : val >= v[i - 1];
+    g += `<text x="${x(i)}" y="${y(val) + (up ? -11 : 19)}" text-anchor="middle" class="lbl fd${dimCls(on)}" style="--i:${i}">${nf(val, dec)}</text>`;
+    g += `<text x="${x(i)}" y="${H - 9}" text-anchor="middle"${sc.m === i ? ' class="lbl"' : ''}>${r.mensal.rotulos[i].split('/')[0]}</text>`;
+    g += `<rect class="hit sel" x="${x(i) - pw / 2}" y="${T}" width="${pw}" height="${H - B - T}"${tipAttr(`<b>${r.mensal.rotulos[i]}${S.sel.l ? ` · ${E(S.sel.l)}` : ''}</b><br>Custo por unit R$ ${nf(val, dec)}<small>Clique para filtrar o painel por este mês</small>`)}${selAttr('m', i, r.mensal.rotulos[i])}/>`;
   });
   return `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Custo por unit">${g}</svg>`;
 }
+function selBarHtml(r) {
+  if (S.sel.m == null && !S.sel.ks) return `<div class="bg-selbar idle">${IC.info}<span>Clique numa barra, num ponto ou numa rubrica para filtrar todo o painel.</span></div>`;
+  const chip = (txt, what) => `<button type="button" class="bg-selchip" data-bgclr="${what}" title="Tirar este filtro">${E(txt)}<b aria-hidden="true">×</b></button>`;
+  return `<div class="bg-selbar">${IC.sliders}<span>Filtrando o painel por</span>${S.sel.l ? chip(S.sel.l, 'ks') : ''}${S.sel.m != null ? chip(r.mensal.rotulos[S.sel.m], 'm') : ''}
+    <button type="button" class="bg-selclear" data-bgclr="all">Limpar seleção</button></div>`;
+}
 function painelHtml() {
-  const r = res(), g = r.graficos, ano = r.ano;
+  const r = res(), g = r.graficos, ano = r.ano, sc = scope(r), mLab = sc.m != null ? r.mensal.rotulos[sc.m] : '';
   const lg = items => `<div class="bg-legend">${items.map(([c, l, cls]) => `<span><i class="${cls || ''}" style="${cls ? '' : `background:${c}`}"></i>${l}</span>`).join('')}</div>`;
-  return `<div class="bg-grid">
-    <section class="bg-chart wide"><div class="bg-chart-head"><div><h3>${E(g.mensal.titulo)} (R$ milhões)</h3><p class="sub">${E(g.mensal.sub)}</p></div>${lg([['var(--bg-h1)', 'H1 (jan–jun)'], ['var(--bg-h2)', 'H2 (jul–dez)']])}</div>${chartMonthly(r)}</section>
-    <section class="bg-chart"><h3>${E(g.composicao.titulo)}</h3><p class="sub">${E(g.composicao.sub)}</p>${chartComposition(r)}</section>
-    <section class="bg-chart"><div class="bg-chart-head"><div><h3>${E(g.variacao.titulo)}</h3><p class="sub">${E(g.variacao.sub)}</p></div>${lg([['var(--bg-up)', 'Aumento de custo'], ['var(--bg-down)', 'Redução de custo']])}</div>${chartVariation(r)}</section>
-    <section class="bg-chart"><div class="bg-chart-head"><div><h3>${E(g.comparacao.titulo)} (R$ milhões)</h3><p class="sub">${E(g.comparacao.sub)}</p></div></div>
-      ${lg([['var(--bg-c27)', `Orçamento ${ano}`], ['var(--bg-cb)', `Budget ${ano - 1}`], ['var(--bg-cf)', `Forecast ${ano - 1}`]])}${chartCompare(r)}</section>
-    <section class="bg-chart"><div class="bg-chart-head"><div><h3>${E(g.custo_unit.titulo)} (R$)</h3><p class="sub">${E(g.custo_unit.sub)}</p></div></div>
-      ${lg([['var(--bg-bar)', `Custo por unit ${ano}`], ['', E(g.custo_unit.ref_rotulo), 'dash']])}${chartUnit(r)}</section>
+  const ur = unitRef(r, sc), selT = S.sel.l ? ` · ${E(S.sel.l)}` : '';
+  return `${selBarHtml(r)}<div class="bg-grid">
+    <section class="bg-chart wide" data-rv="mensal"><div class="bg-chart-head"><div><h3>${E(g.mensal.titulo)}${selT} (R$ milhões)</h3><p class="sub">${S.sel.l ? `Custo de ${E(S.sel.l)} mês a mês` : E(g.mensal.sub)}</p></div>${lg([['var(--bg-h1)', 'H1 (jan–jun)'], ['var(--bg-h2)', 'H2 (jul–dez)'], ['', 'Variação mês a mês (%)', 'gold']])}</div>${chartMonthly(r, sc)}</section>
+    <section class="bg-chart" data-rv="composicao"><h3>${E(g.composicao.titulo)}${mLab ? ` · ${mLab}` : ''}</h3><p class="sub">${mLab ? `Custo de cada rubrica em ${mLab}` : E(g.composicao.sub)}</p>${chartComposition(r, sc)}</section>
+    <section class="bg-chart" data-rv="variacao"><div class="bg-chart-head"><div><h3>${mLab ? `${mLab} × mesmo mês do Forecast ${ano - 1}` : E(g.variacao.titulo)}</h3><p class="sub">${E(g.variacao.sub)}</p></div>${lg([['var(--bg-up)', 'Aumento de custo'], ['var(--bg-down)', 'Redução de custo']])}</div>${chartVariation(r, sc)}</section>
+    <section class="bg-chart" data-rv="comparacao"><div class="bg-chart-head"><div><h3>${E(g.comparacao.titulo)}${mLab ? ` · ${mLab}` : ''} (R$ milhões)</h3><p class="sub">${E(g.comparacao.sub)}</p></div></div>
+      ${lg([['var(--bg-c27)', `Orçamento ${ano}`], ['var(--bg-cb)', `Budget ${ano - 1}`], ['var(--bg-cf)', `Forecast ${ano - 1}`]])}${chartCompare(r, sc)}</section>
+    <section class="bg-chart" data-rv="unit"><div class="bg-chart-head"><div><h3>${E(g.custo_unit.titulo)}${selT} (R$)</h3><p class="sub">${S.sel.l ? `Custo de ${E(S.sel.l)} dividido pelas units de cada mês` : E(g.custo_unit.sub)}</p></div></div>
+      ${lg([['var(--bg-bar)', `Custo por unit ${ano}`], ['', E(ur.rot), 'dash']])}${chartUnit(r, sc)}</section>
   </div>`;
+}
+/* Revela cada grafico quando ele aparece na tela; no recorte (quick) todos ja aparecem, com a troca rapida */
+let rvObserver = null;
+function revealCharts(quick) {
+  const box = document.getElementById('bg-body'); if (!box || !animOn()) return;
+  const cards = [...box.querySelectorAll('.bg-chart[data-rv]')];
+  rvObserver?.disconnect(); rvObserver = null;
+  cards.forEach(c => { c.classList.add('rv'); if (quick) c.classList.add('quick'); });
+  if (quick || reduceMotion() || !('IntersectionObserver' in window)) { requestAnimationFrame(() => cards.forEach(c => c.classList.add('in'))); return; }
+  rvObserver = new IntersectionObserver(es => es.forEach(e => { if (e.isIntersecting) { e.target.classList.add('in'); rvObserver.unobserve(e.target); } }), {threshold: 0.25});
+  cards.forEach(c => rvObserver.observe(c));
+}
+function applySel(kind, val, l) {
+  if (kind === 'm') { const i = Number(val); S.sel.m = S.sel.m === i ? null : i; }
+  else if (kind === 'ks') { const ks = String(val).split(',').filter(Boolean); const same = S.sel.ks && S.sel.ks.join(',') === ks.join(',');
+    S.sel.ks = same ? null : ks; S.sel.l = same ? '' : l; }
+  refreshPainel();
+}
+function clearSel(what) {
+  if (what === 'm' || what === 'all') S.sel.m = null;
+  if (what === 'ks' || what === 'all') { S.sel.ks = null; S.sel.l = ''; }
+  refreshPainel();
+}
+function refreshPainel() {
+  const k = document.getElementById('bg-kpis'); if (k) { k.innerHTML = kpisHtml(); revealKpis(true); }
+  const b = document.getElementById('bg-body'); if (b && S.tab === 'painel') { b.innerHTML = painelHtml(); revealCharts(true); }
+}
+function bindPainel() {
+  const b = document.getElementById('bg-body'); if (!b || b.dataset.bgPainel) return;
+  b.dataset.bgPainel = '1';
+  b.addEventListener('click', e => {
+    if (S.tab !== 'painel') return;
+    const c = e.target.closest('[data-bgclr]'); if (c) { clearSel(c.dataset.bgclr); return; }
+    const t = e.target.closest('[data-bgsel]'); if (t) applySel(t.dataset.bgsel, t.dataset.bgv, t.dataset.bgl);
+  });
 }
 
 /* ---------------- resumo mensal (rubricas abertas nas linhas de detalhe) ---------------- */
@@ -257,7 +453,7 @@ function mensalCenHtml(cen) {
   rows += ind('Contêineres', c.conteineres, x => nf(x));
   if (c.units && c.total) { const u1 = sum(c.units.slice(0, 6)); rows += ind('Custo por unit (R$)', c.custo_unit, x => nf(x, 2), [c.h1 / u1, (c.total_anual - c.h1) / (c.units_anual - u1), c.total_anual / c.units_anual]); }
   return `<div class="bg-table clean"><table><thead><tr><th>${E(nome)} · linha de custo</th>${head}<th>H1</th><th>H2</th><th>Total ${a}</th><th>% do total</th></tr></thead><tbody>${rows}</tbody></table></div>
-    <p class="bg-foot">${E(nome)} mês a mês: ${E((S.data.params.anterior_mensal || {}).fonte || 'Ferramenta de Controle do ano anterior')}. O total anual é o do Comparativo; "n/d" aparece quando o anual da rubrica foi alterado e o mês a mês deixou de conferir.
+    <p class="bg-foot">${E(nome)} mês a mês: ${cen === 'forecast' && S.data.forecast_base ? `${E(S.data.forecast_base.rotulo)} (Actual dos meses fechados e Forecast dos demais), da Ferramenta de Controle enviada na aba MBR` : E((S.data.params.anterior_mensal || {}).fonte || 'Ferramenta de Controle do ano anterior')}. O total anual é o do Comparativo; "n/d" aparece quando o anual da rubrica foi alterado e o mês a mês deixou de conferir.
     O rodoviário aparece dividido em frete Santos/Extrema e adicionais (ajudantes, escolta, travas, estadias, Santos-Louveira e outros).</p>`;
 }
 function mensalOrcHtml() {
@@ -297,12 +493,12 @@ function compHtml() {
   const pc = (v, base) => base ? `<span class="${v > 0 ? 'pos' : v < 0 ? 'neg' : ''}">${spct(v, 0)}</span>` : '–';
   const rows = r.comparativo.map(c => `<tr><td>${E(c.l)}</td><td><b>${auto(c.atual)}</b></td><td>${auto(c.budget)}</td><td>${auto(c.forecast)}</td>
     <td class="h">${vc(c.var_f)}</td><td class="h">${pc(c.var_f_pct, c.forecast)}</td><td>${vc(c.var_b)}</td><td>${pc(c.var_b_pct, c.budget)}</td><td class="note">${E(c.explica)}</td></tr>`).join('');
-  return `<div class="bg-table"><table><thead><tr><th>Rubrica</th><th>Orçamento ${a}</th><th>Budget ${a - 1}</th><th>Forecast ${a - 1}</th><th>Var. vs Forecast</th><th>%</th><th>Var. vs Budget</th><th>%</th><th style="text-align:left">O que explica</th></tr></thead><tbody>${rows}
+  return `<div class="bg-table"><table><thead><tr><th>Rubrica</th><th>Orçamento ${a}</th><th>Budget ${a - 1}</th><th>Forecast ${a - 1}${fcTag()}</th><th>Var. vs Forecast</th><th>%</th><th>Var. vs Budget</th><th>%</th><th style="text-align:left">O que explica</th></tr></thead><tbody>${rows}
     <tr class="tot"><td>Custo total</td><td>${auto(k.total)}</td><td>${auto(k.budget_anterior)}</td><td>${auto(k.forecast_anterior)}</td><td>${sig(k.var_forecast, auto)}</td><td>${spct(k.var_forecast_pct)}</td><td>${sig(k.var_budget, auto)}</td><td>${spct(k.var_budget_pct)}</td><td></td></tr>
     <tr><td>Volume (units)</td><td>${nf(k.units)}</td><td>${nf(k.volume_budget)}</td><td>${nf(k.volume_forecast)}</td><td>${sig(k.units - k.volume_forecast, nf)}</td><td>${pc(k.units / k.volume_forecast - 1, k.volume_forecast)}</td><td>${sig(k.units - k.volume_budget, nf)}</td><td>${pc(k.units / k.volume_budget - 1, k.volume_budget)}</td><td></td></tr>
     <tr><td>Custo por unit (R$)</td><td>${nf(k.custo_unit, 3)}</td><td>${nf(k.custo_unit_budget, 3)}</td><td>${nf(k.custo_unit_forecast, 3)}</td><td>${sig(k.custo_unit - k.custo_unit_forecast, x => nf(x, 3))}</td><td>${pc(k.var_cpu_forecast_pct, 1)}</td><td>${sig(k.custo_unit - k.custo_unit_budget, x => nf(x, 3))}</td><td>${pc(k.custo_unit / k.custo_unit_budget - 1, k.custo_unit_budget)}</td><td></td></tr>
   </tbody></table></div>
-  <p class="bg-foot">Vermelho = custo maior no ${a}; azul = menor. Budget e Forecast ${a - 1} existem só por rubrica (o rodoviário aparece no total). Os valores do ano anterior podem ser ajustados em Premissas.</p>`;
+  <p class="bg-foot">Vermelho = custo maior no ${a}; azul = menor. Budget e Forecast ${a - 1} existem só por rubrica (o rodoviário aparece no total). ${S.data.forecast_base ? `Forecast ${a - 1}: ${E(S.data.forecast_base.rotulo)}, da Ferramenta de Controle enviada na aba MBR.` : 'Os valores do ano anterior podem ser ajustados em Premissas.'}</p>`;
 }
 
 /* ---------------- premissas (editaveis, recalculo na hora) ---------------- */
@@ -328,21 +524,30 @@ function premHtml() {
   const curva = p.curva.map((v, i) => `<div><div class="bar${i > 5 ? ' h2' : ''}"><i style="height:${(v / Math.max(...p.curva) * 100).toFixed(1)}%"></i></div><small>${c.meses[i]}</small>
       <input data-p="c.${i}" inputmode="numeric" value="${nf(v)}" class="${v !== o.curva[i] ? 'chg' : ''}" aria-label="Recebimento de ${c.meses[i]}">
       <label class="uso"><input type="checkbox" data-p="u.${i}"${p.ajudantes_uso[i] ? ' checked' : ''}> ajud.</label></div>`).join('');
+  const fcLock = S.data.forecast_base ? ` disabled title="Vem do ${E(S.data.forecast_base.rotulo)} da Ferramenta de Controle (aba MBR)"` : '';
   const ant = c.rubricas.map(rb => `<div class="bg-trow" style="grid-template-columns:minmax(220px,1.6fr) 180px 180px"><div class="lab"><b>${E(rb.l)}</b></div>
       <input data-p="a.${rb.k}.budget" inputmode="decimal" value="${nf(p.anterior[rb.k].budget, 2)}" class="${p.anterior[rb.k].budget !== o.anterior[rb.k].budget ? 'chg' : ''}" aria-label="Budget">
-      <input data-p="a.${rb.k}.forecast" inputmode="decimal" value="${nf(p.anterior[rb.k].forecast, 2)}" class="${p.anterior[rb.k].forecast !== o.anterior[rb.k].forecast ? 'chg' : ''}" aria-label="Forecast"></div>`).join('');
+      <input data-p="a.${rb.k}.forecast" inputmode="decimal" value="${nf(p.anterior[rb.k].forecast, 2)}" class="${p.anterior[rb.k].forecast !== o.anterior[rb.k].forecast ? 'chg' : ''}" aria-label="Forecast"${fcLock}></div>`).join('');
+  // Tópicos recolhíveis, todos fechados ao abrir (19/11/2026, pedido do usuário); o que a pessoa abriu fica aberto
+  // enquanto ela está na página (S.premOpen), inclusive quando a tela é redesenhada.
+  const open = S.premOpen || (S.premOpen = new Set());
+  const sec = (id, title, desc, body) => `<section class="bg-sec bg-fold${open.has(id) ? ' open' : ''}" data-sec="${id}">
+    <header><button type="button" class="bg-fold-btn" data-fold="${id}" aria-expanded="${open.has(id)}"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg><h3>${title}</h3></button><span>${desc}</span></header>
+    <div class="bg-fold-body"${open.has(id) ? '' : ' hidden'}>${body}</div></section>`;
   return `<div id="bg-simbar" class="bg-simbar hidden"></div>
-  <section class="bg-sec"><header><h3>Premissas principais</h3><span>Mude um valor e o orçamento é recalculado na hora. Para guardar, salve como nova versão (a atual fica no histórico).</span></header>
-    <div class="bg-fields"><div class="bg-field"><label for="bgp-ano">Ano do orçamento</label><input id="bgp-ano" data-p="ano" inputmode="numeric" value="${ano}"></div>${grp('Principais')}</div></section>
-  <section class="bg-sec"><header><h3>Percentuais operacionais</h3><span>Participação de contêineres e processos em cada situação.</span></header><div class="bg-fields">${grp('Percentuais')}</div></section>
-  <section class="bg-sec"><header><h3>Tarifas</h3><span>Tarifa vigente no mês = base × (1 + reajuste a partir do mês de início) × câmbio (se USD).</span></header>
-    <div class="bg-trow head"><div>Tarifa</div><div>Base</div><div>Moeda</div><div>Reajuste a partir de</div><div>Tipo de reajuste</div><div>% fixo</div><div style="text-align:right">Vigente em dez</div></div>
-    ${CAT().tarifas.map(trow).join('')}</section>
-  <section class="bg-sec"><header><h3>Curva de recebimento (units por mês) e meses com ajudantes</h3><span>Total da curva: ${nf(p.curva.reduce((a, b) => a + b, 0))} units. O volume total é distribuído por esta curva.</span></header><div class="bg-curve">${curva}</div></section>
-  <section class="bg-sec"><header><h3>Ano anterior (Budget e Forecast ${ano - 1})</h3><span>Referências históricas para o comparativo; não entram no cálculo de ${ano}.</span></header>
-    <div class="bg-trow head" style="grid-template-columns:minmax(220px,1.6fr) 180px 180px"><div>Rubrica</div><div>Budget ${ano - 1}</div><div>Forecast ${ano - 1}</div></div>${ant}
+  <p class="bg-foot" style="margin:0 0 10px">Mude um valor e o orçamento é recalculado na hora. Para guardar, salve como nova versão (a atual fica no histórico).</p>
+  ${sec('principais', 'Premissas principais', 'Volume, câmbio, IPCA, AFRMM e seguro.',
+    `<div class="bg-fields"><div class="bg-field"><label for="bgp-ano">Ano do orçamento</label><input id="bgp-ano" data-p="ano" inputmode="numeric" value="${ano}"></div>${grp('Principais')}</div>`)}
+  ${sec('percentuais', 'Percentuais operacionais', 'Participação de contêineres e processos em cada situação.', `<div class="bg-fields">${grp('Percentuais')}</div>`)}
+  ${sec('tarifas', 'Tarifas', 'Tarifa vigente no mês = base × (1 + reajuste a partir do mês de início) × câmbio (se USD).',
+    `<div class="bg-trow head"><div>Tarifa</div><div>Base</div><div>Moeda</div><div>Reajuste a partir de</div><div>Tipo de reajuste</div><div>% fixo</div><div style="text-align:right">Vigente em dez</div></div>
+    ${CAT().tarifas.map(trow).join('')}`)}
+  ${sec('curva', 'Curva de recebimento (units por mês) e meses com ajudantes', `Total da curva: ${nf(p.curva.reduce((a, b) => a + b, 0))} units. O volume total é distribuído por esta curva.`,
+    `<div class="bg-curve">${curva}</div>`)}
+  ${sec('anterior', `Ano anterior (Budget e Forecast ${ano - 1})`, `Referências para o comparativo; não entram no cálculo de ${ano}.${S.data.forecast_base ? ` O Forecast vem do ${E(S.data.forecast_base.rotulo)} da Ferramenta de Controle (aba MBR).` : ''}`,
+    `<div class="bg-trow head" style="grid-template-columns:minmax(220px,1.6fr) 180px 180px"><div>Rubrica</div><div>Budget ${ano - 1}</div><div>Forecast ${ano - 1}</div></div>${ant}
     <div class="bg-trow" style="grid-template-columns:minmax(220px,1.6fr) 180px 180px"><div class="lab"><b>Volume (units)</b></div>
-      <input data-p="v.b" inputmode="numeric" value="${nf(p.volume_anterior.b)}"><input data-p="v.f" inputmode="numeric" value="${nf(p.volume_anterior.f)}"></div></section>`;
+      <input data-p="v.b" inputmode="numeric" value="${nf(p.volume_anterior.b)}"><input data-p="v.f" inputmode="numeric" value="${nf(p.volume_anterior.f)}"${fcLock}></div>`)}`;
 }
 function setPath(path, raw, el) {
   const p = S.draft, [kind, a, b] = path.split('.');
@@ -378,6 +583,11 @@ function bindPrem() {
     clearTimeout(S.simTimer); S.simTimer = setTimeout(simulate, 350);
   };
   b.addEventListener('input', onChange); b.addEventListener('change', onChange);
+  b.querySelectorAll('[data-fold]').forEach(btn => btn.addEventListener('click', () => {
+    const id = btn.dataset.fold, sec = btn.closest('.bg-fold'), body = sec.querySelector('.bg-fold-body');
+    const show = body.hidden; body.hidden = !show; sec.classList.toggle('open', show); btn.setAttribute('aria-expanded', String(show));
+    S.premOpen = S.premOpen || new Set(); if (show) S.premOpen.add(id); else S.premOpen.delete(id);
+  }));
   simbar();
 }
 async function simulate() {
@@ -466,7 +676,7 @@ const fmtAny = v => typeof v === 'number' ? (Math.abs(v) < 1 && v !== 0 ? nf(v *
 
 /* ---------------- vazio e upload ---------------- */
 function emptyHtml() {
-  return `<div class="bg-hero"><div><div class="eyebrow">ORÇAMENTO INBOUND · FISIA · LOGÍSTICA INTERNACIONAL</div><h1>Budget</h1>
+  return `<div class="bg-hero"><div><div class="eyebrow">ORÇAMENTO INBOUND · FISIA · LOGÍSTICA INTERNACIONAL</div><h1>Resultados</h1>
     <p>Orçamento Inbound montado a partir da planilha, com premissas editáveis, alertas e download no modelo oficial.</p></div></div>
     <div class="bg-empty"><div><h2>Comece o orçamento</h2>
       <p>Envie a planilha de orçamento (o MODELO do NexxusDoc, a planilha FISIA com Premissas e Orçamento, ou outra planilha: o sistema reconhece as premissas pelos rótulos e mostra uma prévia antes de gravar). Também dá para começar pelo modelo aprovado em 04/11/2026.</p>
@@ -563,5 +773,11 @@ document.addEventListener('mousemove', e => {
   tip.style.top = Math.max(10, e.clientY - h - 12) + 'px';
 });
 
-window.nexusBudget = {open, upload: f => uploadModal(f), reset: () => { S.home = null; S.cache = {}; }};
+// preload: tela de carregamento inicial (dados prontos antes do 1º clique; o desenho e a animação ficam para a entrada na página)
+async function preload() {
+  if (!allowed()) {
+    if (!S.mask) { const m = await api('/api/budget/mascarado'); S.home = m.home; S.data = m.dados; S.cur = 'mascarado'; S.mask = true; S.tab = 'painel'; }
+  } else if (!S.home) await loadHome();
+}
+window.nexusBudget = {open, preload, upload: f => uploadModal(f), reset: () => { S.home = null; S.cache = {}; }, _res: () => res(), _sel: () => S.sel};
 })();

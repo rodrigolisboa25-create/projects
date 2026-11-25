@@ -1,0 +1,552 @@
+{
+  "name": "NexxusDoc - Frete internacional",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "0 7-20/3 * * 1-5"
+            }
+          ]
+        }
+      },
+      "name": "Frete: a cada 3 horas",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ],
+      "notes": "Faturas de frete internacional da Centauro (Asia Shipping e DMS) no Gmail: guarda o PDF em NexxusDoc > frete > faturas e grava nexxusdoc_frete_n8n.json (só este fluxo escreve). Só lê o Gmail: nenhum e-mail é enviado.",
+      "notesInFlow": true
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://www.googleapis.com/drive/v3/files",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          }
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "q",
+              "value": "name = 'nexxusdoc_frete_n8n.json' and 'CONFIGURE_ID' in parents and trashed = false"
+            },
+            {
+              "name": "corpora",
+              "value": "drive"
+            },
+            {
+              "name": "driveId",
+              "value": "0AFFPxJzHkValUk9PVA"
+            },
+            {
+              "name": "includeItemsFromAllDrives",
+              "value": "true"
+            },
+            {
+              "name": "supportsAllDrives",
+              "value": "true"
+            },
+            {
+              "name": "fields",
+              "value": "files(id,name)"
+            }
+          ]
+        }
+      },
+      "name": "Frete: achar estado",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        260,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "try {\nconst f = $input.first().json.files || [];\nif (!f.length) throw new Error('Arquivo nexxusdoc_frete_n8n.json nao encontrado em Sua Area > Nexxus > NexxusDoc.');\nreturn [{ json: { id: f[0].id } }];\n} catch (erro) {\n  const m = erro && erro.message ? erro.message : (typeof erro === 'string' ? erro : JSON.stringify(erro));\n  throw new Error('[Frete: escolher estado] ' + m + (erro && erro.stack ? ' | ' + String(erro.stack).split('\\n').slice(0, 4).join(' / ') : ''));\n}"
+      },
+      "name": "Frete: escolher estado",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        520,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ 'https://www.googleapis.com/drive/v3/files/' + $json.id + '?alt=media&supportsAllDrives=true' }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "name": "Frete: baixar estado",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        780,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "https://gmail.googleapis.com/gmail/v1/users/me/threads",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "gmailOAuth2",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          }
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "q",
+              "value": "(subject:\"Fatura-Ref.DoCliente\" OR subject:\"FATURAMENTO DMS X SBF\") newer_than:45d"
+            },
+            {
+              "name": "maxResults",
+              "value": "100"
+            }
+          ]
+        }
+      },
+      "name": "Frete: listar conversas",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1040,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "try {\n\nconst est = $('Frete: baixar estado').first().json || {};\nconst threads = ($input.first().json.threads || []).map(t => t.id).filter(Boolean);\nconst conhecidas = {};\nfor (const [mid, f] of Object.entries(est.faturas || {})) conhecidas[f.conversa || mid] = f;\nconst aprov = est.aprovacoes || {};\nconst limite = Date.now() - 30 * 864e5;\nconst abrir = threads.filter(t => {\n  const f = conhecidas[t];\n  if (!f) return true;\n  if (aprov[t]) return false;\n  return Date.parse(f.recebido_em || 0) > limite;\n}).slice(0, 40);\nreturn abrir.length ? abrir.map(id => ({json: {threadId: id}})) : [{json: {dummy: true, _conversas: threads.length}}];\n\n} catch (erro) {\n  const m = erro && erro.message ? erro.message : (typeof erro === 'string' ? erro : JSON.stringify(erro));\n  throw new Error('[Frete: fila de conversas] ' + m + (erro && erro.stack ? ' | ' + String(erro.stack).split('\\n').slice(0, 4).join(' / ') : ''));\n}"
+      },
+      "name": "Frete: fila de conversas",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1300,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "40d4baf4-45f2-5d2e-9c42-2653f976892c",
+              "leftValue": "={{ $json.dummy ? 'nao' : 'sim' }}",
+              "rightValue": "sim",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "Frete: tem conversa?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        0,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ 'https://gmail.googleapis.com/gmail/v1/users/me/threads/' + $json.threadId }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "gmailOAuth2",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          },
+          "batching": {
+            "batch": {
+              "batchSize": 5,
+              "batchInterval": 300
+            }
+          }
+        },
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "format",
+              "value": "full"
+            },
+            {
+              "name": "fields",
+              "value": "id,messages(id,internalDate,snippet,payload(headers,filename,parts(filename,mimeType,body/attachmentId,parts(filename,mimeType,body/attachmentId,parts(filename,mimeType,body/attachmentId)))))"
+            }
+          ]
+        }
+      },
+      "name": "Frete: ler conversas",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        260,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "try {\n\nconst est = $('Frete: baixar estado').first().json || {};\nconst ja = est.faturas || {};\nconst agora = new Date().toISOString().slice(0, 19) + 'Z';\nconst hdr = (m, n) => (((m.payload || {}).headers || []).find(h => String(h.name).toLowerCase() === n) || {}).value || '';\nconst partes = p => { const out = []; const anda = x => { if (!x) return; if (x.filename) out.push(x); (x.parts || []).forEach(anda); }; anda(p); return out; };\nconst downloads = [], aprovacoes = {};\nlet lidas = 0;\nfor (const it of $input.all()) {\n  const t = it.json || {};\n  if (!t.id || !Array.isArray(t.messages)) continue;\n  lidas++;\n  let fatura = null;\n  for (const m of t.messages) {\n    const de = hdr(m, 'from').toLowerCase();\n    const agente = /br-asgroup\\.com/.test(de) ? 'asia' : /dmslog\\.com/.test(de) ? 'dms' : '';\n    if (agente && !fatura) {\n      const pdf = partes(m.payload).find(x => agente === 'asia' ? /^AR INV/i.test(x.filename) : /^ND_.*\\.pdf$/i.test(x.filename));\n      if (pdf && pdf.body && pdf.body.attachmentId) fatura = {mid: m.id, agente, anexo: pdf.filename, att: pdf.body.attachmentId,\n        recebido_em: new Date(Number(m.internalDate)).toISOString().slice(0, 19) + 'Z', assunto: hdr(m, 'subject').slice(0, 250)};\n      continue;\n    }\n    // aprovacao: resposta de alguem do Grupo SBF dizendo \"aprovada\" (sem \"nao aprovada\"/\"reprovada\")\n    if (fatura && /@(partner\\.)?gruposbf\\.com\\.br/.test(de) && /\\baprovad[ao]s?\\b/i.test(m.snippet || '') && !/(n[aã]o|reprovad)\\s*aprovad|reprovad/i.test(m.snippet || '')) {\n      const email = (de.match(/[a-z0-9._%+-]+@(partner\\.)?gruposbf\\.com\\.br/) || [''])[0];\n      if (!aprovacoes[t.id]) aprovacoes[t.id] = {por: email, em: new Date(Number(m.internalDate)).toISOString().slice(0, 19) + 'Z', mensagem: m.id,\n        trecho: String(m.snippet || '').split(/\\bAtt\\b|Em (seg|ter|qua|qui|sex|s[aá]b|dom)\\./)[0].trim().slice(0, 160)};\n    }\n  }\n  if (fatura && !ja[fatura.mid]) downloads.push({...fatura, conversa: t.id, nome: fatura.mid + '_' + fatura.anexo.replace(/[\\\\/:*?\"<>|]/g, '_')});\n}\nconst out = downloads.length ? downloads.map(d => ({json: {...d}})) : [{json: {dummy: true}}];\nout[0].json._aprovacoes = JSON.parse(JSON.stringify(aprovacoes));\nout[0].json._lidas = lidas;\nout[0].json._agora = agora;\nreturn out;\n\n} catch (erro) {\n  const m = erro && erro.message ? erro.message : (typeof erro === 'string' ? erro : JSON.stringify(erro));\n  throw new Error('[Frete: analisar conversas] ' + m + (erro && erro.stack ? ' | ' + String(erro.stack).split('\\n').slice(0, 4).join(' / ') : ''));\n}"
+      },
+      "name": "Frete: analisar conversas",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        520,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "d3a67fe4-aad1-5498-926c-046f768ae5df",
+              "leftValue": "={{ $json.dummy ? 'nao' : 'sim' }}",
+              "rightValue": "sim",
+              "operator": {
+                "type": "string",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "name": "Frete: tem fatura nova?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        780,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ 'https://gmail.googleapis.com/gmail/v1/users/me/messages/' + $json.mid + '/attachments/' + $json.att }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "gmailOAuth2",
+        "options": {
+          "response": {
+            "response": {
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          },
+          "batching": {
+            "batch": {
+              "batchSize": 5,
+              "batchInterval": 300
+            }
+          }
+        }
+      },
+      "name": "Frete: baixar anexo",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1040,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "try {\n\nconst metas = $('Frete: analisar conversas').all();\nreturn $input.all().map((it, i) => {\n  const m = {...metas[i].json};\n  delete m._aprovacoes; delete m._lidas; delete m._agora;\n  const b64 = String((it.json || {}).data || '').replace(/-/g, '+').replace(/_/g, '/');\n  return {json: {...m, ok: b64.length > 100}, binary: {data: {data: b64, mimeType: 'application/pdf', fileName: m.nome}}};\n});\n\n} catch (erro) {\n  const m = erro && erro.message ? erro.message : (typeof erro === 'string' ? erro : JSON.stringify(erro));\n  throw new Error('[Frete: preparar PDF] ' + m + (erro && erro.stack ? ' | ' + String(erro.stack).split('\\n').slice(0, 4).join(' / ') : ''));\n}"
+      },
+      "name": "Frete: preparar PDF",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1300,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "name": "={{ $json.nome }}",
+        "driveId": {
+          "__rl": true,
+          "value": "0AFFPxJzHkValUk9PVA",
+          "mode": "id"
+        },
+        "folderId": {
+          "__rl": true,
+          "value": "CONFIGURE_ID",
+          "mode": "id"
+        },
+        "inputDataFieldName": "data",
+        "options": {}
+      },
+      "name": "Frete: enviar ao Drive",
+      "type": "n8n-nodes-base.googleDrive",
+      "typeVersion": 3,
+      "position": [
+        0,
+        600
+      ],
+      "onError": "continueRegularOutput",
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "try {\n\nconst estado = JSON.parse(JSON.stringify($('Frete: baixar estado').first().json || {}));\nconst seguro = n => { try { return $(n).all(); } catch (e) { return []; } };\nconst an = seguro('Frete: analisar conversas');\nconst ctrl = ((an[0] || {}).json) || {};\nconst pdfs = seguro('Frete: preparar PDF'), subidos = seguro('Frete: enviar ao Drive');\nconst agora = ctrl._agora || (new Date().toISOString().slice(0, 19) + 'Z');\nestado.faturas = estado.faturas || {};\nestado.aprovacoes = estado.aprovacoes || {};\nlet novas = 0, erros = 0;\nconst exemplos = [];\npdfs.forEach((it, i) => {\n  const m = it.json || {}, up = (subidos[i] || {}).json || {};\n  if (!m.mid) return;\n  if (!m.ok || !up.id) { erros++; exemplos.push({anexo: m.anexo, erro: !m.ok ? 'anexo vazio' : 'não subiu ao Drive'}); return; }\n  estado.faturas[m.mid] = {agente: m.agente, conversa: m.conversa, recebido_em: m.recebido_em, assunto: m.assunto, anexo: m.anexo,\n    arquivo: m.nome, drive_id: up.id, lido_em: agora};\n  novas++;\n});\nlet aprov = 0;\nfor (const [t, a] of Object.entries(ctrl._aprovacoes || {})) { if (!estado.aprovacoes[t]) { estado.aprovacoes[t] = {...a}; aprov++; } }\nestado.versao = 1;\nestado.ultima_execucao = agora;\nestado.ultima_rodada = {em: agora, conversas: ctrl._lidas || 0, novas, aprovacoes: aprov, erros, erros_exemplo: exemplos.slice(0, 5)};\nreturn [{json: {id: $('Frete: escolher estado').first().json.id, conteudo: JSON.stringify(estado)}}];\n\n} catch (erro) {\n  const m = erro && erro.message ? erro.message : (typeof erro === 'string' ? erro : JSON.stringify(erro));\n  throw new Error('[Frete: montar estado] ' + m + (erro && erro.stack ? ' | ' + String(erro.stack).split('\\n').slice(0, 4).join(' / ') : ''));\n}"
+      },
+      "name": "Frete: montar estado",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        260,
+        600
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ 'https://www.googleapis.com/upload/drive/v3/files/' + $json.id + '?uploadType=media&supportsAllDrives=true' }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "googleDriveOAuth2Api",
+        "options": {},
+        "method": "PATCH",
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ $json.conteudo }}"
+      },
+      "name": "Frete: gravar no Drive",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        520,
+        600
+      ]
+    }
+  ],
+  "connections": {
+    "Frete: a cada 3 horas": {
+      "main": [
+        [
+          {
+            "node": "Frete: achar estado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Frete: achar estado": {
+      "main": [
+        [
+          {
+            "node": "Frete: escolher estado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Frete: escolher estado": {
+      "main": [
+        [
+          {
+            "node": "Frete: baixar estado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Frete: baixar estado": {
+      "main": [
+        [
+          {
+            "node": "Frete: listar conversas",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Frete: listar conversas": {
+      "main": [
+        [
+          {
+            "node": "Frete: fila de conversas",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Frete: fila de conversas": {
+      "main": [
+        [
+          {
+            "node": "Frete: tem conversa?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Frete: tem conversa?": {
+      "main": [
+        [
+          {
+            "node": "Frete: ler conversas",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Frete: montar estado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Frete: ler conversas": {
+      "main": [
+        [
+          {
+            "node": "Frete: analisar conversas",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Frete: analisar conversas": {
+      "main": [
+        [
+          {
+            "node": "Frete: tem fatura nova?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Frete: tem fatura nova?": {
+      "main": [
+        [
+          {
+            "node": "Frete: baixar anexo",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Frete: montar estado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Frete: baixar anexo": {
+      "main": [
+        [
+          {
+            "node": "Frete: preparar PDF",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Frete: preparar PDF": {
+      "main": [
+        [
+          {
+            "node": "Frete: enviar ao Drive",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Frete: enviar ao Drive": {
+      "main": [
+        [
+          {
+            "node": "Frete: montar estado",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Frete: montar estado": {
+      "main": [
+        [
+          {
+            "node": "Frete: gravar no Drive",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "America/Sao_Paulo",
+    "executionTimeout": 1200
+  }
+}

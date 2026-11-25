@@ -9,8 +9,8 @@
   const br = d => { const [y, m, dd] = String(d || '').split('-'); return dd ? `${dd}/${m}/${y}` : String(d || ''); };
   const norm = s => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
   const toast = msg => { document.querySelector('.lv-toast')?.remove(); const t = document.createElement('div'); t.className = 'lv-toast'; t.textContent = msg; document.body.appendChild(t); setTimeout(() => t.remove(), 4200); };
-  // Todos os usuarios veem o levantamento (13/11/2026); so o master (pode_editar, vindo do servidor) inclui e exclui ata.
-  const logged = () => typeof state !== 'undefined' && !!state.user;
+  // Subpagina so do master (18/11/2026, pedido do usuario); o servidor tambem recusa os demais.
+  const logged = () => typeof state !== 'undefined' && state.user?.role === 'master';
   const canEdit = () => !!S.data?.pode_editar;
   const I = {
     meet: '<path d="M4 6h16v10H8l-4 4z"/><path d="M8 10h8M8 13h5"/>',
